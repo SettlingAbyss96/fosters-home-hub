@@ -34,7 +34,7 @@ plan you can borrow.
 1. Debian 13 netinst on the USB stick, then boot the Hub from it (F12 for the boot menu)
 2. Hostname `ha-hub`, user `hub`, and leave the root password blank so `hub` gets sudo
 3. Guided partitioning, the whole NVMe, all files in one partition. No LVM and no encryption: a
-   passphrase prompt after a power cut means a wall panel that stays dark until someone types it
+   passphrase prompt after a power cut means a Hub that stays dark until someone types it
 4. Software: only "SSH server" and "standard system utilities". No desktop, the kiosk brings its own
 5. On the Hub, so the scripts can run over SSH without a password prompt:
 
@@ -92,7 +92,7 @@ guide mentions, which this version refuses. Now's the time for the VM's address 
 router, while you remember.
 
 1. Onboard it (or restore a backup)
-2. Log the kiosk in: on the Hub's touchscreen, sign in with a user made for the wall. It keeps the
+2. Log the kiosk in: on the Hub's touchscreen, sign in with a user made for the kiosk. It keeps the
    session from then on
 3. Make a long-lived token (your profile, Security, Long-lived access tokens) and save it on your
    computer as `~/.config/ha-hub/token`. It never goes in the repo or in `house.toml`

@@ -17,7 +17,7 @@ apt-get install -y -qq --no-install-recommends \
   rtkit
 
 # PipeWire is a user service. Lingering keeps it (and the voice satellite) running with nobody
-# logged in, which on a wall panel is always
+# logged in, which on a kiosk is always
 loginctl enable-linger "$user"
 
 # the Hub's one USB audio device, by its id. Every Hub 500 seen so far calls itself this, but it's

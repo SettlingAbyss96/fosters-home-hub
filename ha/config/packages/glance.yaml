@@ -46,8 +46,8 @@ template:
           {% if today %}High {{ today.temperature | round(0) | int }}° · Low {{ today.templow | round(0) | int }}° · {% endif %}{{ rain }}
 
   # Work, as busy or free and nothing else. The calendar is whatever gets added as "Work"
-  # (calendar.work, from a free/busy iCal address in house.toml, tools/ha-apps.sh). Titles stay off the wall on purpose: a kitchen screen doesn't need to know
-  # what the 2pm is about, just that there is one
+  # (calendar.work, from a free/busy iCal address in house.toml, tools/ha-apps.sh). Titles stay off
+  # the screen on purpose: the Hub doesn't need to know what the 2pm is about, just that there is one
   - trigger:
       - trigger: homeassistant
         event: start

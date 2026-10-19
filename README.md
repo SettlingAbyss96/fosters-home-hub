@@ -2,7 +2,7 @@
 
 # Foster's Home Hub
 
-A retired Teams Rooms console on the wall, running a whole house: touchscreen, ears, voice, and a
+A retired Teams Rooms console on the counter, running a whole house: touchscreen, ears, voice, and a
 control system behind them. Set up the way I set up mine, for anyone with the same box.
 
 ![License](https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square)
@@ -18,7 +18,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 The Lenovo ThinkSmart Hub 500 was built to sit on a conference table and run Microsoft Teams, and
 under the plastic it's a quad-core i5 mini PC with a 1080p touchscreen, a two-mic array and a pair of
 decent speakers in one box. Lenovo stopped supporting it in October 2025, which is how it got cheap
-enough to stick on a wall, and I put one on mine and turned it into the house's brain. This repo is
+enough to leave on a counter as the house's brain, which is what I did with mine. This repo is
 that work made generic, so friends with the same box can set theirs up the same way and go from
 there: the scripts that build the Debian host, the Home Assistant config that runs in a VM on it,
 the voice satellite and its speech engines, the tests, and the write-ups, with every bit of my own

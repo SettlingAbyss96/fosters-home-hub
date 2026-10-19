@@ -6,7 +6,7 @@ keeps working when a piece goes down.*
 Anyone who's built a machine at work will recognise the shape of this: one controller, a few
 processes on it that each own one job, and a clear line between the parts that have to keep running
 and the parts that are allowed to fail. Everything runs on one retired conference-room console on
-the wall. That was the point and it's also the risk, so most of this page is about where the lines
+a counter. That was the point and it's also the risk, so most of this page is about where the lines
 are drawn inside it: what lives on Debian, what lives in the Home Assistant VM, and which parts can
 fail without taking the rest with them.
 

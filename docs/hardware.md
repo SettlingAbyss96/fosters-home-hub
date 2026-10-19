@@ -7,6 +7,9 @@ What this box actually is once Windows is gone, measured on my unit (model `10V5
 developing for the Hub 500 in October 2025, so nobody is coming to fix the firmware. Whatever it
 does now, it does forever.
 
+It's shaped for a conference table, and it wouldn't mount well on a wall anyway, so at home it ends
+up on a counter or a shelf. Mine sits on a counter.
+
 ## What's inside
 
 | | |
