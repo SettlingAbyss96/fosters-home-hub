@@ -23,13 +23,17 @@ split that way on purpose, so each job is done once, in one place, and everythin
 the result instead of redoing it.
 
 ```mermaid
-flowchart TD
-    S[Signals<br/>doors, PIR, lights,<br/>phone, laptop, TV] --> E[Estimates<br/>asleep, seen up,<br/>someone home]
-    E --> M[Supervisor<br/>the house mode, set by<br/>me, a routine or the clock]
-    M --> B[Behaviours<br/>looks, routines, wake-up]
+---
+config:
+  themeCSS: ".edgeLabel, .edgeLabel p, .labelBkg { background-color: var(--bgColor-default) !important } .edgeLabel rect { opacity: 1 !important; fill: var(--bgColor-default) !important }"
+---
+flowchart BT
+    S[Signals<br/>doors, PIR,<br/>lights, phone,<br/>laptop, TV] --> E[Estimates<br/>asleep, seen up,<br/>someone home]
+    E --> M[Supervisor<br/>house mode,<br/>set by me,<br/>a routine or<br/>the clock]
+    M --> B[Behaviours<br/>looks, routines,<br/>wake-up]
     E --> B
-    B --> G[Arbiter<br/>priorities and holds]
-    G --> A[Lights, TV, vacuum]
+    B --> G[Arbiter<br/>priorities<br/>and holds]
+    G --> A[Lights, TV,<br/>vacuum]
     A -.->|state changes| S
 ```
 
@@ -205,15 +209,17 @@ they stay in until the door opens again. It's a four-state machine (`occupancy_n
 `estimates.jinja`):
 
 ```mermaid
-stateDiagram-v2
-    direction LR
-    [*] --> unknown
-    unknown --> checking: door closes
-    checking --> in: something inside
-    checking --> out: 5 quiet minutes
-    out --> in: something inside
-    in --> checking: door closes
-    out --> checking: door closes
+---
+config:
+  themeCSS: ".edgeLabel, .edgeLabel p, .labelBkg { background-color: var(--bgColor-default) !important } .edgeLabel rect { opacity: 1 !important; fill: var(--bgColor-default) !important }"
+---
+flowchart TD
+    U([unknown]) -->|door closes| C([checking])
+    C -->|something inside| I([in])
+    C -->|5 quiet minutes| O([out])
+    O -->|something inside| I
+    I -->|door closes| C
+    O -->|door closes| C
 ```
 
 "Something inside" is the Hub's PIR (not while the robot vacuum is out or just docked), a light
@@ -336,12 +342,16 @@ same respect:
 - the clock: only moves along a few edges, and leaves lights I switched by hand alone
 
 ```mermaid
-stateDiagram-v2
-    Day --> Evening: sun below 3 degrees
-    Evening --> Calm: an hour before bed
-    Night --> Morning: up, near the wake time
-    Morning --> Day: sunrise
-    Night --> Day: 11 AM at the latest
+---
+config:
+  themeCSS: ".edgeLabel, .edgeLabel p, .labelBkg { background-color: var(--bgColor-default) !important } .edgeLabel rect { opacity: 1 !important; fill: var(--bgColor-default) !important }"
+---
+flowchart TD
+    N([Night]) -->|up, near the wake time| M([Morning])
+    M -->|sunrise| D([Day])
+    N -->|11 AM at the latest| D
+    D -->|sun below 3 degrees| E([Evening])
+    E -->|an hour before bed| C([Calm])
 ```
 
 Those are the clock's only moves. Everything else is me or a routine. Even so, any mode can still
@@ -350,22 +360,26 @@ fenced off inside the Night to Morning edge). The cleaner model is Harel's state
 inside states, with a transition table that refuses the rest.
 
 ```mermaid
-stateDiagram-v2
-    state Home {
-        state Awake {
-            Day --> Evening
-            Evening --> Calm
-            Evening --> Movie
-            Movie --> Evening
-        }
-        state Asleep {
-            Night --> Waking
-        }
-        Awake --> Asleep: goodnight
-        Asleep --> Awake: up
-    }
-    Home --> Away: left, house empty
-    Away --> Home: door, then movement
+---
+config:
+  themeCSS: ".edgeLabel, .edgeLabel p, .labelBkg { background-color: var(--bgColor-default) !important } .edgeLabel rect { opacity: 1 !important; fill: var(--bgColor-default) !important }"
+---
+flowchart LR
+    subgraph Home
+        direction TB
+        subgraph Asleep
+            Night([Night]) --> Waking([Waking])
+        end
+        subgraph Awake
+            Day([Day]) --> Evening([Evening])
+            Evening --> Calm([Calm])
+            Evening <--> Movie([Movie])
+        end
+        Awake -->|goodnight| Asleep
+        Asleep -->|up| Awake
+    end
+    Home -->|left, house<br/>empty| Away([Away])
+    Away -->|door, then<br/>movement| Home
 ```
 
 That's what I'd like the supervisor to become: "Morning from Night only through Waking" is one row
@@ -432,17 +446,23 @@ brightness) to be looked at at all. The context then only says which person: the
 Jarvis carry a user id, the wall doesn't.
 
 ```mermaid
+---
+config:
+  sequence:
+    mirrorActors: false
+---
 sequenceDiagram
     participant R as Routine
     participant G as light_set (gate)
     participant A as Arbiter memory
-    participant L as Lamp
     participant D as By-hand detector
+    participant L as Lamp
     R->>G: level 80, priority 4
     G->>A: is it held? record the command
     G->>L: turn on, 80%
     L-->>D: state change, no parent
     D->>A: matches the command, ignore
+    Note over A,D: explained,<br/>so no hold
 ```
 
 One lamp broke this in an instructive way. A Govee floor lamp reported its brightness as 202,

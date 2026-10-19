@@ -13,29 +13,31 @@ fail without taking the rest with them.
 ## Debian on the metal, Home Assistant in a VM
 
 ```mermaid
-flowchart LR
-    subgraph Hub[The Hub]
-        direction LR
-        subgraph D[Debian 13]
-            K[Kiosk<br/>labwc + Chromium]
-            V[Voice satellite<br/>Linux Voice Assistant]
-            X[hub-screen, hub-stats,<br/>hub-ring]
-        end
-        subgraph VM[Home Assistant OS VM]
-            HA[Home Assistant]
-            MQ[Mosquitto]
-            MS[Matter Server]
-        end
-        subgraph S[Debian 13, speech]
-            P[Parakeet<br/>:10310]
-            Ko[Kokoro<br/>:10210]
-        end
+---
+config:
+  themeCSS: ".edgeLabel, .edgeLabel p, .labelBkg { background-color: var(--bgColor-default) !important } .edgeLabel rect { opacity: 1 !important; fill: var(--bgColor-default) !important }"
+---
+flowchart TD
+    subgraph D[Debian 13]
+        V[Voice satellite<br/>Linux Voice<br/>Assistant]
+        R[hub-ring]
+        K[Kiosk<br/>labwc +<br/>Chromium]
+        X[hub-screen,<br/>hub-stats]
     end
-    K -->|dashboard| HA
-    V -->|ESPHome API :6053| HA
+    subgraph VM[Home Assistant OS VM]
+        HA[Home Assistant]
+        MQ[Mosquitto]
+        MS[Matter Server]
+    end
+    subgraph S[Speech, also on Debian]
+        P[Parakeet<br/>:10310]
+        Ko[Kokoro<br/>:10210]
+    end
+    R -.- V
+    V -->|ESPHome API| HA
+    K --> HA
     X -->|MQTT| MQ
-    HA -->|Wyoming| P
-    HA -->|Wyoming| Ko
+    HA -->|Wyoming| S
 ```
 
 Debian runs on the metal because it's what drives the touchscreen (I2C touch on the stock kernel),
@@ -61,13 +63,9 @@ each is fenced with nftables so only the VM's MAC (and the Hub itself) can reach
 ## How devices get in
 
 ```mermaid
-flowchart TD
-    HA[Home Assistant] --> MT[Matter]
-    HA --> HK[HomeKit, local]
-    HA --> ADB[ADB, LAN]
-    HA --> CL[Cloud APIs]
-    MT --> T[Lights and plugs]
-    MT --> B[A bridge: door<br/>sensors, faces]
+flowchart LR
+    HA[Home Assistant] --> MT[Matter] & HK[HomeKit, local] & ADB[ADB, LAN] & CL[Cloud APIs]
+    MT --> T[Lights and plugs] & B[A bridge: door<br/>sensors, faces]
     HK --> D[Doorbell camera]
     ADB --> TV[Fire TV]
     CL --> C[Vacuum, washer,<br/>printers, the agent]

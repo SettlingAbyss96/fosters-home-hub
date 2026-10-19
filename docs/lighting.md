@@ -237,25 +237,29 @@ practical checks that have bitten me (a kitchen dimmer on bulbs that can't dim, 
 cold because nothing set its colour):
 
 ```mermaid
+---
+config:
+  themeCSS: ".edgeLabel, .edgeLabel p, .labelBkg { background-color: var(--bgColor-default) !important } .edgeLabel rect { opacity: 1 !important; fill: var(--bgColor-default) !important }"
+---
 flowchart TD
-    A[Somewhere feels wrong] --> B{What is it for?}
+    A[Somewhere<br/>feels wrong] --> B{What is it for?}
     B -->|living in the room| C[Ambient]
     B -->|doing something| D[Task]
     B -->|something to look at| E[Accent]
     B -->|walking at night| F[Path]
-    C --> C1{Can a lamp or a wall<br/>do it?}
-    C1 -->|yes| C2[Lamp at eye level,<br/>or bounce off a wall]
-    C1 -->|no| C3[Overhead, dimmed,<br/>shielded from view]
-    D --> D1[At the task: under a<br/>cabinet, at the mirror,<br/>at the desk]
-    E --> E1[Small and aimed:<br/>art, plants, shelves]
-    F --> F1[Low and amber,<br/>on movement, on the chip]
-    C2 & C3 & D1 & E1 & F1 --> K[Spec check: dims to 1%,<br/>fades by itself, CRI 90+,<br/>no flicker, 2700 K<br/>from white LEDs]
-    K --> W{Seen in the windows<br/>at night?}
-    W -->|yes| W1[Keep it off the glass,<br/>or lower]
-    W -->|no| P[Matter or ESPHome,<br/>on its own circuit]
+    C --> C1{Can a lamp or<br/>a wall do it?}
+    C1 -->|yes| C2[Lamp at eye<br/>level, or bounce<br/>off a wall]
+    C1 -->|no| C3[Overhead,<br/>dimmed, shielded<br/>from view]
+    D --> D1[At the task:<br/>under a cabinet,<br/>at the mirror,<br/>at the desk]
+    E --> E1[Small and aimed:<br/>art, plants,<br/>shelves]
+    F --> F1[Low and amber,<br/>on movement,<br/>on the chip]
+    C2 & C3 & D1 & E1 & F1 --> K[Spec check:<br/>dims to 1%,<br/>fades by itself,<br/>CRI 90+,<br/>no flicker,<br/>2700#nbsp;K from<br/>white LEDs]
+    K --> W{Seen in the<br/>windows<br/>at night?}
+    W -->|yes| W1[Keep it off<br/>the glass,<br/>or lower]
+    W -->|no| P[Matter or<br/>ESPHome, on its<br/>own circuit]
     W1 --> P
-    P --> R[Room, layer and job<br/>in house.toml]
-    R --> V[Dry run every look,<br/>measure 30 lux at night]
+    P --> R[Room, layer<br/>and job in<br/>house.toml]
+    R --> V[Dry run every<br/>look, measure<br/>30 lux at night]
 ```
 
 The spec check is short on purpose. Dimming to about 1% because the wind-down and the path light

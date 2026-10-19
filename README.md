@@ -64,22 +64,21 @@ a phone with the Home Assistant app makes presence work. Everything else is opti
 
 ```mermaid
 flowchart LR
-    D[Devices<br/>Matter, Zigbee, ADB, cloud] --> HA[Home Assistant<br/>in a VM]
-    Mic[Mics] --> Sat[Voice satellite<br/>wake, turn, pre-roll]
-    Sat --> HA
+    D[Devices<br/>Matter, Zigbee,<br/>ADB, cloud] --> HA[Home Assistant<br/>in a VM]
+    Sat[Voice satellite<br/>wake, turn,<br/>pre-roll] --> HA
     HA --> STT[Parakeet] & TTS[Kokoro]
     HA --> Agent[Cloud agent]
-    HA --> Screen[Kiosk dashboard]
+    HA --> Screen[Kiosk<br/>dashboard]
 ```
 
 Inside Home Assistant the logic is a control stack, each layer reading the one under it and never
 redoing its job:
 
 ```mermaid
-flowchart LR
+flowchart BT
     S[Signals] --> E[Estimates<br/>asleep, someone home]
     E --> M[Mode] --> B[Behaviours<br/>looks, routines]
-    B --> G[Arbiter<br/>priorities, holds] --> A[Lights,<br/>TV, vacuum]
+    B --> G[Arbiter<br/>priorities, holds] --> A[Lights, TV, vacuum]
 ```
 
 Your house goes in `house.toml`, which never leaves your computer. The deploy renames your devices

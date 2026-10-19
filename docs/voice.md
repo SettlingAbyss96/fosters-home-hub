@@ -18,12 +18,18 @@ them as one box and one speaker rather than a benchmark. Yours will land somewhe
 
 ```mermaid
 flowchart LR
-    M[2 mics<br/>48 kHz] --> A[WebRTC echo<br/>cancel + gain]
-    A --> W[Wake word<br/>2 detectors]
-    W --> T[Turn<br/>Silero + Smart Turn]
-    T --> S[Parakeet<br/>speech to text]
-    S --> I[Intents, then<br/>the cloud agent]
-    I --> K[Kokoro<br/>voice]
+    subgraph Sat[The satellite, on Debian]
+        direction TB
+        M[2 mics<br/>48 kHz] --> A[WebRTC echo<br/>cancel + gain]
+        A --> W[Wake word<br/>2 detectors]
+        W --> T[Turn<br/>Silero +<br/>Smart Turn]
+    end
+    subgraph Pipe[Home Assistant's pipeline]
+        direction TB
+        S[Parakeet<br/>speech to text] --> I[Intents, then<br/>the cloud agent]
+        I --> K[Kokoro<br/>voice]
+    end
+    Sat --> Pipe
 ```
 
 The first four run on the Hub's Debian side (PipeWire, then the patched Linux Voice Assistant
