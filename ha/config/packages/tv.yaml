@@ -1,0 +1,618 @@
+# The TV: a Fire TV (a TV with Fire TV built in, or a Fire TV stick on any TV), driven over Android
+# Debug Bridge. Built and tested on a TV with Fire OS 8 inside. tools/ha-apps.sh adds it from the
+# address in house.toml as media_player.fire_tv. Everything here goes through androidtv.adb_command,
+# because the integration's own picture of a Fire TV is mostly wrong: it says "idle" whether the TV
+# is playing Netflix or showing the ambient pictures, its app detection comes back empty,
+# select_source answers fine and launches nothing, and it has no volume at all on a Fire TV.
+#
+# What else was tried before settling on ADB for everything:
+#   - HomeKit: a TV that does AirPlay and HomeKit may not advertise HomeKit all the time, and it
+#     would only add power and inputs, which ADB already does better
+#   - DIAL on port 8009 (the protocol phones use to "cast" to a TV): only Netflix answers, YouTube
+#     says 403. It also advertises Wake-on-LAN, a fallback if ADB ever stops answering while it's off
+#   - Google Cast, the Android TV Remote protocol: not on Fire OS (6466 closed, 8009 is DIAL)
+#   - Alexa: would need an Amazon login and a cloud round trip for things ADB does locally
+#   - screenshots (the integration's screencap): fine on the home screen and the ambient pictures,
+#     empty under Netflix and the other DRM apps
+#
+# Power, measured over ADB: the remote's short press (KEYCODE_POWER) flips between awake and
+# ambient mode, and from fully off it wakes the TV. KEYCODE_SLEEP is the real off, from anywhere.
+# Ambient mode switches itself fully off after a few hours of nothing (the TV's ambient_inactivity_to
+# setting), so "turn off the TV" means ambient mode, same as a thumb on the remote. The
+# integration's turn_on and turn_off commands are set to match (in tools/ha-apps.sh), so anything
+# that turns the TV off, the dashboard included, gets ambient mode. "All the way off" is
+# script.tv_power with power: off.
+#
+# media_player.tv (the universal one at the bottom) is the TV everyone else sees: state from
+# sensor.tv_status, volume and mute from it too, power and volume through these scripts. The ADB
+# one underneath is hidden plumbing. Without a Fire TV, sensor.tv_status says Unreachable and
+# everything that checks it leaves the TV alone.
+# Sentences: custom_sentences/en/tv.yaml
+intent_script:
+  # The descriptions are for the cloud agent, which sees these intents as tools too
+  TvOn:
+    description: "Turns the TV on (wakes it from off or ambient mode)."
+    action:
+      - action: script.tv_power
+        data: {power: "on"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: "{{ \"TV's on.\" if action_response is defined and action_response.done else \"The TV didn't come on.\" }}"
+
+  # Off is ambient mode, like the remote's short press
+  TvOff:
+    description: "Turns the TV off, which on this TV means ambient mode (the slow-moving pictures)."
+    action:
+      - action: script.tv_power
+        data: {power: "ambient"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: "{{ 'Ambient mode.' if action_response is defined and action_response.done else \"The TV didn't go off.\" }}"
+
+  TvVolumeUp:
+    description: "Turns the TV's volume up a step."
+    action:
+      - action: script.tv_volume
+        continue_on_error: true
+        data: {step: "up"}
+    speech:
+      text: "Up a little."
+
+  TvVolumeDown:
+    description: "Turns the TV's volume down a step."
+    action:
+      - action: script.tv_volume
+        continue_on_error: true
+        data: {step: "down"}
+    speech:
+      text: "Down a little."
+
+  TvVolumeSet:
+    description: "Sets the TV's volume (0 to 100) to the number in the sentence."
+    action:
+      - if: "{{ tv_level is defined and tv_level not in [none, ''] }}"
+        then:
+          - action: script.tv_volume
+            continue_on_error: true
+            data:
+              level: "{{ tv_level | int }}"
+    speech:
+      text: "{{ 'Volume ' ~ (tv_level | int) ~ '.' if tv_level is defined and tv_level not in [none, ''] else 'To what?' }}"
+
+  TvMute:
+    description: "Mutes the TV."
+    action:
+      - action: script.tv_mute
+        continue_on_error: true
+        data: {mute: true}
+    speech:
+      text: "Muted."
+
+  TvUnmute:
+    description: "Unmutes the TV."
+    action:
+      - action: script.tv_mute
+        continue_on_error: true
+        data: {mute: false}
+    speech:
+      text: "Sound back on."
+
+  # Play and pause are the remote's own keys, sent to whatever's in front
+  TvPause:
+    description: "Pauses whatever is playing on the TV."
+    action:
+      - action: media_player.media_pause
+        continue_on_error: true
+        target:
+          entity_id: media_player.tv
+    speech:
+      text: "Paused."
+
+  TvResume:
+    description: "Resumes whatever was paused on the TV."
+    action:
+      - action: media_player.media_play
+        continue_on_error: true
+        target:
+          entity_id: media_player.tv
+    speech:
+      text: "Playing."
+
+  TvFullOff:
+    description: "Turns the TV all the way off. Only when asked for all the way, completely or fully off."
+    action:
+      - action: script.tv_power
+        data:
+          power: "off"
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: "{{ \"TV's all the way off.\" if action_response is defined and action_response.done else \"The TV didn't go off.\" }}"
+
+  TvOpenApp:
+    description: "Opens an app on the TV. The per-app TV scripts do the same without needing the app's name."
+    action:
+      - action: script.tv_open_app
+        data:
+          app: "{{ tv_app }}"
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: >-
+        {{ tv_app }} {{ 'is up.' if action_response is defined and action_response.opened else "didn't come up." }}
+
+  TvAmbient:
+    description: "Puts the TV in ambient mode, the slow-moving pictures."
+    action:
+      - action: script.tv_power
+        data:
+          power: "ambient"
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: "{{ 'Ambient mode.' if action_response is defined and action_response.done else \"The TV didn't go into ambient mode.\" }}"
+
+  TvStatus:
+    description: "Says what's on the TV right now."
+    speech:
+      text: >-
+        {% set s = states('sensor.tv_status') %}
+        {% set title = state_attr('sensor.tv_status', 'title') %}
+        {% set artist = state_attr('sensor.tv_status', 'artist') %}
+        {% if s == 'Off' %}The TV is off.
+        {% elif s == 'Ambient mode' %}The TV is showing the ambient pictures.
+        {% elif s == 'Home screen' %}The TV is on the home screen.
+        {% elif s == 'Unreachable' %}The TV isn't answering. It's probably all the way off.
+        {% elif s in ['Unknown', 'unknown', 'unavailable'] %}No reading from the TV.
+        {% elif title %}{{ title }}{{ ' by ' ~ artist if artist else '' }}, {{ state_attr('sensor.tv_status', 'playback') }} on {{ state_attr('sensor.tv_status', 'app') }}.
+        {% else %}{{ s | replace(', ', ' is ') }} on the TV.{% endif %}
+
+script:
+  # Power with a check: does it, then waits until the TV itself says it got there (Awake, Dreaming
+  # or Asleep in dumpsys power), and returns {done}. on = awake, ambient = the slow pictures, off =
+  # all the way off. From fully off to ambient goes through awake, the only way the TV allows
+  tv_power:
+    alias: "TV power"
+    icon: mdi:power
+    mode: queued
+    fields:
+      power:
+        description: "on, ambient or off"
+        example: "ambient"
+        required: true
+        selector:
+          select:
+            options: ["on", "ambient", "off"]
+    sequence:
+      - variables:
+          want: "{{ {'on': 'Awake', 'ambient': 'Dreaming', 'off': 'Asleep'}.get(power | default('') | lower, '') }}"
+      - if: "{{ want == '' }}"
+        then:
+          - variables:
+              result: {"done": false, "why": "power has to be on, ambient or off"}
+          - stop: "No such power"
+            response_variable: result
+      - action: androidtv.adb_command
+        continue_on_error: true
+        target:
+          entity_id: media_player.fire_tv
+        data:
+          command: "dumpsys power | grep mWakefulness="
+      - if: "{{ want == 'Dreaming' and 'Asleep' in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+        then:
+          - action: media_player.turn_on
+            continue_on_error: true
+            target:
+              entity_id: media_player.fire_tv
+          - repeat:
+              sequence:
+                - delay: "00:00:01"
+                - action: androidtv.adb_command
+                  continue_on_error: true
+                  target:
+                    entity_id: media_player.fire_tv
+                  data:
+                    command: "dumpsys power | grep mWakefulness="
+              until: "{{ 'Awake' in (state_attr('media_player.fire_tv', 'adb_response') or '') or repeat.index >= 12 }}"
+          - delay: "00:00:02"
+      - if: "{{ want not in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+        then:
+          - choose:
+              - conditions: "{{ want == 'Awake' }}"
+                sequence:
+                  - action: media_player.turn_on
+                    continue_on_error: true
+                    target:
+                      entity_id: media_player.fire_tv
+              - conditions: "{{ want == 'Dreaming' }}"
+                sequence:
+                  - action: media_player.turn_off
+                    continue_on_error: true
+                    target:
+                      entity_id: media_player.fire_tv
+            default:
+              - action: androidtv.adb_command
+                continue_on_error: true
+                target:
+                  entity_id: media_player.fire_tv
+                data:
+                  command: "input keyevent KEYCODE_SLEEP"
+          - repeat:
+              sequence:
+                - delay: "00:00:01"
+                - action: androidtv.adb_command
+                  continue_on_error: true
+                  target:
+                    entity_id: media_player.fire_tv
+                  data:
+                    command: "dumpsys power | grep mWakefulness="
+              until: "{{ want in (state_attr('media_player.fire_tv', 'adb_response') or '') or repeat.index >= 12 }}"
+      - variables:
+          result:
+            done: "{{ want in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+      # Back only once sensor.tv_status (and so media_player.tv) agrees. The cloud agent reads the
+      # state straight after, and a stale one had it trying again
+      - event: tv_changed
+      - wait_template: >-
+          {% set s = states('sensor.tv_status') %}
+          {{ s == {'Awake': s, 'Dreaming': 'Ambient mode', 'Asleep': 'Off'}[want] and (want != 'Awake' or s not in ['Off', 'Ambient mode']) }}
+        timeout: 5
+      - stop: "Done"
+        response_variable: result
+
+  tv_ambient:
+    alias: "Ambient mode on the TV"
+    description: "Puts the TV into ambient mode (the slow-moving pictures), waking it first if it's off."
+    icon: mdi:image-filter-hdr
+    sequence:
+      - action: script.tv_power
+        data: {power: "ambient"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+
+  tv_off_completely:
+    alias: "TV all the way off"
+    description: "Turns the TV all the way off, not just to ambient mode. Only when asked for all the way, completely or fully off."
+    icon: mdi:power-standby
+    sequence:
+      - action: script.tv_power
+        data: {power: "off"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+
+  # Volume on the TV's own 0 to 100 scale. Steps are a quarter of where it is (at least 1), because
+  # plenty of TVs live at 1 or 2 out of 100, and a fixed step of 5 there would be a shout. While Jarvis has the TV
+  # muted for listening (tv_ducks_for_jarvis), the level it saved is the one to step from, and the
+  # saved file goes, so the automation doesn't put the old level back afterwards
+  tv_volume:
+    alias: "TV volume"
+    icon: mdi:volume-high
+    mode: queued
+    fields:
+      level:
+        description: "0 to 100"
+        selector:
+          number: {min: 0, max: 100}
+      step:
+        description: "up or down"
+        selector:
+          select:
+            options: ["up", "down"]
+    sequence:
+      - action: androidtv.adb_command
+        continue_on_error: true
+        target:
+          entity_id: media_player.fire_tv
+        data:
+          command: >-
+            f=/data/local/tmp/hub_duck;
+            cur=$(dumpsys audio | grep -A5 '^- STREAM_MUSIC' | grep -o 'streamVolume:[0-9]*' | cut -d: -f2);
+            if [ -f $f ]; then read cur d < $f; rm -f $f; fi;
+            s=$((cur / 4)); [ $s -lt 1 ] && s=1;
+            {% if level is defined and level not in [none, ''] %}new={{ level | int(0) }}
+            {% elif (step | default('up') | lower) in ['down', 'quieter', 'softer', 'lower', 'decrease'] %}new=$((cur - s))
+            {% else %}new=$((cur + s)){% endif %};
+            [ $new -lt 0 ] && new=0; [ $new -gt 100 ] && new=100;
+            cmd media_session volume --stream 3 --set $new >/dev/null 2>&1; echo volume=$new
+      - variables:
+          new: "{{ (state_attr('media_player.fire_tv', 'adb_response') or '').split('volume=')[-1] | int(-1) }}"
+      - event: tv_changed
+      # Android reads volume 0 as muted
+      - wait_template: "{{ new < 0 or state_attr('sensor.tv_status', 'volume') == new or (new == 0 and state_attr('sensor.tv_status', 'muted')) }}"
+        timeout: 4
+
+  # Mute is a toggle on the remote (the integration's own mute does nothing here), so it checks first
+  tv_mute:
+    alias: "TV mute"
+    icon: mdi:volume-off
+    mode: queued
+    fields:
+      mute:
+        description: "true to mute, false to unmute"
+        selector:
+          boolean:
+    sequence:
+      - action: androidtv.adb_command
+        continue_on_error: true
+        target:
+          entity_id: media_player.fire_tv
+        data:
+          command: >-
+            m=$(dumpsys audio | grep -A1 '^- STREAM_MUSIC' | grep -c 'Muted: true');
+            [ "$m" = "{{ 0 if mute | default(true) | bool else 1 }}" ] && input keyevent KEYCODE_VOLUME_MUTE; true
+      - event: tv_changed
+      - wait_template: "{{ state_attr('sensor.tv_status', 'muted') == (mute | default(true) | bool) }}"
+        timeout: 4
+
+  tv_open_app:
+    alias: "Open an app on the TV"
+    icon: mdi:television-play
+    mode: queued
+    fields:
+      app:
+        description: "Netflix, YouTube, Disney+, Prime Video or Spotify"
+        example: "Netflix"
+        required: true
+        selector:
+          text:
+    sequence:
+      - variables:
+          package: >-
+            {% set packages = {
+               'netflix': 'com.netflix.ninja',
+               'youtube': 'com.amazon.firetv.youtube', 'you tube': 'com.amazon.firetv.youtube',
+               'disney+': 'com.disney.disneyplus', 'disney plus': 'com.disney.disneyplus',
+               'disney': 'com.disney.disneyplus',
+               'prime video': 'com.amazon.firebat', 'prime': 'com.amazon.firebat',
+               'amazon prime': 'com.amazon.firebat',
+               'spotify': 'com.spotify.tv.android'} %}
+            {{ packages.get((app | default('')) | lower | trim, '') }}
+      - if: "{{ package == '' }}"
+        then:
+          - variables:
+              result: {"opened": false, "why": "unknown app"}
+          - stop: "No such app"
+            response_variable: result
+      # Off or in ambient mode: wake it and wait for the TV itself to say it's awake (the media
+      # player state flips a few seconds before the TV will actually take an app)
+      - action: script.tv_power
+        continue_on_error: true
+        data: {power: "on"}
+      - delay: "00:00:01"
+      # Launch, then check what's actually in front. Up to three goes, the second and third with
+      # the Fire TV launcher category in case the plain one doesn't land
+      - repeat:
+          sequence:
+            - action: androidtv.adb_command
+              continue_on_error: true
+              target:
+                entity_id: media_player.fire_tv
+              data:
+                command: >-
+                  monkey -p {{ package }} -c android.intent.category.{{ 'LAUNCHER' if repeat.index == 1 else 'LEANBACK_LAUNCHER' }} 1
+            - delay: "00:00:02"
+            - action: androidtv.adb_command
+              continue_on_error: true
+              target:
+                entity_id: media_player.fire_tv
+              data:
+                command: "dumpsys window | grep mCurrentFocus"
+          until: "{{ package in (state_attr('media_player.fire_tv', 'adb_response') or '') or repeat.index >= 3 }}"
+      - variables:
+          result:
+            opened: "{{ package in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+            app: "{{ app }}"
+      - event: tv_changed
+      - stop: "Done"
+        response_variable: result
+
+  tv_youtube:
+    alias: "YouTube on the TV"
+    description: "Turns the TV on if needed and opens YouTube. Says whether it opened."
+    icon: mdi:youtube
+    sequence:
+      - action: script.tv_open_app
+        data: {app: "YouTube"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+  tv_netflix:
+    alias: "Netflix on the TV"
+    description: "Turns the TV on if needed and opens Netflix. Says whether it opened."
+    icon: mdi:netflix
+    sequence:
+      - action: script.tv_open_app
+        data: {app: "Netflix"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+  tv_disney_plus:
+    alias: "Disney Plus on the TV"
+    description: "Turns the TV on if needed and opens Disney+. Says whether it opened."
+    icon: mdi:star-four-points
+    sequence:
+      - action: script.tv_open_app
+        data: {app: "Disney+"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+  tv_prime_video:
+    alias: "Prime Video on the TV"
+    description: "Turns the TV on if needed and opens Prime Video. Says whether it opened."
+    icon: mdi:filmstrip
+    sequence:
+      - action: script.tv_open_app
+        data: {app: "Prime Video"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+  tv_spotify:
+    alias: "Spotify on the TV"
+    description: "Turns the TV on if needed and opens Spotify. Says whether it opened."
+    icon: mdi:spotify
+    sequence:
+      - action: script.tv_open_app
+        data: {app: "Spotify"}
+        response_variable: result
+      - stop: "Done"
+        response_variable: result
+
+# What's actually on the TV, read from the TV itself every 15 s and straight after anything here
+# changes it: off, ambient mode, the home screen, or which app is in front and whether it's playing,
+# plus the volume, mute, and what's playing when the app says (Spotify and YouTube do, Netflix doesn't).
+# Playing or paused comes from the TV's audio players, not from what the apps claim: YouTube's
+# media session says "playing" whenever it's open, menus and ambient mode included, and Netflix
+# doesn't say anything. A media player (USAGE_MEDIA) that's started is playing, one that's paused is
+# paused. While Jarvis has the TV muted for listening, the volume shown is the one it'll go back to.
+# The media player trigger only fires on real state changes (to: null). Without that, every ADB
+# reply (an attribute) set off another poll, this one's own included
+template:
+  - trigger:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        seconds: "/15"
+      - trigger: state
+        entity_id: media_player.fire_tv
+        to: null
+      - trigger: event
+        event_type: tv_changed
+    action:
+      # no Fire TV in this house: nothing to ask, and the status says Unreachable
+      - if: "{{ states.media_player.fire_tv is not none and not is_state('media_player.fire_tv', 'unavailable') }}"
+        then:
+          - action: androidtv.adb_command
+            target:
+              entity_id: media_player.fire_tv
+            data:
+              command: >-
+                dumpsys power | grep mWakefulness=; dumpsys window | grep mCurrentFocus;
+                dumpsys media_session | grep -E 'package=|metadata:';
+                a=/data/local/tmp/hub_audio; dumpsys audio > $a;
+                grep -A5 '^- STREAM_MUSIC' $a | grep -E 'Muted:|streamVolume';
+                grep 'AudioPlaybackConfiguration.*usage=USAGE_MEDIA' $a | grep -o 'state:[a-z]*' | sed 's/^/player_/'; rm -f $a;
+                cat /data/local/tmp/hub_duck 2>/dev/null | sed 's/^/ducked=/'
+            continue_on_error: true
+      - variables:
+          tv: >-
+            {% set r = state_attr('media_player.fire_tv', 'adb_response') or '' %}
+            {% if 'mWakefulness=' not in r %}{{ {} }}
+            {% else %}
+              {% set wake = r.split('mWakefulness=')[1].split()[0] %}
+              {% set focus = (r.split('mCurrentFocus=Window{')[1].split()[2].split('/')[0]) if 'mCurrentFocus=Window{' in r else '' %}
+              {% set names = {'com.amazon.firetv.youtube': 'YouTube', 'com.netflix.ninja': 'Netflix',
+                              'com.disney.disneyplus': 'Disney Plus', 'com.amazon.firebat': 'Prime Video',
+                              'com.spotify.tv.android': 'Spotify', 'com.amazon.tv.launcher': 'Home screen',
+                              'com.amazon.tv.settings.v2': 'Settings'} %}
+              {% set section = r.split('package=' ~ focus)[1].split('package=')[0] if focus and ('package=' ~ focus) in r else '' %}
+              {% set desc = section.split('description=')[1].split('\n')[0].split(', ') if 'description=' in section else [] %}
+              {% set playback = 'playing' if 'player_state:started' in r else ('paused' if 'player_state:paused' in r else '') %}
+              {% if wake == 'Asleep' %}{% set state, app = 'Off', '' %}
+              {% elif wake == 'Dreaming' or 'ftvambient' in focus %}{% set state, app = 'Ambient mode', '' %}
+              {% elif focus in names %}{% set app = names[focus] %}{% set state = app ~ (', ' ~ playback if playback and app != 'Home screen' else '') %}
+              {% elif focus %}{% set app = focus.split('.')[-1] | capitalize %}{% set state = app %}
+              {% else %}{% set state, app = 'On', '' %}{% endif %}
+              {% set ducked = r.split('ducked=')[1].split()[0] | int(-1) if 'ducked=' in r else -1 %}
+              {% set raw = r.split('streamVolume:')[1].split()[0] | int(-1) if 'streamVolume:' in r else -1 %}
+              {% set muted = 'Muted: true' in r and ducked < 0 %}
+              {{ {'state': state, 'app': app if app != 'Home screen' else '',
+                  'playback': playback if state not in ['Off', 'Ambient mode'] else '',
+                  'title': desc[0] if desc and desc[0] != 'null' and playback else none,
+                  'artist': desc[1] if desc | length > 1 and desc[1] != 'null' and playback else none,
+                  'volume': ducked if ducked >= 0 else (raw if raw >= 0 and not muted else none),
+                  'muted': muted} }}
+            {% endif %}
+    # No tv at all when the TV didn't answer (it happens around restarts), so every line falls back
+    # to the last reading
+    sensor:
+      - name: "TV status"
+        unique_id: tv_status
+        icon: >-
+          {{ {'Off': 'mdi:television-off', 'Unreachable': 'mdi:television-off', 'Ambient mode': 'mdi:image-filter-hdr'}.get(this.state, 'mdi:television-play') }}
+        state: >-
+          {% if tv is defined and tv.state is defined %}{{ tv.state }}
+          {% elif states.media_player.fire_tv is none or is_state('media_player.fire_tv', 'unavailable') %}Unreachable
+          {% else %}{{ this.state if this.state not in ['unknown', 'unavailable', None] else 'Unknown' }}{% endif %}
+        attributes:
+          app: "{{ tv.app if tv is defined and tv.state is defined else this.attributes.get('app', '') }}"
+          playback: "{{ tv.playback if tv is defined and tv.state is defined else this.attributes.get('playback', '') }}"
+          title: "{{ tv.title if tv is defined and tv.state is defined else this.attributes.get('title') }}"
+          artist: "{{ tv.artist if tv is defined and tv.state is defined else this.attributes.get('artist') }}"
+          volume: >-
+            {% set v = tv.volume if tv is defined and tv.state is defined else none %}
+            {{ v if v is not none else this.attributes.get('volume') }}
+          volume_level: >-
+            {% set v = tv.volume if tv is defined and tv.state is defined else none %}
+            {% set v = v if v is not none else this.attributes.get('volume') %}
+            {{ (v / 100) | round(2) if v is not none else none }}
+          muted: "{{ tv.muted if tv is defined and tv.state is defined else this.attributes.get('muted', false) }}"
+          apps: "{{ ['Netflix', 'YouTube', 'Disney+', 'Prime Video', 'Spotify'] }}"
+
+  # Whether the dashboard's TV screenshot is worth showing: the TV is on and nothing in front is a
+  # DRM app (Netflix, Disney+ and Prime Video come out as an empty picture)
+  - binary_sensor:
+      - name: "TV picture"
+        unique_id: tv_picture
+        state: >-
+          {{ states('sensor.tv_status') not in ['Off', 'Unreachable', 'Unknown', 'unknown', 'unavailable']
+             and state_attr('sensor.tv_status', 'app') not in ['Netflix', 'Disney Plus', 'Prime Video'] }}
+      # for the dashboard's mute button, which can only swap on a state, not an attribute
+      - name: "TV muted"
+        unique_id: tv_muted
+        state: "{{ state_attr('sensor.tv_status', 'muted') | default(false, true) }}"
+
+# The TV everyone sees: dashboard, voice, the cloud agent
+media_player:
+  - platform: universal
+    name: TV
+    unique_id: tv_universal
+    device_class: tv
+    children:
+      - media_player.fire_tv
+    state_template: >-
+      {% set s = states('sensor.tv_status') %}
+      {% if s in ['Off', 'Unreachable'] %}off
+      {% elif s == 'Ambient mode' %}standby
+      {% elif s.endswith(', playing') %}playing
+      {% elif s.endswith(', paused') %}paused
+      {% elif s in ['Unknown', 'unknown', 'unavailable'] %}{{ 'unavailable' if is_state('media_player.fire_tv', 'unavailable') else 'on' }}
+      {% else %}on{% endif %}
+    commands:
+      turn_on:
+        action: script.tv_power
+        data: {power: "on"}
+      turn_off:
+        action: script.tv_power
+        data: {power: "ambient"}
+      volume_up:
+        action: script.tv_volume
+        data: {step: "up"}
+      volume_down:
+        action: script.tv_volume
+        data: {step: "down"}
+      volume_set:
+        action: script.tv_volume
+        data:
+          level: "{{ (volume_level * 100) | round(0) | int }}"
+      volume_mute:
+        action: script.tv_mute
+        data:
+          mute: "{{ is_volume_muted }}"
+      select_source:
+        action: script.tv_open_app
+        data:
+          app: "{{ source }}"
+    attributes:
+      volume_level: sensor.tv_status|volume_level
+      is_volume_muted: sensor.tv_status|muted
+      source: sensor.tv_status|app
+      source_list: sensor.tv_status|apps

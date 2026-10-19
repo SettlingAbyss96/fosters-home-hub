@@ -1,0 +1,39 @@
+# The Klipper printer (Moonraker integration, from tools/ha-extras.sh): how the print is going and
+# how hot things are, in the words people actually use. The built-in sentences only answer "what is
+# the Klipper progress", one sensor at a time, and a small local model is hopeless with devices (it
+# goes looking for the bed in the hallway). Add your printer's own name to the klipper list below
+# (people call a printer by its name, not "the Klipper printer"), with the ways speech to text spells it. "The
+# printer" alone means every printer (bambu.yaml). Intents in packages/klipper.yaml.
+language: "en"
+intents:
+  KlipperStatus:
+    data:
+      - sentences:
+          - "how is [the] {klipper} [print] (going|doing)"
+          - "how's [the] {klipper} [print] (going|doing)"
+          - "(what is|what's) [the] {klipper} (doing|up to)"
+          - "is [the] {klipper} [print] (done|finished|printing|busy) [yet]"
+          - "how (long|much time) is left on [the] {klipper} [print]"
+          - "how (long|much time) (until|till) [the] {klipper} [print] is (done|finished)"
+          - "how far along is [the] {klipper} [print]"
+          - "[what's the] {klipper} status"
+  KlipperTemps:
+    data:
+      - sentences:
+          - "how hot is [the] {klipper_part} [on the {klipper}]"
+          - "(what is|what's) [the] [{klipper}] {klipper_part} temperature"
+          - "(what is|what's) [the] {klipper} temperature"
+          - "how hot is [the] {klipper}"
+lists:
+  klipper:
+    values:
+      - in: "(klipper|klipper printer|clipper)"
+        out: "klipper"
+  klipper_part:
+    values:
+      - in: "(nozzle|hotend|hot end|extruder)"
+        out: "nozzle"
+      - in: "bed"
+        out: "bed"
+      - in: "chamber"
+        out: "chamber"

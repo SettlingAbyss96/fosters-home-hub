@@ -1,0 +1,710 @@
+# Leaving and coming home. Presence is person.resident (the phone's location, through Home Assistant
+# Cloud or another way in when away), and leaving needs the phone outside the home zone and off the
+# home Wi-Fi, so a building eating the GPS signal, or a walk out to the car and back, doesn't switch
+# the house off around you. Coming back from the car doesn't count as arriving either: every arrival
+# step needs the house Away or the on-the-way-in window open, and a trip to the car is neither.
+#
+# With a front door sensor, the door decides when: the house empty by the door (nothing moved inside
+# for 5 minutes after it closed, packages/occupancy.yaml) and the phone gone, whichever comes second,
+# and the house goes Away that minute. Waiting for the GPS to be out for 3 minutes on top kept the
+# lights on 10 minutes after the door every time. The car starting (a phone Shortcut,
+# packages/inference.yaml) is quicker still: you're in it, so the door having closed with nothing
+# moving since is enough. Without a door sensor it's 3 minutes outside the zone.
+#
+# Leaving: the house goes to Away (every light off), the TV all the way off, and the vacuum gets a
+# turn per input_select.vacuum_when_leaving: Ask sends a notification with buttons, Always just
+# starts it, Never doesn't. Only if it's docked, charged and hasn't cleaned in the last 20 hours.
+# A printer that's still going gets a line in the notification, and is never touched.
+# Guest mode stops all of it, for when someone's staying in. "Vacuum on its own" off
+# (packages/controls.yaml) keeps the vacuum docked whatever this says.
+#
+# Arriving is two steps, because the zone's edge is still the road: a phone can count as home at
+# 20 km/h, 140 m out, minutes before anyone's at the door.
+#   - On the way in (the phone crosses into the home zone, or the Proximity integration says it's
+#     a couple of kilometres out and getting closer): only the prep. The vacuum heads back if it's
+#     out, and a 15-minute window opens
+#   - The phone joins the home Wi-Fi: you're here, but maybe still parking or on the stairs. The
+#     lights wait for the door (timer.arrival_door, 10 minutes)
+#   - The door: the front door opening is the moment. A doorbell seeing movement, or recognising
+#     your face, means you're at the door: the house waits up to seven seconds for it to open, then
+#     goes ahead anyway. Either way the house goes back to what the clock says
+#     (sensor.natural_house_mode) and the lamps come on (the welcome look). The Hub seeing you first
+#     (came in another way) does it straight away. If nothing's seen at the door in 10 minutes, it
+#     happens anyway
+#   - your face counts at the door when the window's open even before the Wi-Fi joins. Never on its
+#     own when the house is Away: face matches can be wrong
+#   - Jarvis says welcome home, straight away if it was the Hub that saw you, otherwise the first
+#     time it does. If the window runs out with no sign at all, it happens anyway. The words are
+#     written on the way in (script.welcome_home_prepare): a line about what's going on at home,
+#     then the news you asked for (input_text.news, from house.toml). Nothing negative: problems
+#     stay on the dashboard and "anything need my attention?". Back again within three hours of the
+#     last proper welcome it's just "Welcome back"
+# The phone joining the Wi-Fi without crossing the zone (a stale location) counts too, when the
+# house is Away. "I'm leaving" by voice runs the leaving routine a minute later
+input_boolean:
+  guest_mode:
+    name: "Guest mode"
+    icon: mdi:account-multiple
+  greet_on_arrival:
+    name: "Jarvis greets me when I get home"
+    icon: mdi:hand-wave
+  vacuum_docks_on_arrival:
+    name: "Vacuum goes home when I arrive"
+    icon: mdi:robot-vacuum
+
+input_select:
+  vacuum_when_leaving:
+    name: "Vacuum when I leave"
+    icon: mdi:robot-vacuum
+    options: [Ask, Always, Never]
+
+timer:
+  arrival_window:
+    name: "On the way in"
+    duration: "00:15:00"
+  arrival_door:
+    name: "Home, waiting for the door"
+    duration: "00:10:00"
+  arrival_greeting:
+    name: "Waiting to greet"
+    duration: "00:15:00"
+
+template:
+  # How the lights did against the door, one number per arrival: seconds from the front door
+  # opening to the first ambient light coming on, negative when the room was lit before it opened.
+  # Under a second feels like the house did it because you walked in; much more and you're reaching
+  # for the switch (docs/lighting.md)
+  - trigger:
+      - trigger: event
+        event_type: arrival_lit
+    sensor:
+      - name: "Door to light"
+        unique_id: door_to_light
+        icon: mdi:door-open
+        unit_of_measurement: s
+        state_class: measurement
+        state: "{{ trigger.event.data.seconds }}"
+
+  # What Jarvis will say when you get in, written ahead of time by script.welcome_home_prepare:
+  # looking up the news takes the agent about twenty seconds, and the Hub sees you 8 to 30 seconds
+  # after the door opens. "ready" is words nobody's heard yet. full_at is the last welcome with the
+  # news in it
+  - trigger:
+      - trigger: event
+        event_type: welcome_home_words
+        id: ready
+      - trigger: event
+        event_type: welcome_home_spoken
+        id: spoken
+    sensor:
+      - name: "Welcome home words"
+        unique_id: welcome_home_words
+        icon: mdi:message-text-outline
+        state: "{{ 'ready' if trigger.id == 'ready' else 'spoken' }}"
+        attributes:
+          text: "{{ trigger.event.data.text if trigger.id == 'ready' else '' }}"
+          written_at: >-
+            {{ now().timestamp() | round(0) if trigger.id == 'ready'
+               else (this.attributes.written_at | default(0)) }}
+          full_at: >-
+            {{ now().timestamp() | round(0) if trigger.id == 'spoken' and trigger.event.data.full | default(false) | bool
+               else (this.attributes.full_at | default(0)) }}
+
+script:
+  leaving_home:
+    alias: "Leaving home"
+    description: "Heading out: every light off, the TV all the way off, and the vacuum asked about. Runs by itself when the phone leaves home; by voice it waits a minute first."
+    icon: mdi:exit-run
+    mode: single
+    fields:
+      wait:
+        description: "Seconds to wait first (voice uses 60, to get out the door)"
+        selector:
+          number: {min: 0, max: 600}
+    sequence:
+      - delay: "{{ wait | default(0) | int }}"
+      # lights set by hand were set for someone being here
+      - event: light_release
+        event_data:
+          entity: all
+      # and the alarm's, which that keeps (priority 1): once you're out there's nobody to wake.
+      # Without this, leaving early on an alarm morning leaves the sunrise lights held on
+      - repeat:
+          for_each: >-
+            {{ (state_attr('sensor.light_arbiter', 'holds') or {}).items()
+               | selectattr('1.source', 'in', ['wake-up', 'backstop']) | map(attribute='0') | list }}
+          sequence:
+            - event: light_release
+              event_data:
+                entity: "{{ repeat.item }}"
+      # the arbiter takes a release in its own time, and the Away look has to find the holds gone
+      # or it leaves those lights on: the look can read them a few milliseconds before the release lands
+      - wait_template: >-
+          {% set h = (state_attr('sensor.light_arbiter', 'holds') or {}).values() | list %}
+          {{ h | rejectattr('priority', 'le', 1) | list | count == 0
+             and h | selectattr('source', 'in', ['wake-up', 'backstop']) | list | count == 0 }}
+        timeout: "00:00:05"
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Away
+          by: routine
+      # locked if it stayed home, a no-op if it's in the bag (or there isn't one)
+      - action: script.computer_lock
+        continue_on_error: true
+      - if: "{{ states('sensor.tv_status') not in ['Off', 'Unreachable'] }}"
+        then:
+          - action: script.tv_power
+            data:
+              power: "off"
+            continue_on_error: true
+      - variables:
+          vacuum_ready: >-
+            {% set last_clean = states('sensor.robot_vacuum_last_clean_end') | as_datetime(none) %}
+            {{ is_state('vacuum.robot_vacuum', 'docked')
+               and states('sensor.robot_vacuum_battery') | float(0) >= 30
+               and (last_clean is none or (now() - last_clean).total_seconds() > 20 * 3600) }}
+          printing: >-
+            {% if states('sensor.klipper_current_print_state') in ['printing', 'paused'] %}The Klipper printer is still printing, {{ states('sensor.klipper_progress') | float(0) | round(0) | int }}%.{% endif %}
+            {% if states('sensor.bambu_print_status') in ['running', 'pause', 'prepare'] %}The Bambu is still printing, {{ states('sensor.bambu_print_progress') | int(0) }}%.{% endif %}
+          # paused (packages/controls.yaml) counts as Never, and says so
+          how: "{{ states('input_select.vacuum_when_leaving') if is_state('input_boolean.auto_vacuum', 'on') else 'Paused' }}"
+          has_vacuum: "{{ states('vacuum.robot_vacuum') not in ['unknown', 'unavailable'] }}"
+      - choose:
+          - conditions: "{{ vacuum_ready and how == 'Always' }}"
+            sequence:
+              # only the rooms it can get to (packages/vacuum.yaml)
+              - action: script.vacuum_clean
+                continue_on_error: true
+                response_variable: cleaning
+              - action: notify.mobile_app_phone
+                continue_on_error: true
+                data:
+                  title: "Left home"
+                  message: "Lights and TV off. Vacuuming while you're out {{ cleaning.note | default('') if cleaning is defined else '' }}. {{ printing }}"
+          - conditions: "{{ vacuum_ready and how == 'Ask' }}"
+            sequence:
+              - action: notify.mobile_app_phone
+                continue_on_error: true
+                data:
+                  title: "Left home"
+                  message: "Lights and TV off. Vacuum while you're out? {{ printing }}"
+                  data:
+                    tag: leaving_vacuum
+                    actions:
+                      - action: VACUUM_START
+                        title: "Vacuum now"
+                      - action: VACUUM_SKIP
+                        title: "Not today"
+          - conditions: "{{ has_vacuum and how == 'Paused' }}"
+            sequence:
+              - action: notify.mobile_app_phone
+                continue_on_error: true
+                data:
+                  title: "Left home"
+                  message: "Lights and TV off. The vacuum's paused, so it stays docked. {{ printing }}"
+        default:
+          - if: "{{ printing | trim != '' }}"
+            then:
+              - action: notify.mobile_app_phone
+                continue_on_error: true
+                data:
+                  title: "Left home"
+                  message: "Lights and TV off. {{ printing }}"
+
+  approaching_home:
+    alias: "On the way in"
+    description: "The phone just crossed into the home zone: the vacuum heads back, and the house waits for a real sign someone's in."
+    icon: mdi:home-import-outline
+    mode: single
+    sequence:
+      - if: "{{ is_state('input_boolean.vacuum_docks_on_arrival', 'on') and states('vacuum.robot_vacuum') in ['cleaning', 'paused'] }}"
+        then:
+          - action: vacuum.return_to_base
+            continue_on_error: true
+            target:
+              entity_id: vacuum.robot_vacuum
+      - action: timer.start
+        target:
+          entity_id: timer.arrival_window
+      # the welcome home, written now so it's ready at the door. The zone's edge usually comes
+      # minutes before the door opens
+      - action: script.turn_on
+        continue_on_error: true
+        target:
+          entity_id: script.welcome_home_prepare
+
+  arriving_home:
+    alias: "Arriving home"
+    description: "Home: the lights go to what the time of day calls for with the lamps on, and Jarvis says welcome home."
+    icon: mdi:home-import-outline
+    mode: single
+    fields:
+      seen:
+        description: "The Hub has just seen someone, so greet now"
+        selector:
+          boolean:
+      who:
+        description: "me (the default) or someone: came in without the phone, so maybe a guest, no greeting"
+        selector:
+          select:
+            options: [me, someone]
+    sequence:
+      - variables:
+          door_at: "{{ states.binary_sensor.front_door.last_changed.timestamp() if is_state('binary_sensor.front_door', 'on') else 0 }}"
+      - action: timer.cancel
+        target:
+          entity_id: [timer.arrival_window, timer.arrival_door]
+      # what the time of day calls for, applied whole every time, past anything switched by hand
+      # before you left. Not only when the house was Away: a mode set by hand while the phone was
+      # somewhere else means coming back with it would change nothing, and the lamps the mode turns
+      # on would stay off
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: natural
+          by: routine
+      # let the mode's own look go first, then the lamps on top
+      - wait_template: "{{ not is_state('input_select.house_mode', 'Away') }}"
+        timeout: 5
+      - delay: 2
+      # the welcome look can be switched off (packages/controls.yaml); the mode change above can't,
+      # the house has to know you're back
+      - if: "{{ is_state('input_boolean.auto_welcome', 'on') }}"
+        then:
+          - action: script.lights_look
+            continue_on_error: true
+            data:
+              look: welcome
+              priority: 3
+              override: true
+      # the welcome home is for the resident: without the phone it could be anyone, unless the
+      # doorbell just recognised your face
+      - if: >-
+          {% set me = states.binary_sensor.face_resident %}
+          {{ is_state('input_boolean.greet_on_arrival', 'on')
+             and ((who | default('me')) == 'me'
+                  or (me is not none and (now() - me.last_changed).total_seconds() < 180 and me.last_changed > (states('sensor.home_assistant_started') | as_datetime(now())) + timedelta(seconds=60))) }}
+        then:
+          - if: "{{ seen | default(false) | bool }}"
+            then:
+              - action: script.welcome_home
+                continue_on_error: true
+            else:
+              - action: timer.start
+                target:
+                  entity_id: timer.arrival_greeting
+      # the door against the first light, for sensor.door_to_light
+      # (the first lamp that came on around the door opening: one that's been on for hours says nothing)
+      - variables:
+          lead: >-
+            {% set door = door_at | float(0) %}
+            {% set lit = expand(label_entities('light_ambient')) | selectattr('state', 'eq', 'on')
+                         | map(attribute='last_changed') | map('as_timestamp') | select('gt', door - 120) | list %}
+            {{ ((lit | min) - door) | round(1) if door > 0 and lit else none }}
+      - if: "{{ lead is not none }}"
+        then:
+          - event: arrival_lit
+            event_data:
+              seconds: "{{ lead }}"
+
+  # What a phone automation runs when the phone joins the home Wi-Fi (iOS Shortcuts: "When I join
+  # <your network>", Run Script in the Home Assistant app's actions). The app's Shortcuts actions
+  # don't include "fire event", but "Run Script" lists these
+  home_wifi_joined:
+    alias: "Phone joined the home Wi-Fi"
+    icon: mdi:wifi-check
+    mode: single
+    sequence:
+      - event: home_wifi_joined
+
+  # And the other way, "when I leave <your network>": the phone's own SSID sensor can say so 4 to 7
+  # minutes after you've gone
+  home_wifi_left:
+    alias: "Phone left the home Wi-Fi"
+    icon: mdi:wifi-off
+    mode: single
+    sequence:
+      - event: home_wifi_left
+
+  welcome_home:
+    alias: "Welcome home"
+    description: "Jarvis says welcome home on the Hub: what's going on, then a little news. Nothing negative."
+    icon: mdi:hand-wave
+    mode: single
+    sequence:
+      - action: timer.cancel
+        target:
+          entity_id: timer.arrival_greeting
+      - variables:
+          back: "{{ now().timestamp() - state_attr('sensor.welcome_home_words', 'full_at') | float(0) < 3 * 3600 }}"
+      # the words are normally waiting. If they're still being written (the Wi-Fi was the first
+      # sign, not the road), they get twenty-five seconds
+      - if: "{{ not back and not is_state('sensor.welcome_home_words', 'ready') and states.conversation.jarvis_cloud is not none }}"
+        then:
+          - if: "{{ is_state('script.welcome_home_prepare', 'off') }}"
+            then:
+              - action: script.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: script.welcome_home_prepare
+          - wait_template: "{{ is_state('sensor.welcome_home_words', 'ready') }}"
+            timeout: 25
+      - variables:
+          fresh: >-
+            {{ is_state('sensor.welcome_home_words', 'ready')
+               and now().timestamp() - state_attr('sensor.welcome_home_words', 'written_at') | float(0) < 40 * 60 }}
+      - action: assist_satellite.announce
+        continue_on_error: true
+        target:
+          entity_id: assist_satellite.hub_500_voice_assist_satellite
+        data:
+          message: >-
+            {% if back %}Welcome back.
+            {% elif fresh %}{{ state_attr('sensor.welcome_home_words', 'text') }}
+            {% else %}Welcome home.{% endif %}
+          preannounce: false
+      - event: welcome_home_spoken
+        event_data:
+          full: "{{ fresh and not back }}"
+
+  # The welcome home, written by the cloud agent (the same Jarvis, with its web search) while you're
+  # on the way in. What's going on at home comes from the house; the news it looks up. A list of
+  # problems makes a terrible welcome ("the printer needs lubrication, the vacuum's paused", four
+  # times in one evening), which is what the dashboard and "anything need my attention?" are for
+  welcome_home_prepare:
+    alias: "Welcome home, the words"
+    description: "Jarvis writes the welcome home ahead of time: what's going on at home, then the news from input_text.news."
+    icon: mdi:message-text-clock-outline
+    mode: single
+    max_exceeded: silent
+    sequence:
+      # once per arrival: not while unheard words are still fresh, and not within three hours of the
+      # last welcome that had the news in it (that one's "welcome back")
+      - condition: >-
+          {% set t = now().timestamp() %}
+          {{ is_state('input_boolean.greet_on_arrival', 'on')
+             and not (is_state('sensor.welcome_home_words', 'ready')
+                      and t - state_attr('sensor.welcome_home_words', 'written_at') | float(0) < 40 * 60)
+             and t - state_attr('sensor.welcome_home_words', 'full_at') | float(0) >= 3 * 3600
+             and states.conversation.jarvis_cloud is not none }}
+      - if: "{{ states('calendar.work') not in ['unavailable', 'unknown'] }}"
+        then:
+          - action: calendar.get_events
+            continue_on_error: true
+            target:
+              entity_id: calendar.work
+            data:
+              start_date_time: "{{ now().isoformat() }}"
+              end_date_time: "{{ (today_at('23:59') + timedelta(days=1)).isoformat() }}"
+            response_variable: cal
+      # tomorrow's weather, for the evening: "a high of eighty-two today" at 8 PM is old news
+      - action: weather.get_forecasts
+        continue_on_error: true
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: daily
+        response_variable: forecast
+      - variables:
+          # good or neutral things only, and nothing about how long you've been out
+          notes: >-
+            {% set out = namespace(n=[]) %}
+            {% set mode = states.input_select.house_mode %}
+            {% set since = mode.last_changed if mode is not none and mode.state == 'Away' else now() - timedelta(hours=8) %}
+            {% set x = states('sensor.bambu_print_status') %}
+            {% if x == 'running' %}{% set out.n = out.n + ['The Bambu is printing, ' ~ states('sensor.bambu_print_progress') ~ ' percent done.'] %}
+            {% elif x == 'finish' and states.sensor.bambu_print_status.last_changed > since %}{% set out.n = out.n + ['The Bambu finished its print.'] %}{% endif %}
+            {% set v = states('sensor.klipper_current_print_state') %}
+            {% if v == 'printing' %}{% set out.n = out.n + ['The Klipper printer is printing, ' ~ (states('sensor.klipper_progress') | float(0) | round(0) | int) ~ ' percent done.'] %}
+            {% elif v == 'complete' and states.sensor.klipper_current_print_state.last_changed > since %}{% set out.n = out.n + ['The Klipper printer finished its print.'] %}{% endif %}
+            {% set w = states('input_datetime.washer_done_at') | as_datetime(none) %}
+            {% if w is not none and as_local(w) > since %}{% set out.n = out.n + ['The washing finished at ' ~ as_local(w).strftime('%-I:%M') ~ '.'] %}{% endif %}
+            {% set vac = states('sensor.robot_vacuum_last_clean_end') | as_datetime(none) %}
+            {% if vac is not none and vac > since %}{% set out.n = out.n + ['The vacuum cleaned while you were out.'] %}{% endif %}
+            {% set ring = states('input_datetime.doorbell_last_ring') | as_datetime(none) %}
+            {% if ring is not none and as_local(ring) > since %}{% set out.n = out.n + ['The doorbell rang at ' ~ as_local(ring).strftime('%-I:%M') ~ '.'] %}{% endif %}
+            {% set evs = (cal['calendar.work'].events if cal is defined and cal and 'calendar.work' in cal else []) | list %}
+            {% if evs %}{% set first = as_local(as_datetime(evs[0].start)) %}{% set out.n = out.n + [('Next meeting today at ' if first.date() == now().date() else 'First meeting tomorrow at ') ~ first.strftime('%-I:%M %p') ~ '.'] %}{% endif %}
+            {% set fc = (forecast['weather.forecast_home'].forecast if forecast is defined and forecast is mapping and 'weather.forecast_home' in forecast else []) | list %}
+            {% set tmr = namespace(f=none) %}
+            {% for f in fc if tmr.f is none and as_local(as_datetime(f.datetime)).date() == (now() + timedelta(days=1)).date() %}{% set tmr.f = f %}{% endfor %}
+            {% set wx = states('sensor.today_s_weather') %}
+            {% if now().hour >= 15 and tmr.f is not none %}{% set out.n = out.n + ['Weather tomorrow: ' ~ tmr.f.condition ~ ', high ' ~ (tmr.f.temperature | round(0) | int) ~ (', low ' ~ (tmr.f.templow | round(0) | int) if tmr.f.templow is defined else '') ~ '.'] %}
+            {% elif wx not in ['unknown', 'unavailable', ''] %}{% set out.n = out.n + ['Weather today: ' ~ wx | replace(' · ', ', ') ~ '.'] %}{% endif %}
+            {% set steps = states('sensor.oura_ring_steps') | int(0) %}
+            {% if steps >= 7000 %}{% set out.n = out.n + [steps ~ ' steps so far today.'] %}{% endif %}
+            {{ out.n | join(' ') if out.n else 'Nothing in particular.' }}
+          late: "{{ now().hour >= 22 or now().hour < 5 }}"
+          ask: >-
+            {% set name = state_attr('person.resident', 'friendly_name') or 'The resident' %}
+            {% set news = states('input_text.news') %}
+            {% set likes = states('input_text.interests') %}
+            {% set news = news if news not in ['', 'unknown', 'unavailable'] else '' %}
+            {% set likes = likes if likes not in ['', 'unknown', 'unavailable'] else '' %}
+            {{ name }} is about to walk in the front door, at {{ now().strftime('%-I:%M %p on %A') }}.
+            Write exactly what you'll say out loud as they come in: {{ 'two or three short spoken sentences, it is late' if late
+            else 'four or five short spoken sentences, about twenty seconds' }}. Open with a short welcome home. Then one line on
+            what's going on at home or coming up, picked from the notes below, if any of it is worth saying.
+            {% if news %}Then look up {{ ('the one most interesting thing today in this: ' ~ news) if late else news }}{{ ', and if there is room one item from something else they are into (' ~ likes ~ ')' if likes and not late else '' }}, each in one sentence in your own words.{% endif %}
+            Keep all of it good or neutral: on a bad day for anything you report, a few calm words at most, or
+            something that went well instead, and never why it went badly. Nothing alarming, no problems or
+            warnings about the house, no maintenance, no reminders, nothing about sleep, health or how long the
+            day was. Don't end on a question and don't offer anything.
+            Notes: {{ notes | trim }}
+      - action: conversation.process
+        continue_on_error: true
+        data:
+          agent_id: conversation.jarvis_cloud
+          text: "{{ ask }}"
+        response_variable: said
+      - variables:
+          words: >-
+            {{ ((said if said is mapping else {}).get('response') or {}).get('speech', {}).get('plain', {}).get('speech', '') | trim }}
+      - condition: "{{ words | length > 20 and '(no reply)' not in words }}"
+      - event: welcome_home_words
+        event_data:
+          text: "{{ words }}"
+
+automation:
+  - id: presence_leaving
+    alias: "Leaving home"
+    triggers:
+      # without a door sensor: 3 minutes outside the zone
+      - trigger: state
+        entity_id: person.resident
+        from: home
+        for: "00:03:00"
+        id: gps
+      # the house going empty by the door (packages/occupancy.yaml), when the phone's already gone:
+      # left without it, or it's somewhere else for the day
+      - trigger: state
+        entity_id: binary_sensor.someone_home
+        from: "on"
+        to: "off"
+        id: empty
+      # the phone going, the moment the app says so, for when the door's already said the house is
+      # empty
+      - trigger: state
+        entity_id: person.resident
+        from: home
+        not_to: [home, unavailable, unknown]
+        id: phone
+      - trigger: state
+        entity_id: binary_sensor.phone_on_home_wifi
+        from: "on"
+        to: "off"
+        id: phone
+      # phone Shortcuts, live (packages/inference.yaml): the car starting, or the phone leaving the
+      # home Wi-Fi. Either means you're out of the door, so it only needs the door shut with nothing
+      # moving inside since it closed
+      - trigger: event
+        event_type: phone_signal
+        event_data: {what: car_started}
+        id: signal
+      - trigger: event
+        event_type: home_wifi_left
+        id: signal
+    conditions:
+      - condition: state
+        entity_id: input_boolean.guest_mode
+        state: "off"
+      - "{{ not is_state('input_select.house_mode', 'Away') }}"
+      # Gone is the phone outside the zone and off the home Wi-Fi (still on it means still here,
+      # whatever the GPS says). With a door sensor, the house has to be empty too: someone who
+      # moved inside after the door closed is still in (a guest), and a door that closed a minute
+      # ago is still being checked
+      - >-
+        {% set door = states('binary_sensor.front_door') in ['on', 'off'] %}
+        {% set gone = not is_state('person.resident', 'home') and not is_state('binary_sensor.phone_on_home_wifi', 'on') %}
+        {% if trigger.id == 'signal' %}
+          {{ door and is_state('binary_sensor.front_door', 'off')
+             and state_attr('binary_sensor.someone_home', 'phase') in ['checking', 'out'] }}
+        {% elif door %}
+          {{ gone and is_state('binary_sensor.someone_home', 'off') }}
+        {% else %}
+          {{ trigger.id == 'gps' and gone }}
+        {% endif %}
+    actions:
+      - action: script.leaving_home
+        continue_on_error: true
+
+  # On the way home, a couple of kilometres out and getting closer (the Proximity integration,
+  # sensor.home_resident_distance and _direction_of_travel, which tools/ha-apps.sh sets up): the house
+  # gets ready before you're at the door, not as you walk through it. A robot vacuum in particular
+  # needs a few minutes to get back to its dock, and the zone's edge is about a minute of driving
+  - id: presence_on_the_way
+    alias: "On the way home"
+    triggers:
+      - trigger: template
+        value_template: >-
+          {% set k = {'ft': 0.3048, 'm': 1, 'km': 1000, 'mi': 1609.344} %}
+          {% set d = states('sensor.home_resident_distance') | float(-1)
+                     * k.get(state_attr('sensor.home_resident_distance', 'unit_of_measurement'), 1) %}
+          {{ 0 < d < 2000 and is_state('sensor.home_resident_direction_of_travel', 'towards') }}
+    conditions:
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Away
+      - condition: state
+        entity_id: timer.arrival_window
+        state: idle
+    actions:
+      - action: script.approaching_home
+        continue_on_error: true
+
+  - id: presence_approaching
+    alias: "On the way in"
+    triggers:
+      - trigger: state
+        entity_id: person.resident
+        to: home
+    conditions:
+      - "{{ trigger.from_state is not none and trigger.from_state.state not in ['home', 'unknown', 'unavailable'] }}"
+    actions:
+      - action: script.approaching_home
+        continue_on_error: true
+
+  # The signs you're actually in. A doorbell camera's person sensor goes in this list when it's in
+  # Home Assistant. The Wi-Fi one comes two ways: the phone's SSID sensor, which only updates when the
+  # phone lets the app wake up, and a phone automation ("when I join <your network>", run
+  # immediately, Run Script: "Phone joined the home Wi-Fi") that fires the home_wifi_joined event the
+  # moment it happens
+  - id: presence_arrived
+    alias: "Home"
+    mode: single
+    triggers:
+      - trigger: event
+        event_type: home_wifi_joined
+        id: wifi
+      - trigger: state
+        entity_id: binary_sensor.phone_on_home_wifi
+        from: "off"
+        to: "on"
+        id: wifi
+      # the car parking (CarPlay or its Bluetooth letting go, a phone Shortcut, packages/inference.yaml)
+      # means the same as the Wi-Fi: here, not in yet
+      - trigger: event
+        event_type: phone_signal
+        event_data: {what: car_parked}
+        id: wifi
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+        id: seen
+      # at the door: the doorbell seeing movement, or recognising your face. Face recognition misses
+      # and mixes people up now and then, so a face never takes the house out of Away by itself
+      - trigger: state
+        entity_id: [binary_sensor.doorbell_motion, binary_sensor.face_resident]
+        from: "off"
+        to: "on"
+        id: door
+      - trigger: state
+        entity_id: binary_sensor.front_door
+        from: "off"
+        to: "on"
+        id: door_opened
+    conditions:
+      - >-
+        {% set window = is_state('timer.arrival_window', 'active') %}
+        {% set waiting = is_state('timer.arrival_door', 'active') %}
+        {% set away = is_state('input_select.house_mode', 'Away') %}
+        {{ (trigger.id == 'wifi' and (window or away) and not waiting)
+           or (trigger.id == 'seen' and (window or waiting))
+           or (trigger.id == 'door' and (waiting or (window and trigger.entity_id == 'binary_sensor.face_resident')))
+           or (trigger.id == 'door_opened' and (waiting or window)) }}
+    actions:
+      - choose:
+          # the phone's home: wait for the door, and have the welcome written if the road didn't
+          # already start it
+          - conditions: "{{ trigger.id == 'wifi' }}"
+            sequence:
+              - action: timer.start
+                target:
+                  entity_id: timer.arrival_door
+              - action: script.turn_on
+                continue_on_error: true
+                target:
+                  entity_id: script.welcome_home_prepare
+          # the door's open: now
+          - conditions: "{{ trigger.id == 'door_opened' }}"
+            sequence:
+              - action: script.arriving_home
+                continue_on_error: true
+          # at the door: the moment it opens, or seven seconds on without a door sensor. This runs
+          # one at a time, so a fixed seven-second wait would swallow the door opening two seconds in
+          # and the lights would come late
+          - conditions: "{{ trigger.id == 'door' }}"
+            sequence:
+              # and the room lit before it opens: a doorbell tends to see you 2 to 6 seconds before
+              # you're through the door, and with the phone on the Wi-Fi it's you
+              - if: "{{ is_state('input_boolean.auto_welcome', 'on') and is_state('input_select.house_mode', 'Away') }}"
+                then:
+                  - action: script.lights_look
+                    continue_on_error: true
+                    data:
+                      look: welcome
+                      priority: 3
+                      override: true
+              - wait_for_trigger:
+                  - trigger: state
+                    entity_id: binary_sensor.front_door
+                    from: "off"
+                    to: "on"
+                timeout: "00:00:07"
+                continue_on_timeout: true
+              - action: script.arriving_home
+                continue_on_error: true
+        default:
+          - action: script.arriving_home
+            continue_on_error: true
+            data:
+              seen: true
+
+  - id: presence_arrived_anyway
+    alias: "Home, no sign at the door or inside in time"
+    triggers:
+      - trigger: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.arrival_window
+      - trigger: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.arrival_door
+    conditions:
+      - condition: state
+        entity_id: person.resident
+        state: home
+    actions:
+      - action: script.arriving_home
+        continue_on_error: true
+
+  - id: presence_vacuum_answer
+    alias: "Vacuum answer from the leaving notification"
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: VACUUM_START
+    conditions:
+      - "{{ not is_state('person.resident', 'home') and is_state('vacuum.robot_vacuum', 'docked') }}"
+    actions:
+      - action: script.vacuum_clean
+        continue_on_error: true
+
+  - id: presence_greeting
+    alias: "Welcome home"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: timer.arrival_greeting
+        state: active
+    actions:
+      - action: script.welcome_home
+        continue_on_error: true

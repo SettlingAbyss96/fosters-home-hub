@@ -1,0 +1,155 @@
+# What the house can work out by putting signals together, when no one sensor can say it.
+#
+# The phone, live. The companion app's own sensors (charging, Focus, Wi-Fi) only update when the
+# phone lets the app wake up, which can be many minutes late. On an iPhone, Shortcuts personal
+# automations fire the moment something happens, and these triggers run without asking (Apple: Time
+# of Day, Alarm and Sleep, plus the setting triggers): each one runs one of the scripts below ("Run
+# Script" in the Home Assistant app's Shortcuts actions), which fires an event, the same way "Phone
+# joined the home Wi-Fi" does. On Android, Tasker or the app's own notification and alarm sensors
+# can call the same scripts. The ones worth making on the phone:
+#   - Charger, Is Connected / Is Disconnected   -> phone_on_charger / phone_off_charger
+#   - Alarm, any alarm, Is Stopped / Is Snoozed -> phone_alarm_stopped / phone_alarm_snoozed
+#   - Sleep, Bedtime Begins / Waking Up          -> phone_bedtime / phone_waking_up
+#   - CarPlay (or the car's Bluetooth), Disconnects / Connects -> car_parked / car_started
+# Each counts as a sign of life (packages/wake.yaml), input_boolean.phone_on_charger keeps the
+# charger as a fact instead of the app's guess, and the car parking during the on-the-way-in window
+# starts the wait for the door like the Wi-Fi does (packages/presence.yaml).
+#
+# Asleep: the filter in packages/estimates.yaml. Here it's only logged: the first time each night it
+# says asleep goes in input_datetime.probably_asleep_since, and with an Oura ring every morning its
+# night (bedtime_start, once it syncs) is compared with it, the gap kept in sensor.asleep_guess_error.
+# A few weeks of that tunes the filter's numbers (custom_templates/control.jinja). Without a ring
+# the comparison just never fills in
+input_boolean:
+  phone_on_charger:
+    name: "Phone on the charger"
+    icon: mdi:battery-charging
+
+input_datetime:
+  probably_asleep_since:
+    name: "Asleep since (the house's guess)"
+    icon: mdi:sleep
+    has_date: true
+    has_time: true
+
+script:
+  phone_on_charger:
+    alias: "Phone went on the charger"
+    icon: mdi:battery-charging
+    mode: single
+    sequence:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.phone_on_charger
+      - event: phone_signal
+        event_data: {what: on_charger}
+  phone_off_charger:
+    alias: "Phone came off the charger"
+    icon: mdi:battery
+    mode: single
+    sequence:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.phone_on_charger
+      - event: phone_signal
+        event_data: {what: off_charger}
+  phone_alarm_stopped:
+    alias: "Phone alarm stopped"
+    icon: mdi:alarm-check
+    mode: single
+    sequence:
+      - event: phone_signal
+        event_data: {what: alarm_stopped}
+  phone_alarm_snoozed:
+    alias: "Phone alarm snoozed"
+    icon: mdi:alarm-snooze
+    mode: single
+    sequence:
+      - event: phone_signal
+        event_data: {what: alarm_snoozed}
+  phone_bedtime:
+    alias: "Phone says bedtime"
+    icon: mdi:bed-clock
+    mode: single
+    sequence:
+      - event: phone_signal
+        event_data: {what: bedtime}
+  phone_waking_up:
+    alias: "Phone says waking up"
+    icon: mdi:weather-sunset-up
+    mode: single
+    sequence:
+      - event: phone_signal
+        event_data: {what: waking_up}
+  car_parked:
+    alias: "Car parked"
+    icon: mdi:car-brake-parking
+    mode: single
+    sequence:
+      - event: phone_signal
+        event_data: {what: car_parked}
+  car_started:
+    alias: "Car started"
+    icon: mdi:car
+    mode: single
+    sequence:
+      - event: phone_signal
+        event_data: {what: car_started}
+
+automation:
+  # the app's own charging sensor still counts, it's just late. Whichever comes first. iPhones say
+  # "Charging" and "Full", Android "charging" and "full", hence the lower
+  - id: phone_charger_from_app
+    alias: "Phone charger, from the app's sensor"
+    triggers:
+      - trigger: state
+        entity_id: sensor.phone_battery_state
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+    actions:
+      - action: "input_boolean.turn_{{ 'on' if trigger.to_state.state | lower in ['charging', 'full'] else 'off' }}"
+        target:
+          entity_id: input_boolean.phone_on_charger
+
+  - id: probably_asleep_logged
+    alias: "Asleep, noted"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.asleep
+        from: "off"
+        to: "on"
+    conditions:
+      - condition: time
+        after: "20:00:00"
+        before: "06:00:00"
+      # the first time each night
+      - >-
+        {% set last = states('input_datetime.probably_asleep_since') | as_datetime(none) %}
+        {{ last is none or (now() - as_local(last)).total_seconds() > 12 * 3600 }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.probably_asleep_since
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+template:
+  # how far off the guess was last night, once the ring has synced: minutes between the house's "asleep"
+  # first turning on and Oura's bedtime start (positive: the house thought so later than it was)
+  - trigger:
+      - trigger: state
+        entity_id: sensor.oura_ring_bedtime_start
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+    sensor:
+      - name: "Asleep guess error"
+        unique_id: asleep_guess_error
+        icon: mdi:target
+        unit_of_measurement: min
+        state_class: measurement
+        state: >-
+          {% set oura = states('sensor.oura_ring_bedtime_start') | as_datetime(none) %}
+          {% set ours = states('input_datetime.probably_asleep_since') | as_datetime(none) %}
+          {% if oura is not none and ours is not none and (as_local(oura) - as_local(ours)).total_seconds() | abs < 6 * 3600 %}
+            {{ ((as_local(ours) - as_local(oura)).total_seconds() / 60) | round(0) | int }}
+          {% else %}{{ this.state if this is defined else none }}{% endif %}

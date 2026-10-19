@@ -1,0 +1,15 @@
+# "Dim the bedroom light to 10 percent" matched the built-in brightness intent with no light at all,
+# because the built-in "dim" sentences only know rooms ("dim the bedroom to 10"), not a light's name
+language: "en"
+intents:
+  HassLightSet:
+    data:
+      - sentences:
+          - "(dim|brighten|turn down|turn up) [the|my] {name} [to] {brightness} [percent|%]"
+        requires_context:
+          domain: light
+lists:
+  brightness:
+    range:
+      from: 0
+      to: 100

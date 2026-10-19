@@ -1,0 +1,265 @@
+{
+ "title": "Hub",
+ "path": "hub",
+ "icon": "mdi:chip",
+ "type": "sections",
+ "max_columns": 3,
+ "sections": [
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Hub 500",
+     "icon": "mdi:tablet-dashboard"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_cpu",
+     "name": "CPU"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_memory_used",
+     "name": "Memory"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_cpu_temperature",
+     "name": "CPU temp"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_ssd_temperature",
+     "name": "SSD temp"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_disk_used",
+     "name": "Disk"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_swap_used",
+     "name": "Swap"
+    },
+    {
+     "type": "history-graph",
+     "hours_to_show": 24,
+     "grid_options": {
+      "columns": "full"
+     },
+     "entities": [
+      "sensor.hub_500_cpu",
+      "sensor.hub_500_memory_used"
+     ]
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Where the CPU goes",
+     "icon": "mdi:chart-donut"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_cpu_home_assistant_vm",
+     "name": "Home Assistant"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_cpu_ollama",
+     "name": "Ollama"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_cpu_voice",
+     "name": "Voice"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_cpu_kiosk",
+     "name": "Screen"
+    },
+    {
+     "type": "heading",
+     "heading": "Where the memory goes",
+     "heading_style": "subtitle"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_memory_home_assistant_vm",
+     "name": "Home Assistant"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_memory_ollama",
+     "name": "Ollama"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_memory_voice",
+     "name": "Voice"
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.hub_500_memory_kiosk",
+     "name": "Screen"
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Screen",
+     "icon": "mdi:monitor"
+    },
+    {
+     "type": "custom:mushroom-media-player-card",
+     "entity": "media_player.hub_500_voice_media_player",
+     "name": "Jarvis volume",
+     "icon": "mdi:account-voice",
+     "layout": "horizontal",
+     "volume_controls": [
+      "volume_set"
+     ],
+     "show_volume_level": true,
+     "tap_action": {
+      "action": "none"
+     },
+     "grid_options": {
+      "columns": "full"
+     }
+    },
+    {
+     "type": "custom:mushroom-light-card",
+     "entity": "light.hub_500_screen",
+     "name": "Brightness",
+     "icon": "mdi:tablet",
+     "layout": "horizontal",
+     "show_brightness_control": true,
+     "use_light_color": false,
+     "icon_color": "blue",
+     "collapsible_controls": false,
+     "grid_options": {
+      "columns": "full"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "switch.hub_500_auto_sleep",
+     "name": "Auto sleep"
+    },
+    {
+     "type": "tile",
+     "entity": "number.hub_500_sleep_after",
+     "name": "Sleep after",
+     "features": [
+      {
+       "type": "numeric-input",
+       "style": "buttons"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "binary_sensor.hub_500_motion",
+     "name": "Motion"
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Desk and computer",
+     "icon": "mdi:desk"
+    },
+    {
+     "type": "tile",
+     "entity": "binary_sensor.at_the_desk",
+     "name": "At the desk",
+     "grid_options": {
+      "columns": 6
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.desk_power",
+     "name": "Desk power",
+     "grid_options": {
+      "columns": 6
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.computer_session_state",
+     "name": "Computer",
+     "grid_options": {
+      "columns": 6
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.computer_battery_charge_remaining_percentage",
+     "name": "Battery",
+     "grid_options": {
+      "columns": 6
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "sensor.computer_audio_default_device",
+     "name": "Sound out of",
+     "grid_options": {
+      "columns": "full"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "button.computer_lock",
+     "name": "Lock",
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "button.computer_screen_off",
+     "name": "Screen off",
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "button.computer_sleep",
+     "name": "Sleep",
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "input_number.desk_in_use_watts",
+     "name": "Desk in use above",
+     "features": [
+      {
+       "type": "numeric-input",
+       "style": "slider"
+      }
+     ],
+     "grid_options": {
+      "columns": "full"
+     }
+    }
+   ]
+  }
+ ]
+}

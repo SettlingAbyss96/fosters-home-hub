@@ -1,0 +1,89 @@
+# What the house believes about the person living in it, each worked out once, here, and read by
+# everything else. The separation idea from docs/control.md: build the best estimate there is, then
+# let the automations act on it, instead of each automation reading the raw sensors and coming to
+# its own conclusion. Three versions of "are they up" in three places is how an alarm decides
+# you're up when you aren't.
+#
+#   sensor.seen_up          the last time something said you're up and about: the Hub seeing
+#                           someone, hands on the computer, the bedroom door in the morning, or you
+#                           saying so ("I'm up", the phone's button). The wake-up reads this and
+#                           nothing else. A bed sensor would go in here too
+#   sensor.asleep_belief    how sure the house is you're asleep, 0 to 100, updated every minute by a
+#                           Bayes filter (custom_templates/estimates.jinja). It has memory: asleep a
+#                           minute ago means probably still asleep
+#   binary_sensor.asleep    the same with hysteresis: on at 85%, off at 35%, so a value near the line
+#                           doesn't flick back and forth
+#
+# The filter replaced a naive Bayes sensor that counted the late hour and the house being in Night as
+# two separate pieces of evidence (they're mostly the same one) and had no memory, so one odd minute
+# could flip it. With a sleep tracker (the Oura module, packages/health.yaml), every morning
+# sensor.asleep_guess_error (packages/inference.yaml) says how far off the filter's "asleep" was from
+# the ring's bedtime, which is what tunes the numbers in control.jinja
+template:
+  - trigger:
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+        id: hub
+      - trigger: template
+        value_template: >-
+          {% set t = states('sensor.computer_last_active') | as_datetime(none) %}
+          {{ is_state('sensor.computer_session_state', 'Unlocked') and t is not none and (now() - t).total_seconds() < 90 }}
+        id: laptop
+      - trigger: event
+        event_type: wake_up_confirmed
+        id: said
+      # the bedroom door opening in the morning: walking out of the bedroom. Not proof (it could be
+      # opened and back to bed), which is what the wake-up's 45-minute watch is for
+      - trigger: state
+        entity_id: binary_sensor.bedroom_door
+        from: "off"
+        to: "on"
+        id: bedroom_door
+    conditions:
+      - "{{ trigger.id != 'bedroom_door' or 4 <= now().hour < 12 }}"
+    sensor:
+      - name: "Seen up"
+        unique_id: seen_up
+        icon: mdi:human-handsup
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          how: "{{ {'hub': 'the Hub saw someone', 'laptop': 'typing at the computer', 'said': 'said so', 'bedroom_door': 'out of the bedroom'}[trigger.id] }}"
+
+  - trigger:
+      - trigger: time_pattern
+        minutes: "/1"
+    sensor:
+      - name: "Asleep belief"
+        unique_id: asleep_belief
+        icon: mdi:sleep
+        unit_of_measurement: "%"
+        state_class: measurement
+        state: >-
+          {% from 'estimates.jinja' import asleep_next %}
+          {{ ((asleep_next() | from_json).b * 100) | round(1) }}
+        attributes:
+          model: >-
+            {% from 'estimates.jinja' import asleep_next %}
+            {{ asleep_next() | from_json }}
+
+  - binary_sensor:
+      # someone in the bathroom: the door shut with the light (and fan) on. Nothing switches that
+      # light off because of it; it's for the logic that has to know the bathroom isn't empty. Both
+      # names are the standard ones (docs/devices.md); without them it's simply never on
+      - name: "Bathroom occupied"
+        unique_id: bathroom_occupied
+        icon: mdi:shower-head
+        device_class: occupancy
+        state: >-
+          {{ is_state('light.bathroom_light', 'on')
+             and (is_state('binary_sensor.bathroom_door', 'off') or states('binary_sensor.bathroom_door') not in ['on', 'off']) }}
+      - name: "Asleep"
+        unique_id: asleep
+        icon: mdi:sleep
+        state: >-
+          {% from 'control.jinja' import param, schmitt %}
+          {{ schmitt((states('sensor.asleep_belief') | float(0)) / 100, param('asleep_on'), param('asleep_off'),
+                     this.state if this is defined else 'off') == 'on' }}

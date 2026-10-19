@@ -1,0 +1,23 @@
+{
+  "alias": "Hub screen brightness follows the day",
+  "description": "100 % while the sun is up, 60 % in the evening and early morning, 20 % from 22:00 to 06:00. Sets the level only, so a sleeping screen stays asleep.",
+  "mode": "restart",
+  "triggers": [
+    {"trigger": "homeassistant", "event": "start"},
+    {"trigger": "sun", "event": "sunrise"},
+    {"trigger": "sun", "event": "sunset"},
+    {"trigger": "time", "at": "22:00:00"},
+    {"trigger": "time", "at": "06:00:00"},
+    {"trigger": "state", "entity_id": "number.hub_500_brightness", "from": "unavailable"}
+  ],
+  "conditions": [],
+  "actions": [
+    {
+      "action": "number.set_value",
+      "target": {"entity_id": "number.hub_500_brightness"},
+      "data": {
+        "value": "{% if is_state('sun.sun', 'above_horizon') %}100{% elif now().hour >= 22 or now().hour < 6 %}20{% else %}60{% endif %}"
+      }
+    }
+  ]
+}

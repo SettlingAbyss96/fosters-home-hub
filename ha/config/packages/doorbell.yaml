@@ -1,0 +1,237 @@
+# The doorbell. Built on an Aqara G410 paired straight to Home Assistant over HomeKit Controller
+# (out of Apple Home; the Aqara app keeps live view and its own recordings), but any doorbell works
+# that arrives as the standard names in docs/devices.md: event.doorbell_ring, camera.doorbell,
+# binary_sensor.doorbell_motion and sensor.doorbell_battery. The G410 is also joined over Matter as
+# Aqara's bridge, which is how faces get here: the doorbell recognises people itself (no microSD
+# needed), and each face is an Aqara "signal" that shows up as its own occupancy sensor,
+# binary_sensor.face_<name>, plus face_unknown for anyone it doesn't know (tools/ha-apps.sh names
+# them from the Aqara app, and the one whose name is in house.toml becomes face_resident, you).
+#
+# A ring:
+#   - one snapshot from the camera, saved to /local/doorbell_last.jpg. It's on battery, so there's
+#     no live feed on the dashboard (that would keep waking it), just the last ring's picture
+#   - the TV pauses if something's playing
+#   - Jarvis says someone's at the door, and the phone always gets it, with the snapshot, through
+#     script.tell_resident (time-sensitive, so it rings through Focus). If the doorbell recognised
+#     someone in the last minute and a half he hedges it: "Looks like Sam at the door"
+#
+# Face recognition isn't perfect, so nothing hangs on it: a miss just means a plainer message, and
+# a wrong match can't do anything worse than say the wrong name.
+#   - your own face only confirms an arrival your phone already started (packages/presence.yaml)
+#   - anyone else at the door while you're away (and no guests in) is a normal phone notification
+#     with a snapshot, not an alarm, with a "looks like" name when there is one. An unknown face is
+#     never called a stranger, it may just be a missed one. Once per 10 minutes
+# Two rings within 30 seconds are one visitor
+#
+# Someone hanging around without ringing. HomeKit only passes on motion, in 5 to 9 second pulses,
+# not the Aqara app's "lingering", so it's worked out: three motion pulses inside two minutes (a
+# delivery typically gives five in a bit over a minute), or an unknown face for 20 seconds. If the
+# Aqara app ever gets a "lingering" signal added the way the faces were, it shows up as
+# binary_sensor.doorbell_lingering and counts straight away. Not while you're arriving (the timers
+# in packages/presence.yaml), not when it's your face, and not right after a ring, that's already
+# been said. Out loud and on the phone with a snapshot, never urgent. Once per 10 minutes
+input_datetime:
+  doorbell_last_ring:
+    name: "Doorbell last rang"
+    icon: mdi:doorbell
+    has_date: true
+    has_time: true
+  doorbell_last_lingering:
+    name: "Someone last lingered at the door"
+    icon: mdi:account-clock
+    has_date: true
+    has_time: true
+
+automation:
+  - id: doorbell_rang
+    alias: "Someone's at the door"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: event.doorbell_ring
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_doorbell
+        state: "on"
+      - "{{ trigger.to_state.attributes.event_type == 'ring' }}"
+      - >-
+        {% set last = states('input_datetime.doorbell_last_ring') | as_datetime(none) %}
+        {{ last is none or (now() - as_local(last)).total_seconds() > 30 }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.doorbell_last_ring
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - if: "{{ is_state('media_player.tv', 'playing') }}"
+        then:
+          - action: media_player.media_pause
+            target:
+              entity_id: media_player.tv
+            continue_on_error: true
+      - action: camera.snapshot
+        target:
+          entity_id: camera.doorbell
+        data:
+          filename: /config/www/doorbell_last.jpg
+        continue_on_error: true
+      - variables:
+          who: >-
+            {% set started = (states('sensor.home_assistant_started') | as_datetime(now())) + timedelta(seconds=60) %}
+            {% set ns = namespace(n=[]) %}
+            {% for s in states.binary_sensor
+                 if s.entity_id.startswith('binary_sensor.face_') and s.entity_id not in ['binary_sensor.face_unknown', 'binary_sensor.face_resident'] %}
+              {% if s.state == 'on' or (now() - s.last_changed).total_seconds() < 90 and s.last_changed > started %}
+                {% set ns.n = ns.n + [(s.name | replace('Face: ', ''))] %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.n }}
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Doorbell"
+          message: >-
+            {% if who | count == 0 %}Someone's at the door.
+            {% else %}Looks like {{ who | join(' and ') }} at the door.{% endif %}
+          urgent: true
+          phone: true
+          image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
+
+  - id: doorbell_face_while_away
+    alias: "Someone at the door while I'm out"
+    mode: single
+    triggers:
+      # any face but yours coming on (the faces aren't listed by name, they're whatever the Aqara app
+      # has)
+      - trigger: template
+        value_template: >-
+          {{ states.binary_sensor | selectattr('entity_id', 'search', '^binary_sensor[.]face_')
+             | rejectattr('entity_id', 'eq', 'binary_sensor.face_resident') | selectattr('state', 'eq', 'on') | list | count > 0 }}
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_doorbell
+        state: "on"
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: person.resident
+            state: home
+      - condition: state
+        entity_id: input_boolean.guest_mode
+        state: "off"
+    actions:
+      - variables:
+          who: >-
+            {% set on = states.binary_sensor | selectattr('entity_id', 'search', '^binary_sensor[.]face_')
+                 | rejectattr('entity_id', 'eq', 'binary_sensor.face_resident') | selectattr('state', 'eq', 'on')
+                 | map(attribute='name') | map('replace', 'Face: ', '') | list %}
+            {% set known = on | reject('eq', 'unknown') | list %}
+            {{ ' (looks like ' ~ known | join(' and ') ~ ')' if known else '' }}
+      - action: camera.snapshot
+        target:
+          entity_id: camera.doorbell
+        data:
+          filename: /config/www/doorbell_last.jpg
+        continue_on_error: true
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "At the door"
+          message: "Someone's at the door while you're out{{ who }}."
+          image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
+      - delay: "00:10:00"
+
+  - id: doorbell_lingering
+    alias: "Someone's hanging around the door"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.doorbell_motion
+        from: "off"
+        to: "on"
+        id: motion
+      - trigger: state
+        entity_id: binary_sensor.face_unknown
+        to: "on"
+        for: "00:00:20"
+        id: face
+      - trigger: state
+        entity_id: binary_sensor.doorbell_lingering
+        to: "on"
+        id: aqara
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_doorbell
+        state: "on"
+      - condition: state
+        entity_id: [timer.arrival_window, timer.arrival_door]
+        state: idle
+      # not you just in: the arrival clears the timers above the moment it runs, and a doorbell can
+      # call its own household "unknown" on the way in
+      - >-
+        {% set arrived = state_attr('script.arriving_home', 'last_triggered') %}
+        {{ arrived is none or (now() - arrived).total_seconds() > 300 }}
+      - >-
+        {% set last = states('input_datetime.doorbell_last_lingering') | as_datetime(none) %}
+        {{ last is none or (now() - as_local(last)).total_seconds() > 10 * 60 }}
+    actions:
+      # one pulse is someone walking past. Wait for two more inside two minutes
+      - if: "{{ trigger.id == 'motion' }}"
+        then:
+          - repeat:
+              count: 2
+              sequence:
+                - wait_for_trigger:
+                    - trigger: state
+                      entity_id: binary_sensor.doorbell_motion
+                      from: "off"
+                      to: "on"
+                  timeout:
+                    seconds: "{{ [120 - (now() - trigger.to_state.last_changed).total_seconds(), 1] | max | int }}"
+                  continue_on_timeout: false
+      # a ring in the last two minutes was already announced, and your own face is just you
+      - condition: template
+        value_template: >-
+          {% set ring = states('input_datetime.doorbell_last_ring') | as_datetime(none) %}
+          {% set me = states.binary_sensor.face_resident %}
+          {% set started = (states('sensor.home_assistant_started') | as_datetime(now())) + timedelta(seconds=60) %}
+          {{ (ring is none or (now() - as_local(ring)).total_seconds() > 120)
+             and (me is none or (me.state != 'on' and ((now() - me.last_changed).total_seconds() > 120 or me.last_changed < started))) }}
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.doorbell_last_lingering
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: camera.snapshot
+        continue_on_error: true
+        target:
+          entity_id: camera.doorbell
+        data:
+          filename: /config/www/doorbell_last.jpg
+      - variables:
+          who: >-
+            {% set started = (states('sensor.home_assistant_started') | as_datetime(now())) + timedelta(seconds=60) %}
+            {% set known = states.binary_sensor | selectattr('entity_id', 'search', '^binary_sensor[.]face_')
+                 | rejectattr('entity_id', 'in', ['binary_sensor.face_resident', 'binary_sensor.face_unknown'])
+                 | selectattr('last_changed', 'gt', [now() - timedelta(seconds=120), started] | max)
+                 | map(attribute='name') | map('replace', 'Face: ', '') | list %}
+            {{ ', looks like ' ~ known | join(' and ') if known else '' }}
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "At the door"
+          message: "Someone's been at the front door for a bit without ringing{{ who }}."
+          phone: true
+          image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
+
+template:
+  # for the dashboard: the doorbell card shows for 30 minutes after a ring
+  - binary_sensor:
+      - name: "Doorbell recent"
+        unique_id: doorbell_recent
+        icon: mdi:doorbell
+        state: >-
+          {% set last = states('input_datetime.doorbell_last_ring') | as_datetime(none) %}
+          {{ last is not none and (now() - as_local(last)).total_seconds() < 30 * 60 }}

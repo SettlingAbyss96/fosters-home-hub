@@ -1,0 +1,51 @@
+# The few things the packages need to know about your house that aren't devices. They come from
+# house.toml, and tools/ha-apps.sh sets them on every deploy, so change them there rather than here
+# or in the UI (a deploy puts them back). None of it is a secret, but your Wi-Fi's name is yours,
+# which is why it lives in a helper instead of being written into the YAML.
+input_text:
+  # the phone on this network means the phone's home, whatever the GPS says
+  home_wifi:
+    name: "Home Wi-Fi name"
+    icon: mdi:wifi
+    max: 64
+  # what the welcome home and the morning briefing look up, in plain words ("the day's top story
+  # and how the markets did"). Empty: they stick to what's going on at home
+  news:
+    name: "News for the welcome and the briefing"
+    icon: mdi:newspaper-variant-outline
+    max: 255
+  # a few things you're into, for when there's room for one more item ("cooking, cycling")
+  interests:
+    name: "Things you're into"
+    icon: mdi:star-outline
+    max: 255
+  # part of the name of a headset on the computer (packages/tell.yaml says it there when it's the
+  # computer's output). Empty: never
+  headset:
+    name: "Headset on the computer"
+    icon: mdi:headset
+    max: 64
+
+template:
+  # When Home Assistant last started. Every sensor looks freshly changed right after a restart, so
+  # anything asking "did this just happen?" ignores the first minute after one
+  - trigger:
+      - trigger: homeassistant
+        event: start
+    sensor:
+      - name: "Home Assistant started"
+        unique_id: home_assistant_started
+        icon: mdi:restart
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+
+  - binary_sensor:
+      # the phone on the home Wi-Fi, one place instead of every automation comparing names. The
+      # companion app's SSID sensor only updates when the phone lets the app wake up, so it can be
+      # minutes late: the Shortcuts in packages/inference.yaml and packages/presence.yaml are quicker
+      - name: "Phone on the home Wi-Fi"
+        unique_id: phone_on_home_wifi
+        icon: mdi:wifi-check
+        state: >-
+          {% set w = states('input_text.home_wifi') %}
+          {{ w not in ['', 'unknown', 'unavailable'] and is_state('sensor.phone_ssid', w) }}

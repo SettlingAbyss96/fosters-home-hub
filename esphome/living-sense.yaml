@@ -1,0 +1,16 @@
+# Someone on the couch (the Hub's PIR only sees the room the Hub is in), and how much light reaches
+# eye level there in the evening, which is what the wind-down's 30 lux is about. The radar under the
+# TV facing the couch, the light sensor at seated eye height by the couch
+substitutions:
+  name: living-sense
+  friendly_name: "Living room sense"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  board: !include common/xiao-c6.yaml
+  base: !include common/base.yaml
+  room: !include common/room.yaml
+  light: !include common/eye-light.yaml

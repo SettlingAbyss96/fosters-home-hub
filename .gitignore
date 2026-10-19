@@ -1,0 +1,23 @@
+# Your house. These hold your network, your devices, your Wi-Fi's name, your people and the words
+# you say, and they never belong in a repo, this one or a fork of it
+house.toml
+ha/context/about.local.md
+hub/parakeet-words.local.txt
+
+# made from house.toml on every deploy (tools/setup_ha.py, tools/dashboard.py)
+ha/config/house/
+ha/dashboards/home-hub.json
+
+# secrets that live elsewhere anyway: the token is in ~/.config/ha-hub/token, the ESPHome secrets
+# on the Hub. These are here in case one gets copied in by mistake
+*.token
+secrets.yaml
+esphome/build/
+esphome/.esphome/
+
+# working files
+.tmp-*
+.tmp-extras/
+__pycache__/
+.pytest_cache/
+docs/figures/*.png

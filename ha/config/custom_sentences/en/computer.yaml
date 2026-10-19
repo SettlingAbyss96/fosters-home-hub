@@ -1,0 +1,17 @@
+# The computer by name. Intents in packages/computer.yaml
+language: "en"
+intents:
+  LaptopLock:
+    data:
+      - sentences:
+          - "lock (my|the) (computer|laptop|pc)"
+  LaptopSleep:
+    data:
+      - sentences:
+          - "put (my|the) (computer|laptop|pc) to sleep"
+          - "(sleep|suspend) (my|the) (computer|laptop|pc)"
+  LaptopScreenOff:
+    data:
+      - sentences:
+          - "turn off (my|the) (computer|laptop|pc) (screen|monitor|display)"
+          - "(computer|laptop|pc) (screen|monitor|display) off"

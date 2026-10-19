@@ -1,0 +1,76 @@
+--- a/linux_voice_assistant/satellite.py
++++ b/linux_voice_assistant/satellite.py
+@@ -395,6 +395,16 @@
+         # Smart Turn hears a finished sentence and ends the turn without waiting out the silence
+         self._end_of_turn = end_of_turn.load(self._finished_talking) if end_of_turn else None
+         self._eot_streaming = False
++        # Said in one breath, "Hey Jarvis, who am I" lost its start twice over: the next word often
++        # begins before the wake word fires (up to 0.26 s on the calibration recording), and Home
++        # Assistant empties its audio queue when the run starts, throwing away whatever had already
++        # arrived. So the satellite keeps the last LVA_PREROLL seconds of the mic and, once woken,
++        # holds the audio until Home Assistant says it's listening (STT start), then sends it all
++        self._preroll_seconds = float(os.environ.get("LVA_PREROLL", "0.3"))  # whole 64 ms blocks, so 0.26 s
++        self._preroll: List[Any] = []
++        self._held: Optional[List[Any]] = None
++        self._held_since = 0.0
++        self._stt_ready = False
+         self._window = 0.0
+         self._stt_text = ""
+         self._speech = ""
+@@ -624,6 +634,9 @@
+     def handle_voice_event(self, event_type: VoiceAssistantEventType, data: Dict[str, str]) -> None:
+         _LOGGER.info("Voice event: type=%s, data=%s", event_type.name, data)
+ 
++        if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_START:
++            self._stt_ready = True  # held audio can go now (handle_audio)
++
+         if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START:
+             self._tts_url = data.get("url")
+             self._tts_played = False
+@@ -697,6 +710,7 @@
+             self.play_tts()
+ 
+         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_END:
++            self._stt_ready = False
+             self._is_streaming_audio = False
+             if not self._tts_played:
+                 self._pipeline_active = False
+@@ -955,10 +969,35 @@
+     def handle_audio(self, audio_chunk: bytes, audio_chunk_2: Optional[bytes] = None) -> None:
++        if not hasattr(self, "_stt_ready"):
++            return  # the mic is already running while __init__ is still loading Smart Turn
+         if not self._is_streaming_audio or self.state.muted:
+             self._eot_streaming = False
+-            return
+-        if self._end_of_turn is not None and not self._eot_streaming:
+-            self._end_of_turn.reset()  # a new turn
++            self._held = None
++            if self._preroll_seconds > 0:  # the last moments before a wake word, see __init__
++                self._preroll.append((audio_chunk, audio_chunk_2))
++                while sum(len(c) for c, _ in self._preroll) > self._preroll_seconds * 32000:
++                    self._preroll.pop(0)
++            return
++        if not self._eot_streaming:  # a new turn
++            if self._end_of_turn is not None:
++                self._end_of_turn.reset()
+             self._eot_streaming = True
++            # a follow-up window opens right after Jarvis spoke, nothing before it is mine
++            self._held = [] if self._followup_run else list(self._preroll)
++            self._held_since = time.monotonic()
++            self._preroll = []
++        if self._held is not None:
++            self._held.append((audio_chunk, audio_chunk_2))
++            if not self._stt_ready and time.monotonic() - self._held_since < 2.0:
++                return
++            held, self._held = self._held, None
++            for chunk, chunk_2 in held:
++                self._send_audio(chunk, chunk_2)
++            return
++        self._send_audio(audio_chunk, audio_chunk_2)
++
++    def _send_audio(self, audio_chunk: bytes, audio_chunk_2: Optional[bytes]) -> None:
++        if not self._is_streaming_audio:
++            return
+         if _HAS_AUDIO_DATA2 and audio_chunk_2 is not None:
+             self.send_messages([VoiceAssistantAudio(data=audio_chunk, data2=audio_chunk_2)])
+         else:

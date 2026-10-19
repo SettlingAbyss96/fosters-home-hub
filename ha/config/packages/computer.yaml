@@ -1,0 +1,188 @@
+# A Windows computer, through HASS.Agent (pc/install-hass-agent.ps1 puts its sensors and commands
+# in place; its own setup, the MQTT login and the token, is typed in on the computer). Call the
+# device "Computer" in HASS.Agent and every entity here lines up (sensor.computer_session_state and
+# so on, docs/devices.md). Without one, everything below just never fires. What the house gets out
+# of it:
+#   - binary_sensor.at_the_desk: someone at the desk is someone out of bed, so it counts as up for
+#     the wake-up and as a sign of life, and the bedtime nudge pops up on the screen too. It's on
+#     when any of these is true:
+#       - the computer's unlocked and was touched in the last 5 minutes
+#       - the desk is drawing real power (sensor.desk_power, a measuring plug the desk runs from,
+#         over input_number.desk_in_use_watts), the computer's unlocked with its screen on, and it
+#         was touched in the last 30 minutes: watching something without touching anything
+#       - HASS.Agent isn't answering but the desk is drawing real power (the agent crashed, or
+#         something else at the desk is on)
+#     The line starts at 50 W, which fits a laptop on a dock with a monitor: in use that kind of
+#     desk draws 55 to 95 W, locked and charging 35 to 40, asleep 15 to 20. Put yours a little over
+#     what it draws locked. With the line too close to the locked draw, a locked laptop whose agent
+#     has dropped out can flip this thousands of times a day, and the asleep filter takes every flip
+#     as typing, so the house never decides you've gone to sleep. Once on, it stays on down to 5 W
+#     under the line, so a desk hovering at it can't chatter. No measuring plug: only the first rule
+#   - lock, sleep and screen off by voice, and goodnight and leaving lock it
+#   - media_player.computer and notify.computer come from the HASS.Agent integration
+#     (tools/ha-extras.sh), and script.computer_say has Jarvis talk out of the computer in his own
+#     voice, on whatever Windows has as the default output
+# Left on while you're out: 30 minutes into Away with the desk still drawing more than the in-use
+# line, the phone asks, with buttons to lock or sleep the computer from wherever
+# Shut down and restart are buttons on the dashboard only, Jarvis can't press those. Mishearing
+# "lock" is fine, mishearing "shut down" with something unsaved isn't
+input_number:
+  # the computer's volume from before the alarm turned it all the way up, so it can go back. Below
+  # zero means nothing's saved
+  computer_volume_before:
+    name: "Computer volume before the alarm"
+    icon: mdi:volume-high
+    min: -1
+    max: 1
+    step: 0.01
+  desk_in_use_watts:
+    name: "Desk in use above"
+    icon: mdi:desk
+    min: 5
+    max: 150
+    step: 5
+    unit_of_measurement: W
+
+template:
+  - binary_sensor:
+      - name: "At the desk"
+        unique_id: at_the_desk
+        icon: mdi:laptop-account
+        state: >-
+          {% set last = states('sensor.computer_last_active') | as_datetime(none) %}
+          {% set idle = (now() - last).total_seconds() if last is not none else 999999 %}
+          {% set unlocked = is_state('sensor.computer_session_state', 'Unlocked') %}
+          {% set line = states('input_number.desk_in_use_watts') | float(50) %}
+          {% set busy = states('sensor.desk_power') | float(0) > (line - 5 if this.state == 'on' else line) %}
+          {% set agent = states('sensor.computer_session_state') not in ['unavailable', 'unknown'] %}
+          {{ (unlocked and idle < 5 * 60)
+             or (busy and unlocked and is_state('sensor.computer_monitor_power_state', 'PowerOn') and idle < 30 * 60)
+             or (busy and not agent) }}
+        attributes:
+          desk_watts: "{{ states('sensor.desk_power') | float(0) | round(0) | int }}"
+
+script:
+  computer_say:
+    alias: "Jarvis on the computer"
+    description: "Jarvis says something out loud on the computer, through whatever it's playing sound on."
+    icon: mdi:account-voice
+    mode: queued
+    fields:
+      message:
+        description: "What to say"
+        required: true
+        selector:
+          text:
+      volume:
+        description: "Turn the computer up to this first (0 to 1). The alarm uses it; the old level is kept to put back"
+        selector:
+          number: {min: 0, max: 1, step: 0.05}
+    sequence:
+      - condition: "{{ states('media_player.computer') not in ['unavailable', 'unknown'] }}"
+      - if: "{{ volume is defined and volume not in [none, ''] }}"
+        then:
+          - if: "{{ states('input_number.computer_volume_before') | float(-1) < 0 }}"
+            then:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.computer_volume_before
+                data:
+                  value: "{{ state_attr('media_player.computer', 'volume_level') | float(0.3) }}"
+          - action: media_player.volume_set
+            continue_on_error: true
+            target:
+              entity_id: media_player.computer
+            data:
+              volume_level: "{{ volume | float(1) }}"
+      # the same voice as the Hub's, from Kokoro (Piper's if Kokoro isn't there)
+      - action: tts.speak
+        continue_on_error: true
+        target:
+          entity_id: "{{ 'tts.kokoro' if states.tts.kokoro is not none else 'tts.piper' }}"
+        data:
+          media_player_entity_id: media_player.computer
+          message: "{{ message }}"
+
+  computer_lock:
+    alias: "Lock the computer"
+    icon: mdi:laptop-off
+    sequence:
+      - if: "{{ is_state('sensor.computer_session_state', 'Unlocked') }}"
+        then:
+          - action: button.press
+            target:
+              entity_id: button.computer_lock
+            continue_on_error: true
+
+intent_script:
+  LaptopLock:
+    description: "Lock the computer."
+    action:
+      - action: script.computer_lock
+        continue_on_error: true
+    speech:
+      text: "{{ 'Locked.' if states('button.computer_lock') != 'unavailable' else 'The computer isn''t connected.' }}"
+  LaptopSleep:
+    description: "Put the computer to sleep."
+    action:
+      - action: button.press
+        target:
+          entity_id: button.computer_sleep
+        continue_on_error: true
+    speech:
+      text: "{{ 'Putting it to sleep.' if states('button.computer_sleep') != 'unavailable' else 'The computer isn''t connected.' }}"
+  LaptopScreenOff:
+    description: "Turn the computer's screen off."
+    action:
+      - action: button.press
+        target:
+          entity_id: button.computer_screen_off
+        continue_on_error: true
+    speech:
+      text: "Screen off."
+
+automation:
+  - id: desk_left_on
+    alias: "The desk is on and I'm out"
+    triggers:
+      - trigger: state
+        entity_id: input_select.house_mode
+        to: Away
+        for: "00:30:00"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_desk
+        state: "on"
+      - "{{ states('sensor.desk_power') | float(0) > states('input_number.desk_in_use_watts') | float(50) }}"
+      - "{{ states('sensor.computer_session_state') not in ['unavailable', 'unknown'] }}"
+    actions:
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Desk still on"
+          message: "The desk's drawing {{ states('sensor.desk_power') | float(0) | round(0) | int }} W and the computer's {{ states('sensor.computer_session_state') | lower }}."
+          data:
+            actions:
+              - action: DESK_LOCK
+                title: "Lock it"
+              - action: DESK_SLEEP
+                title: "Sleep it"
+
+  - id: desk_left_on_answer
+    alias: "Desk left on: the answer"
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: DESK_LOCK
+        id: lock
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: DESK_SLEEP
+        id: sleep
+    actions:
+      - action: button.press
+        target:
+          entity_id: "{{ 'button.computer_lock' if trigger.id == 'lock' else 'button.computer_sleep' }}"
+        continue_on_error: true

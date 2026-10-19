@@ -1,0 +1,174 @@
+# The "at a glance" row at the bottom of the home dashboard: what today's weather is going to do,
+# whether work has you in a meeting, and anything around the house that needs a person. Worked out
+# here rather than in the cards, so the dashboard just shows text and the logic is in one place.
+template:
+  # Weather in words. Met.no only says "rainy" for right now, and the forecast card shows icons,
+  # so this answers the actual question: is it going to rain, and when
+  - trigger:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: "/20"
+    action:
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: hourly
+        response_variable: hourly
+        continue_on_error: true
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: daily
+        response_variable: daily
+        continue_on_error: true
+    sensor:
+      - name: "Today's weather"
+        unique_id: glance_weather_today
+        icon: mdi:weather-partly-rainy
+        state: >-
+          {% set wet = ['rainy', 'pouring', 'lightning-rainy', 'snowy', 'snowy-rainy', 'hail'] %}
+          {% set hours = (hourly['weather.forecast_home'].forecast if hourly is defined else [])[:12] %}
+          {% set today = (daily['weather.forecast_home'].forecast[0] if daily is defined else {}) %}
+          {% set raining = states('weather.forecast_home') in wet %}
+          {% set ns = namespace(start=none, stop=none) %}
+          {% for h in hours %}
+            {% set is_wet = h.condition in wet or (h.precipitation | default(0) | float(0)) >= 0.3 %}
+            {% if is_wet and ns.start is none %}{% set ns.start = h.datetime %}{% endif %}
+            {% if not is_wet and ns.stop is none %}{% set ns.stop = h.datetime %}{% endif %}
+          {% endfor %}
+          {% macro t(dt) %}{{ as_timestamp(dt) | timestamp_custom('%-I %p') }}{% endmacro %}
+          {% set rain = ('Rain now, dry by ' ~ t(ns.stop)) if raining and ns.stop
+                        else ('Rain for the next 12 hours' if raining
+                        else (('Rain from ' ~ t(ns.start)) if ns.start else 'No rain coming')) %}
+          {% if today %}High {{ today.temperature | round(0) | int }}° · Low {{ today.templow | round(0) | int }}° · {% endif %}{{ rain }}
+
+  # Work, as busy or free and nothing else. The calendar is whatever gets added as "Work"
+  # (calendar.work, from a free/busy iCal address in house.toml, tools/ha-apps.sh). Titles stay off the wall on purpose: a kitchen screen doesn't need to know
+  # what the 2pm is about, just that there is one
+  - trigger:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: "/5"
+      - trigger: state
+        entity_id: calendar.work
+    action:
+      # until a calendar is added, calendar.get_events doesn't even exist
+      - condition: template
+        value_template: "{{ states('calendar.work') not in ['unknown', 'unavailable'] }}"
+      - action: calendar.get_events
+        target:
+          entity_id: calendar.work
+        data:
+          duration:
+            hours: 14
+        response_variable: cal
+        continue_on_error: true
+    sensor:
+      - name: "Work calendar"
+        unique_id: glance_work_calendar
+        icon: >-
+          {{ 'mdi:calendar-clock' if is_state('calendar.work', 'on') else 'mdi:calendar-check' }}
+        availability: "{{ states('calendar.work') not in ['unknown', 'unavailable'] }}"
+        state: >-
+          {% set evs = (cal['calendar.work'].events if cal is defined and 'calendar.work' in cal else [])
+                       | rejectattr('start', 'search', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$') | list %}
+          {% set now_ts = now().timestamp() %}
+          {% set ns = namespace(until=none, next=none) %}
+          {% for e in evs | sort(attribute='start') %}
+            {% set s, en = as_timestamp(e.start), as_timestamp(e.end) %}
+            {% if s <= now_ts < en %}{% set ns.until = [ns.until or 0, en] | max %}{% endif %}
+          {% endfor %}
+          {# back-to-back meetings count as one: busy until the first real gap #}
+          {% for e in evs | sort(attribute='start') %}
+            {% if ns.until and as_timestamp(e.start) <= ns.until < as_timestamp(e.end) %}
+              {% set ns.until = as_timestamp(e.end) %}{% endif %}
+          {% endfor %}
+          {% for e in evs | sort(attribute='start') %}
+            {% set s = as_timestamp(e.start) %}
+            {% if s > now_ts and ns.next is none and (ns.until is none or s > ns.until) %}{% set ns.next = s %}{% endif %}
+          {% endfor %}
+          {% if ns.until %}Busy until {{ ns.until | timestamp_custom('%-I:%M %p') }}
+          {% elif ns.next %}Free until {{ ns.next | timestamp_custom('%-I:%M %p') }}
+          {% else %}Free the rest of the day{% endif %}
+
+  # Everything that wants a person, as one line. The card hides while it says "All good"
+  - sensor:
+      - name: "Needs attention"
+        unique_id: glance_needs_attention
+        icon: mdi:alert-circle-outline
+        state: >-
+            {% set a = namespace(out=[]) %}
+            {% set dock = states('sensor.robot_vacuum_dock_dock_error') %}
+            {% if dock not in ['ok', 'none', 'unknown', 'unavailable'] %}
+              {% set a.out = a.out + ['Vacuum dock: ' ~ dock | replace('_', ' ')] %}{% endif %}
+            {% set err = states('sensor.robot_vacuum_vacuum_error') %}
+            {% if err not in ['none', 'unknown', 'unavailable'] %}
+              {% set a.out = a.out + ['Vacuum: ' ~ err | replace('_', ' ')] %}{% endif %}
+            {% for e, what in [('sensor.robot_vacuum_sensor_time_left', 'sensors to clean'),
+                                ('sensor.robot_vacuum_filter_time_left', 'filter due'),
+                                ('sensor.robot_vacuum_main_brush_time_left', 'main brush due'),
+                                ('sensor.robot_vacuum_side_brush_time_left', 'side brush due')] %}
+              {% if states(e) | is_number and states(e) | float < 5 %}
+                {% set a.out = a.out + ['Vacuum ' ~ what] %}{% endif %}
+            {% endfor %}
+            {% if is_state('sensor.klipper_current_print_state', 'complete') %}
+              {% set a.out = a.out + ['Klipper print is done'] %}{% endif %}
+            {% if is_state('sensor.klipper_current_print_state', 'error') %}
+              {% set a.out = a.out + ['Klipper printer has an error'] %}{% endif %}
+            {% if is_state('sensor.bambu_print_status', 'finish') %}
+              {% set a.out = a.out + ['Bambu print is done'] %}{% endif %}
+            {% if is_state('sensor.bambu_print_status', 'failed') %}
+              {% set a.out = a.out + ['Bambu print failed'] %}{% endif %}
+            {% if states('sensor.bambu_ams_1_humidity') | float(0) >= 40 %}
+              {% set a.out = a.out + ['Bambu AMS is damp, ' ~ states('sensor.bambu_ams_1_humidity') ~ '%'] %}{% endif %}
+            {% if is_state('binary_sensor.bambu_hms_errors', 'on') and state_attr('binary_sensor.bambu_hms_errors', '1-Error') %}
+              {% set a.out = a.out + ['Bambu: ' ~ state_attr('binary_sensor.bambu_hms_errors', '1-Error') | trim('.')] %}{% endif %}
+            {# offline: every light the house knows (the layers), and the modules' main entities if
+               they're in Home Assistant at all. Missing is fine, unavailable isn't #}
+            {% set watched = (label_entities('light_ambient') + label_entities('light_task') + label_entities('light_accent'))
+                             | select('match', 'light[.]') | unique | list
+                             + ['vacuum.robot_vacuum', 'sensor.klipper_current_print_state', 'sensor.bambu_print_status',
+                                'sensor.washer_current_status'] %}
+            {% set offline = watched | select('is_state', 'unavailable') | map('state_attr', 'friendly_name') | list %}
+            {% if offline %}{% set a.out = a.out + ['Offline: ' ~ offline | join(', ')] %}{% endif %}
+            {% for s in states.binary_sensor | selectattr('state', 'eq', 'on')
+                 | selectattr('entity_id', 'search', '_(overheated|overloaded)$') %}
+              {% set base = s.entity_id.split('.')[1] | regex_replace('_(overheated|overloaded)$', '') %}
+              {% set a.out = a.out + [(state_attr('light.' ~ base, 'friendly_name') or base) ~ ' ' ~ s.entity_id.split('_')[-1]] %}
+            {% endfor %}
+            {% set paused = state_attr('sensor.paused', 'short') %}
+            {% if paused %}{% set a.out = a.out + ['Paused: ' ~ paused] %}{% endif %}
+            {% if states('sensor.next_wake_up').startswith('Problem') %}
+              {% set a.out = a.out + ['Wake-up ' ~ states('sensor.next_wake_up') | lower] %}{% endif %}
+            {% set err = states('input_datetime.house_error_at') | as_datetime(none) %}
+            {% if err is not none and (now() - as_local(err)).total_seconds() < 12 * 3600 %}
+              {% set a.out = a.out + ['Error in ' ~ states('input_text.house_error_from').split('.')[-1] | replace('_', ' ')] %}{% endif %}
+            {% set ups = states.update | selectattr('state', 'eq', 'on') | list | count %}
+            {% if ups %}{% set a.out = a.out + [ups ~ ' update' ~ ('s' if ups != 1) ~ ' to install'] %}{% endif %}
+            {% if states('sensor.hub_500_memory_used') | float(0) > 94 %}
+              {% set a.out = a.out + ['Hub memory is tight'] %}{% endif %}
+            {{ (a.out | join(' · ') if a.out else 'All good')[:255] }}
+
+# Spoken answers for the same things. Sentences: custom_sentences/en/glance.yaml
+intent_script:
+  WorkStatus:
+    speech:
+      text: >-
+        {% set w = states('sensor.work_calendar') %}
+        {% if w in ['unknown', 'unavailable'] %}I can't see your work calendar right now.
+        {% elif w.startswith('Busy until') %}You're in meetings until {{ w[11:] | replace(':00', '') }}.
+        {% elif w.startswith('Free until') %}You're free until {{ w[11:] | replace(':00', '') }}.
+        {% else %}Nothing else on your work calendar today.{% endif %}
+
+  WeatherToday:
+    speech:
+      text: >-
+        {% set w = states('sensor.today_s_weather') %}
+        {% if w in ['unknown', 'unavailable'] %}I don't have today's forecast right now.
+        {% else %}{{ w | replace('High ', 'Today goes up to ') | replace(' · Low ', ' degrees, down to ')
+                       | replace('°', '') | replace(' · ', '. ') | replace('Rain now, dry by', "It's raining now, dry by")
+                       | replace('Rain from', 'Rain from about') }}.{% endif %}

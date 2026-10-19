@@ -1,0 +1,113 @@
+# Reminders. "Remind me to unplug the car in an hour" would otherwise set a delayed command: Home
+# Assistant's own "do this in an hour" hears the whole sentence as a command to run later, and an
+# hour on tries to carry out "I just started charging my car". This is a real one.
+#
+#   script.remind_me {message, minutes}   what Jarvis calls, by voice (custom_sentences/en/reminders.yaml)
+#                                          or from the cloud agent for anything looser
+#   sensor.reminders                       what's coming, kept through restarts in its own attributes
+# When one's due, Jarvis says it and the phone always gets it too (script.tell_resident), checked
+# every minute, so a restart in between only makes it a minute late
+template:
+  - trigger:
+      - trigger: event
+        event_type: reminder_add
+        id: add
+      - trigger: event
+        event_type: reminder_done
+        id: done
+      - trigger: event
+        event_type: reminder_clear
+        id: clear
+    sensor:
+      - name: "Reminders"
+        unique_id: reminders
+        icon: mdi:bell-ring-outline
+        state: >-
+          {% from 'control.jinja' import reminders_next %}
+          {{ reminders_next(trigger.id, trigger.event.data) | from_json | count }}
+        attributes:
+          items: >-
+            {% from 'control.jinja' import reminders_next %}
+            {{ reminders_next(trigger.id, trigger.event.data) | from_json }}
+          next: >-
+            {% from 'control.jinja' import reminders_next %}
+            {% set items = reminders_next(trigger.id, trigger.event.data) | from_json %}
+            {{ (items[0].message ~ ' at ' ~ (items[0].due | timestamp_custom('%-I:%M %p'))) if items else none }}
+
+script:
+  remind_me:
+    alias: "Remind me"
+    description: "Set a reminder: Jarvis says it and it goes to the phone when it's due. Give the message and the minutes from now."
+    icon: mdi:bell-plus-outline
+    mode: queued
+    fields:
+      message:
+        description: "What to remind them of, as a short phrase (unplug the car)"
+        required: true
+        selector:
+          text:
+      minutes:
+        description: "How many minutes from now"
+        required: true
+        selector:
+          number: {min: 1, max: 1440}
+    sequence:
+      - variables:
+          due: "{{ now().timestamp() + (minutes | float(60)) * 60 }}"
+          what: "{{ (message | string) | regex_replace('^(to|that) ', '') }}"
+      - event: reminder_add
+        event_data:
+          id: "{{ now().timestamp() | int }}"
+          message: "{{ what }}"
+          due: "{{ due }}"
+      - variables:
+          result:
+            at: "{{ due | float | timestamp_custom('%-I:%M') }}"
+            message: "{{ what }}"
+      - stop: "Set"
+        response_variable: result
+
+automation:
+  - id: reminder_due
+    alias: "A reminder's due"
+    mode: queued
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - "{{ (state_attr('sensor.reminders', 'items') or []) | selectattr('due', 'le', now().timestamp()) | list | count > 0 }}"
+    actions:
+      - repeat:
+          for_each: "{{ (state_attr('sensor.reminders', 'items') or []) | selectattr('due', 'le', now().timestamp()) | list }}"
+          sequence:
+            - event: reminder_done
+              event_data:
+                id: "{{ repeat.item.id }}"
+            - action: script.tell_resident
+              continue_on_error: true
+              data:
+                title: "Reminder"
+                message: "A reminder: {{ repeat.item.message }}."
+                phone: true
+
+intent_script:
+  RemindMe:
+    description: "A reminder in so many minutes."
+    action:
+      - action: script.remind_me
+        data:
+          message: "{{ reminder }}"
+          minutes: "{{ (minutes | default(0) | int(0)) + (hours | default(0) | int(0)) * 60 }}"
+        response_variable: set
+      - stop: "Done"
+        response_variable: set
+    speech:
+      text: "I'll remind you at {{ action_response.at if action_response is defined else 'the time' }}."
+  RemindersClear:
+    description: "Cancel all the reminders."
+    action:
+      - event: reminder_clear
+    speech:
+      text: "Reminders cleared."

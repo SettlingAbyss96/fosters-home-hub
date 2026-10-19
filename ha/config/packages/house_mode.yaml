@@ -1,0 +1,292 @@
+# House mode: what the house is doing right now, in one place. Morning, Day, Evening, Movie, Calm,
+# Night or Away. Changing it applies the look of the same name (packages/lights.yaml), and the
+# quiet ones (Calm, Movie, Night) also turn Jarvis's voice down, and back up after.
+#
+# Who changes it: routines (packages/routines.yaml, packages/presence.yaml) through
+# script.house_mode_set, which also re-applies the look if the mode is already the asked one
+# ("evening lights" when it's already Evening still sets the lights), and the clock:
+#   - Evening when the sun gets low (3 degrees), from Day or Morning, if someone's home
+#   - Calm the hour before tonight's planned bedtime (sensor.bedtime_plan), from Evening. A fixed
+#     9:30 PM is ten minutes before bed on an early workday and three hours before it on a Saturday
+#   - Morning when the Hub sees someone up during Night, from 45 minutes before the planned wake
+#     time (the Morning look lights the bedroom, a 3 AM trip to the bathroom shouldn't). On a
+#     morning with the wake-up planned, not before the wake time: the wake-up does Morning itself,
+#     and a trip past the Hub half an hour early would otherwise set Morning, light the house up,
+#     and leave the wake-up thinking you're already up, so no alarm
+#   - Calm by the clock only dims what's already on: lights you turned off stay off (asking for
+#     Calm still sets the whole look)
+#   - Day at sunrise, from Morning, and from Night by 11:00 at the latest
+# The clock's moves between Morning, Day, Evening and Calm blend the lights (packages/lights.yaml): a
+# small step a minute for the next 45 minutes instead of the new look at once. You asking, a
+# routine, or anything out of Night goes straight there
+# sensor.natural_house_mode is what the clock alone would say, for routines that end (the movie's
+# over, you're home again) to go back to
+input_select:
+  house_mode:
+    name: "House mode"
+    icon: mdi:home-variant-outline
+    # Day first: a brand-new select starts on its first option, and Day changes the fewest lights
+    options: [Day, Morning, Evening, Movie, Calm, Night, Away]
+
+input_text:
+  # who changed the mode last: me (the default: the dashboard, Jarvis), a routine, or the clock. A
+  # change by the clock leaves lights switched by hand alone (packages/arbiter.yaml), and the
+  # clock's Calm only dims what's on
+  house_mode_by:
+    name: "House mode changed by"
+    icon: mdi:account-question-outline
+    max: 20
+
+input_number:
+  jarvis_normal_volume:
+    name: "Jarvis's normal volume"
+    icon: mdi:account-voice
+    min: 0
+    max: 1
+    step: 0.01
+  jarvis_quiet_volume:
+    name: "Jarvis's quiet volume"
+    icon: mdi:account-voice
+    min: 0
+    max: 1
+    step: 0.01
+
+template:
+  # When the Hub last saw someone, kept through restarts. The motion sensor's own last_changed is
+  # useless for that: a restart resets it, so right after one it looks like someone was just in
+  # front of the Hub (which can send a bedtime nudge to an empty room instead of the phone). Only
+  # real off/on changes count, the unavailable in between doesn't. last_on is when movement started,
+  # last_off when the room went quiet
+  - trigger:
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "on"
+        to: "off"
+    sensor:
+      - name: "Hub last saw someone"
+        unique_id: hub_last_motion
+        icon: mdi:motion-sensor
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          last_on: "{{ now().isoformat() if trigger.to_state.state == 'on' else this.attributes.get('last_on') }}"
+          last_off: "{{ now().isoformat() if trigger.to_state.state == 'off' else this.attributes.get('last_off') }}"
+  - sensor:
+      - name: "Natural house mode"
+        unique_id: natural_house_mode
+        icon: mdi:sun-clock
+        state: >-
+          {% from 'lighting.jinja' import calm_from %}
+          {% set dark = state_attr('sun.sun', 'elevation') | float(0) < 3 %}
+          {% set calm = calm_from() | as_datetime %}
+          {% set late = (calm <= now() < calm + timedelta(hours=6)) or now().hour < 4 %}
+          {% if dark and late %}Calm
+          {% elif dark and now().hour < 12 %}Morning
+          {% elif dark %}Evening
+          {% else %}Day{% endif %}
+
+script:
+  house_mode_set:
+    alias: "Set the house mode"
+    icon: mdi:home-variant-outline
+    mode: queued
+    fields:
+      mode:
+        description: "Morning, Day, Evening, Movie, Calm, Night or Away, or natural for what the clock says"
+        required: true
+        selector:
+          select:
+            options: [Morning, Day, Evening, Movie, Calm, Night, Away, natural]
+      by:
+        description: "me (the default), routine or clock. The clock leaves lights switched by hand alone"
+        selector:
+          select:
+            options: [me, routine, clock]
+    sequence:
+      - variables:
+          target: "{{ states('sensor.natural_house_mode') if (mode | lower) == 'natural' else (mode | capitalize) }}"
+          who: "{{ by | default('me') }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.house_mode_by
+        data:
+          value: "{{ who }}"
+      - if: "{{ is_state('input_select.house_mode', target) }}"
+        then:
+          - action: script.lights_look
+            continue_on_error: true
+            data:
+              look: "{{ target | lower }}"
+              override: "{{ who != 'clock' }}"
+              blend: "{{ who == 'clock' and target in ['Day', 'Evening', 'Calm'] }}"
+        else:
+          - action: input_select.select_option
+            target:
+              entity_id: input_select.house_mode
+            data:
+              option: "{{ target }}"
+
+automation:
+  - id: house_mode_applies_look
+    alias: "House mode sets the lights and Jarvis's voice"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_select.house_mode
+        to: null
+    conditions:
+      - "{{ trigger.from_state is not none and trigger.from_state.state != trigger.to_state.state }}"
+    actions:
+      - variables:
+          quiet: [Calm, Movie, Night]
+          was_quiet: "{{ trigger.from_state.state in quiet }}"
+          now_quiet: "{{ trigger.to_state.state in quiet }}"
+      # the clock going to Calm only dims what's on, and leaves lights switched by hand alone. You
+      # asking for a mode, by button or by voice, gets the whole look. The clock moving between the
+      # day's own looks blends: one step now, and the tick keeps every layer stepping for 45 minutes
+      - variables:
+          clock: "{{ is_state('input_text.house_mode_by', 'clock') }}"
+          blend: >-
+            {{ clock and trigger.from_state.state in ['Morning', 'Day', 'Evening', 'Calm']
+               and trigger.to_state.state in ['Day', 'Evening', 'Calm'] }}
+      - if: "{{ blend }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.lights_blend_until
+            data:
+              datetime: "{% from 'control.jinja' import param %}{{ (now() + timedelta(minutes=param('blend_minutes') | int)).strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: script.lights_look
+        continue_on_error: true
+        data:
+          look: "{{ trigger.to_state.state | lower }}"
+          only_on: "{{ trigger.to_state.state == 'Calm' and clock }}"
+          override: "{{ not clock }}"
+          blend: "{{ blend }}"
+      # Jarvis speaks softer in the quiet modes. The normal level is saved on the way in, so a
+      # volume you picked comes back, not a fixed one
+      - choose:
+          - conditions: "{{ now_quiet and not was_quiet }}"
+            sequence:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.jarvis_normal_volume
+                data:
+                  value: "{{ state_attr('media_player.hub_500_voice_media_player', 'volume_level') | float(0.66) }}"
+              - action: media_player.volume_set
+                continue_on_error: true
+                target:
+                  entity_id: media_player.hub_500_voice_media_player
+                data:
+                  volume_level: "{{ [states('input_number.jarvis_quiet_volume') | float(0.45), states('input_number.jarvis_normal_volume') | float(0.66)] | min }}"
+          - conditions: "{{ was_quiet and not now_quiet }}"
+            sequence:
+              - action: media_player.volume_set
+                continue_on_error: true
+                target:
+                  entity_id: media_player.hub_500_voice_media_player
+                data:
+                  volume_level: "{{ states('input_number.jarvis_normal_volume') | float(0.66) }}"
+
+  - id: house_mode_evening
+    alias: "Evening when the sun gets low"
+    triggers:
+      - trigger: numeric_state
+        entity_id: sun.sun
+        attribute: elevation
+        below: 3
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_clock_modes
+        state: "on"
+      - condition: state
+        entity_id: input_select.house_mode
+        state: [Morning, Day]
+      - "{{ is_state('person.resident', 'home') or is_state('input_boolean.guest_mode', 'on') }}"
+    actions:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Evening
+          by: clock
+
+  # the hour before bed. Before noon the plan is still last night's, so the six hours keep a
+  # morning from counting
+  - id: house_mode_wind_down
+    alias: "Calm the hour before bed"
+    triggers:
+      - trigger: template
+        value_template: >-
+          {% from 'lighting.jinja' import calm_from %}
+          {% set calm = calm_from() | as_datetime %}
+          {{ calm <= now() < calm + timedelta(hours=6) }}
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_clock_modes
+        state: "on"
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Evening
+    actions:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Calm
+          by: clock
+
+  - id: house_mode_morning
+    alias: "Morning when someone's up"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+      - trigger: time
+        at: "11:00:00"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_clock_modes
+        state: "on"
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Night
+      - condition: time
+        after: "04:00:00"
+        before: "12:00:00"
+      - >-
+        {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+        {% set setting = states('input_select.wake_up_workdays' if state_attr('sensor.bedtime_plan', 'workday') else 'input_select.wake_up_weekends') %}
+        {% set alarm_morning = (setting != 'Off' or is_state('input_boolean.wake_up_once', 'on')) and is_state('input_boolean.skip_wake_up', 'off') %}
+        {{ trigger.platform == 'time' or w is none or as_local(w).date() != now().date()
+           or now() >= (w if alarm_morning else w - timedelta(minutes=45)) }}
+    actions:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: natural
+          by: clock
+
+  - id: house_mode_day
+    alias: "Day at sunrise"
+    triggers:
+      - trigger: numeric_state
+        entity_id: sun.sun
+        attribute: elevation
+        above: 3
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_clock_modes
+        state: "on"
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Morning
+    actions:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Day
+          by: clock

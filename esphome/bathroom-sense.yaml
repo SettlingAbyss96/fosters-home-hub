@@ -1,0 +1,15 @@
+# Someone in the bathroom with the door open (the door sensor only knows shut), and the humidity,
+# which is the shower: the wake-up assumes a bathroom light on means a shower today. The radar high
+# on the wall facing the room, the SHT40 away from the shower's direct spray. No light sensor
+substitutions:
+  name: bathroom-sense
+  friendly_name: "Bathroom sense"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  board: !include common/xiao-c6.yaml
+  base: !include common/base.yaml
+  room: !include common/room.yaml

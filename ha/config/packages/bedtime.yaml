@@ -1,0 +1,280 @@
+# The bedtime nudge, planned from real data every afternoon and evening.
+#
+# The plan (sensor.bedtime_plan): when you need to be up tomorrow, minus the sleep goal
+# (input_number.sleep_goal), minus how long falling asleep takes (the Oura ring's latest sleep
+# latency, or 15 minutes without one). "When you need to be up":
+#   - workdays (Monday to Friday, unless "I'm off tomorrow"): settled at work by
+#     input_datetime.work_arrival, so there input_number.arrive_early_minutes before that, minus
+#     the trip (input_number.commute_minutes) and the morning before it, shower included
+#     (input_number.morning_prep_minutes). An alarm time moves around from week to week, the time you
+#     have to be somewhere doesn't, so that's the anchor
+#   - other days: the usual weekend wake time, learned from the ring (sensor.usual_wake_time)
+#   - either way, earlier if tomorrow's first meeting on calendar.work needs it
+# The starting values (tools/ha-apps.sh) are a 9:00 start, 10 minutes early, a 30-minute commute,
+# 45 minutes of morning and 8 hours of sleep. Yours go on the Routines page of the dashboard.
+#
+# The nudge: half an hour before that bedtime, and again at bedtime, if you're home and the house
+# isn't already in Night. Jarvis says it on the Hub when the Hub has seen someone in the last 20
+# minutes or you're at the computer (up and about), otherwise the first one goes to the phone and
+# the second is skipped (probably already in bed). At the computer it pops up on the screen as well.
+# The first one also takes Evening down to Calm, if the clock somehow didn't an hour before bed (a
+# restart right then, say)
+# "Keep me awake" stops it for the night, "remind me in an hour" pushes it back an hour. Both reset
+# at noon. Sentences: custom_sentences/en/routines.yaml
+input_number:
+  sleep_goal:
+    name: "Sleep goal"
+    icon: mdi:sleep
+    min: 5
+    max: 10
+    step: 0.25
+    unit_of_measurement: h
+  arrive_early_minutes:
+    name: "Get to work early by"
+    icon: mdi:clock-fast
+    min: 0
+    max: 60
+    step: 5
+    unit_of_measurement: min
+  commute_minutes:
+    name: "Getting to work"
+    icon: mdi:car
+    min: 10
+    max: 120
+    step: 5
+    unit_of_measurement: min
+  morning_prep_minutes:
+    name: "Morning before leaving"
+    icon: mdi:coffee-outline
+    min: 10
+    max: 120
+    step: 5
+    unit_of_measurement: min
+
+input_boolean:
+  keep_me_awake:
+    name: "Keep me awake tonight"
+    icon: mdi:sleep-off
+  day_off_tomorrow:
+    name: "Off work tomorrow"
+    icon: mdi:beach
+
+input_datetime:
+  work_arrival:
+    name: "Settled at work by"
+    icon: mdi:office-building
+    has_date: false
+    has_time: true
+  bedtime_snooze_until:
+    name: "Bedtime nudge snoozed until"
+    icon: mdi:alarm-snooze
+    has_date: true
+    has_time: true
+  last_bedtime_nudge:
+    name: "Last bedtime nudge"
+    icon: mdi:bed-clock
+    has_date: true
+    has_time: true
+
+template:
+  - trigger:
+      - trigger: homeassistant
+        event: start
+      - trigger: time
+        at: ["12:00:00", "17:00:00", "20:00:00", "22:00:00"]
+      - trigger: state
+        entity_id: [sensor.usual_wake_time, input_number.sleep_goal, input_number.morning_prep_minutes,
+                    input_number.commute_minutes, input_number.arrive_early_minutes, input_datetime.work_arrival,
+                    input_boolean.day_off_tomorrow]
+      - trigger: event
+        event_type: bedtime_plan_refresh
+    action:
+      - if: "{{ trigger.platform == 'homeassistant' }}"
+        then:
+          - delay: "00:01:00"
+      - variables:
+          # the night being planned: tonight if it's after noon, the rest of this one if before
+          day: "{{ (now() + timedelta(days=1 if now().hour >= 12 else 0)).date() | string }}"
+      # at startup the work calendar may not be loaded yet (or there's none); the plan then goes on
+      # the usual wake time
+      - if: "{{ states('calendar.work') not in ['unavailable', 'unknown'] }}"
+        then:
+          - action: calendar.get_events
+            target:
+              entity_id: calendar.work
+            data:
+              start_date_time: "{{ day }}T00:00:00"
+              end_date_time: "{{ day }}T12:00:00"
+            response_variable: cal
+            continue_on_error: true
+      - variables:
+          plan: >-
+            {% set d = as_datetime(day ~ 'T00:00:00') | as_local %}
+            {% set workday = d.weekday() < 5 and is_state('input_boolean.day_off_tomorrow', 'off') %}
+            {% set drive = states('input_number.commute_minutes') | int(30) + states('input_number.arrive_early_minutes') | int(10) %}
+            {% set prep = states('input_number.morning_prep_minutes') | int(45) %}
+            {% if workday %}
+              {% set arrive = (states('input_datetime.work_arrival') or '09:00:00')[:5] %}
+              {% set wake = (arrive[:2] | int) * 60 + (arrive[3:5] | int) - drive - prep %}
+              {% set why = 'settled at work by ' ~ (arrive | regex_replace('^0', '')) %}
+            {% else %}
+              {% set wake = (state_attr('sensor.usual_wake_time', 'weekend_minutes') or 540) | int %}
+              {% set why = 'usual weekend wake' %}
+            {% endif %}
+            {% set evs = (cal['calendar.work'].events if cal is defined and cal and 'calendar.work' in cal else []) %}
+            {% if evs | count > 0 %}
+              {% set first = as_local(as_datetime(evs[0].start)) %}
+              {% set need = first.hour * 60 + first.minute - drive - prep %}
+              {% if need < wake %}{% set wake = need %}{% set why = 'first meeting at ' ~ first.strftime('%-I:%M') %}{% endif %}
+            {% endif %}
+            {% set latency = states('sensor.oura_ring_sleep_latency') | float(15) %}
+            {% set goal = states('input_number.sleep_goal') | float(8) %}
+            {% set wake_at = d + timedelta(minutes=wake) %}
+            {% set bed_at = wake_at - timedelta(minutes=goal * 60 + latency) %}
+            {{ {'wake': wake_at.isoformat(), 'bed': bed_at.isoformat(), 'nudge': (bed_at - timedelta(minutes=30)).isoformat(),
+                'why': why, 'goal': goal, 'latency': latency | round(0) | int, 'workday': workday} }}
+    sensor:
+      - name: "Bedtime plan"
+        unique_id: bedtime_plan
+        icon: mdi:bed-clock
+        device_class: timestamp
+        state: "{{ plan.bed }}"
+        attributes:
+          wake: "{{ plan.wake }}"
+          nudge_at: "{{ plan.nudge }}"
+          reason: "{{ plan.why }}"
+          sleep_goal: "{{ plan.goal }}"
+          falling_asleep_minutes: "{{ plan.latency }}"
+          workday: "{{ plan.workday }}"
+
+automation:
+  - id: bedtime_nudge
+    alias: "Bedtime nudge"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_bedtime_nudge
+        state: "on"
+      - "{{ (states('sensor.bedtime_plan') | as_datetime(none)) is not none and (state_attr('sensor.bedtime_plan', 'nudge_at') | as_datetime(none)) is not none }}"
+      - condition: state
+        entity_id: input_boolean.keep_me_awake
+        state: "off"
+      - condition: state
+        entity_id: person.resident
+        state: home
+      - "{{ states('input_select.house_mode') not in ['Night', 'Away'] }}"
+      # due: the nudge time, then bedtime, then wherever a snooze put it, each only once, and
+      # nothing more than two hours past bedtime
+      - >-
+        {% set b = states('sensor.bedtime_plan') | as_datetime(none) %}
+        {% set n = state_attr('sensor.bedtime_plan', 'nudge_at') | as_datetime(none) %}
+        {% if b is none or n is none %}false{% else %}
+        {% set snooze = states('input_datetime.bedtime_snooze_until') | as_datetime(none) %}
+        {% set last = states('input_datetime.last_bedtime_nudge') | as_datetime(none) %}
+        {% set due = [n] + ([b] if now() >= b else []) + ([snooze | as_local] if snooze is not none and snooze | as_local > n else []) %}
+        {% set due = due | select('le', now()) | list %}
+        {{ now() < b + timedelta(hours=2) and due | count > 0
+           and (last is none or last | as_local < due | max)
+           and (snooze is none or now() >= snooze | as_local) }}
+        {% endif %}
+    actions:
+      - variables:
+          at_bedtime: "{{ now() >= as_local(states('sensor.bedtime_plan') | as_datetime) }}"
+          seen: >-
+            {% set last = states('sensor.hub_last_saw_someone') | as_datetime(none) %}
+            {{ is_state('binary_sensor.hub_500_motion', 'on') or is_state('binary_sensor.at_the_desk', 'on')
+               or (last is not none and (now() - last).total_seconds() < 20 * 60) }}
+          goal: "{{ states('input_number.sleep_goal') | float(8) }}"
+          hours: "{{ (goal | string).replace('.0', '').replace('.5', ' and a half').replace('.25', ' and a quarter').replace('.75', ' and three quarters') }}"
+          message: >-
+            {% set bt = as_local(states('sensor.bedtime_plan') | as_datetime).strftime('%-I:%M') %}
+            {% set wt = as_local(state_attr('sensor.bedtime_plan', 'wake') | as_datetime).strftime('%-I:%M') %}
+            {% if now() >= as_local(states('sensor.bedtime_plan') | as_datetime) %}It's bedtime. Up at {{ wt }} tomorrow.
+            {% else %}Bed by {{ bt }} gets you {{ hours }} hours before {{ wt }}.{% endif %}
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.last_bedtime_nudge
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - choose:
+          - conditions: "{{ seen }}"
+            sequence:
+              - action: assist_satellite.announce
+                continue_on_error: true
+                target:
+                  entity_id: assist_satellite.hub_500_voice_assist_satellite
+                data:
+                  message: "{{ message }}"
+                  preannounce: false
+          - conditions: "{{ not at_bedtime }}"
+            sequence:
+              - action: notify.mobile_app_phone
+                continue_on_error: true
+                data:
+                  title: "Bedtime"
+                  message: "{{ message }}"
+      # at the computer: on the screen too, where it's harder to miss than a voice from another room
+      - if: "{{ is_state('binary_sensor.at_the_desk', 'on') }}"
+        then:
+          - action: notify.computer
+            data:
+              title: "Bedtime"
+              message: "{{ message }}"
+            continue_on_error: true
+      - if: "{{ not at_bedtime and is_state('input_select.house_mode', 'Evening') }}"
+        then:
+          - action: script.house_mode_set
+            continue_on_error: true
+            data:
+              mode: Calm
+              by: clock
+
+  - id: bedtime_reset_at_noon
+    alias: "Bedtime nudge resets at noon"
+    triggers:
+      - trigger: time
+        at: "12:00:00"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: [input_boolean.keep_me_awake, input_boolean.day_off_tomorrow, input_boolean.skip_wake_up]
+
+intent_script:
+  DayOffTomorrow:
+    description: "Off work tomorrow: plan tonight's bedtime like a weekend."
+    action:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.day_off_tomorrow
+    speech:
+      text: "No early start tomorrow, then."
+  KeepMeAwake:
+    description: "No bedtime nudge tonight."
+    action:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.keep_me_awake
+    speech:
+      text: "No bedtime nudge tonight."
+  BedtimeSnooze:
+    description: "Push tonight's bedtime nudge back an hour."
+    action:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.bedtime_snooze_until
+        data:
+          datetime: "{{ (now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S') }}"
+    speech:
+      text: "I'll remind you at {{ (now() + timedelta(hours=1)).strftime('%-I:%M') }}."
+  BedtimeWhen:
+    description: "When to go to bed tonight, and why."
+    speech:
+      text: >-
+        {% set b = states('sensor.bedtime_plan') | as_datetime(none) %}
+        {% if b is none %}No plan yet.
+        {% else %}{% set h = (state_attr('sensor.bedtime_plan', 'sleep_goal') | string).replace('.0', '').replace('.5', ' and a half').replace('.25', ' and a quarter').replace('.75', ' and three quarters') %}
+        {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+        By {{ as_local(b).strftime('%-I:%M') }}, for {{ h }} hours{{ (' before ' ~ as_local(w).strftime('%-I:%M')) if w is not none else '' }}.{% endif %}

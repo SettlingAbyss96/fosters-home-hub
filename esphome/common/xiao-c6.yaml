@@ -1,0 +1,39 @@
+# The board every node is built on: Seeed's XIAO ESP32-C6. Wi-Fi 6, Bluetooth 5 (good enough to be a
+# Bluetooth proxy, which the C3 isn't really) and Thread/Zigbee radios for later, in a 21 x 17.5 mm
+# board for about $5. Pins as Seeed's wiki has them: I2C on D4/D5 (GPIO22/23), the UART on D6/D7
+# (GPIO16/17), and GPIO3/GPIO14 belong to the antenna switch, GPIO15 to the user LED, GPIO9 to BOOT.
+# 4 MB of flash, which the generic C6 board definition (8 MB) has to be told
+esp32:
+  board: esp32-c6-devkitc-1
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# The antenna: GPIO3 low turns the RF switch on, GPIO14 low picks the ceramic antenna on the board
+# (high would be the external connector). Both low from the first moment
+output:
+  - platform: gpio
+    id: rf_switch_enable
+    pin: GPIO3
+  - platform: gpio
+    id: antenna_select
+    pin: GPIO14
+
+esphome:
+  on_boot:
+    priority: 1000
+    then:
+      - output.turn_off: rf_switch_enable
+      - output.turn_off: antenna_select
+
+status_led:
+  pin:
+    number: GPIO15
+    inverted: true
+
+i2c:
+  id: bus_i2c
+  sda: GPIO22
+  scl: GPIO23
+  frequency: 100kHz

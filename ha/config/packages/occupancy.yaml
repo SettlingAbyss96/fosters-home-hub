@@ -1,0 +1,200 @@
+# Someone home, phone or no phone. "Home" meaning "the phone is home" breaks the first time the phone
+# spends an afternoon somewhere without you (a repair, a drawer at a friend's): you come back to a
+# house that thinks it's empty, and leave again with the house none the wiser. A guest on their own
+# has the same problem. The front door is the fix: nobody gets in or out without it.
+#
+# binary_sensor.someone_home is the "wasp in a box" (custom_templates/estimates.jinja): the door
+# closes, and if anything inside moves after that, someone's in, and stays in until the door opens
+# again. If nothing moves inside for 5 minutes after it closes, the house is empty (docs/control.md
+# says why it's 5 and not 10). It's on while it's still checking, so a door closing never makes the
+# house empty by itself. Without a door sensor (binary_sensor.front_door, docs/devices.md) it's
+# simply the phone being home.
+#
+# What uses it:
+#   - leaving (packages/presence.yaml): Away needs the phone gone and the house empty. A guest still
+#     moving about keeps the house as it is, with a note on the phone and a "Nobody's home" button.
+#     And without the phone (left somewhere) the house going empty is enough
+#   - arriving without the phone: the door, then something moving inside, while the house is Away,
+#     is someone coming in. Maybe you, maybe a guest with a key: the lights come on the same either
+#     way, without the welcome home, and the phone gets "Someone came in" with That's a guest and
+#     Not me (packages/security.yaml answers those)
+#   - Jarvis talks out loud when someone's home, not only when the phone is (packages/tell.yaml)
+template:
+  - trigger:
+      - trigger: state
+        entity_id: binary_sensor.front_door
+        from: "on"
+        to: "off"
+        id: door_close
+      - trigger: state
+        entity_id: binary_sensor.front_door
+        to: "on"
+        id: door_open
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+        id: hub
+      # a door inside the home opening or closing is someone inside, as sure as anything gets
+      - trigger: state
+        entity_id: [binary_sensor.bedroom_door, binary_sensor.bathroom_door]
+        from: ["on", "off"]
+        to: ["on", "off"]
+        id: room_door
+      # a light switched at the wall. Not from the app: that works from anywhere, and turning a lamp
+      # off from the stairs on the way out would keep the house "in" after you'd left
+      - trigger: event
+        event_type: light_manual
+        event_data:
+          by: wall
+        id: light
+      - trigger: state
+        entity_id: binary_sensor.tv_picture
+        from: "off"
+        to: "on"
+        id: tv
+      - trigger: template
+        value_template: >-
+          {% set t = states('sensor.computer_last_active') | as_datetime(none) %}
+          {{ is_state('sensor.computer_session_state', 'Unlocked') and t is not none and (now() - t).total_seconds() < 90 }}
+        id: laptop
+      - trigger: state
+        entity_id: assist_satellite.hub_500_voice_assist_satellite
+        to: listening
+        id: voice
+      - trigger: event
+        event_type: wake_up_confirmed
+        id: said
+      - trigger: state
+        entity_id: person.resident
+        id: phone
+      - trigger: time_pattern
+        minutes: "/1"
+        id: tick
+    binary_sensor:
+      - name: "Someone home"
+        unique_id: someone_home
+        icon: mdi:home-account
+        device_class: occupancy
+        state: >-
+          {% from 'estimates.jinja' import occupancy_next %}
+          {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
+                           'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+          {% set kind = 'inside' if trigger.id in labels else trigger.id %}
+          {% set p = occupancy_next(kind, labels.get(trigger.id, '')) | from_json %}
+          {% set door = states('binary_sensor.front_door') %}
+          {% if door not in ['on', 'off'] or p.phase == 'unknown' %}{{ is_state('person.resident', 'home') }}
+          {% else %}{{ p.phase in ['in', 'checking'] or is_state('binary_sensor.front_door', 'on') }}{% endif %}
+        attributes:
+          phase: >-
+            {% from 'estimates.jinja' import occupancy_next %}
+            {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
+                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+            {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).phase }}
+          door_closed_at: >-
+            {% from 'estimates.jinja' import occupancy_next %}
+            {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
+                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+            {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).door_closed_at }}
+          last_inside: >-
+            {% from 'estimates.jinja' import occupancy_next %}
+            {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
+                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+            {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).last_inside }}
+          why: >-
+            {% from 'estimates.jinja' import occupancy_next %}
+            {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
+                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+            {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).why }}
+
+automation:
+  # In without the phone: the house is Away, the door opened in the last ten minutes, and something
+  # inside has moved since. The phone way in (packages/presence.yaml) handles it when the phone's
+  # here; this is for when it isn't. The snapshot needs a doorbell camera (camera.doorbell); without
+  # one the notification just comes without a picture
+  - id: arrived_without_the_phone
+    alias: "Someone came in (no phone)"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.someone_home
+        attribute: phase
+        to: in
+    conditions:
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Away
+      - "{{ not is_state('person.resident', 'home') and not is_state('binary_sensor.phone_on_home_wifi', 'on') }}"
+      - >-
+        {% from 'control.jinja' import param %}
+        {% set d = states.binary_sensor.front_door %}
+        {{ d is not none and (now() - d.last_changed).total_seconds() < (param('arrival_after_door_minutes') | float) * 60 }}
+    actions:
+      - action: script.arriving_home
+        continue_on_error: true
+        data:
+          who: someone
+      - if: "{{ states.camera.doorbell is not none }}"
+        then:
+          - action: camera.snapshot
+            continue_on_error: true
+            target:
+              entity_id: camera.doorbell
+            data:
+              filename: /config/www/doorbell_last.jpg
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Someone came in"
+          message: >-
+            The front door, then {{ state_attr('binary_sensor.someone_home', 'why') or 'movement inside' }}, and your phone isn't home.
+            The lights are on.
+          data:
+            image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
+            push:
+              interruption-level: time-sensitive
+            actions:
+              - action: SOMEONE_IN_GUEST
+                title: "That's a guest"
+              - action: SOMEONE_IN_NOT_ME
+                title: "Not me"
+                destructive: true
+
+  # The phone left but the house isn't empty: someone moved inside after the door closed. Leave
+  # everything as it is and say so, with a way to go Away anyway
+  - id: left_but_someone_home
+    alias: "Left, but someone's still home"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: person.resident
+        from: home
+        for: "00:03:00"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.guest_mode
+        state: "off"
+      - "{{ not is_state('person.resident', 'home') and not is_state('binary_sensor.phone_on_home_wifi', 'on') }}"
+      - "{{ states('binary_sensor.front_door') in ['on', 'off'] and state_attr('binary_sensor.someone_home', 'phase') == 'in' }}"
+    actions:
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Left home"
+          message: "Someone's still home ({{ state_attr('binary_sensor.someone_home', 'why') }} after the door closed), so I've left everything as it is."
+          data:
+            tag: left_but_someone_home
+            actions:
+              - action: NOBODY_HOME
+                title: "Nobody's home"
+
+  - id: nobody_home_answer
+    alias: "Nobody's home, from the phone"
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: NOBODY_HOME
+    actions:
+      - action: script.leaving_home
+        continue_on_error: true

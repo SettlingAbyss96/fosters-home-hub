@@ -1,0 +1,75 @@
+# Health trends: the last week and month from an Oura ring, in one line Jarvis can read. Needs the
+# community Oura integration (tools/ha-extras.sh) and your own Oura developer app; without a ring
+# this just says "No data yet". The ring's own sensors are today's numbers only. The history is in
+# Home Assistant's long-term statistics (the integration can import it back as far as your account
+# goes), so this asks the recorder for the last 30 days, day by day, and averages them: the 7-day and
+# 30-day sleep score, hours slept, readiness, HRV, lowest night heart rate and steps. Today doesn't
+# count, it isn't over. Refreshed at startup, every three hours, and when a new night's sleep score
+# lands
+template:
+  - trigger:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        hours: "/3"
+      - trigger: state
+        entity_id: sensor.oura_ring_sleep_score
+        to: null
+      - trigger: event
+        event_type: health_trends_refresh
+    action:
+      # at startup the recorder may not be ready to answer yet
+      - if: "{{ trigger.platform == 'homeassistant' }}"
+        then:
+          - delay: "00:01:00"
+      - action: recorder.get_statistics
+        data:
+          start_time: "{{ (today_at() - timedelta(days=30)).strftime('%Y-%m-%d %H:%M:%S') }}"
+          end_time: "{{ today_at().strftime('%Y-%m-%d %H:%M:%S') }}"
+          period: day
+          types: [mean, state]
+          statistic_ids:
+            - sensor.oura_ring_sleep_score
+            - sensor.oura_ring_total_sleep_duration
+            - sensor.oura_ring_readiness_score
+            - sensor.oura_ring_average_sleep_hrv
+            - sensor.oura_ring_lowest_sleep_heart_rate
+            - sensor.oura_ring_steps
+        response_variable: stats
+        continue_on_error: true
+      - variables:
+          trends: >-
+            {% set s = (stats.statistics if stats is defined and stats.statistics is defined else {}) %}
+            {% set out = namespace(d={}) %}
+            {% for key, eid in [('sleep', 'sensor.oura_ring_sleep_score'), ('hours', 'sensor.oura_ring_total_sleep_duration'),
+                                ('readiness', 'sensor.oura_ring_readiness_score'), ('hrv', 'sensor.oura_ring_average_sleep_hrv'),
+                                ('hr', 'sensor.oura_ring_lowest_sleep_heart_rate'), ('steps', 'sensor.oura_ring_steps')] %}
+              {% set rows = s.get(eid, []) %}
+              {% set got = namespace(v=[]) %}
+              {% for row in rows %}
+                {% set v = row.get('state') if key == 'steps' else (row.get('mean') if row.get('mean') is not none else row.get('state')) %}
+                {% if v is not none %}{% set got.v = got.v + [v] %}{% endif %}
+              {% endfor %}
+              {% set vals = got.v %}
+              {% set last7 = vals[-7:] %}
+              {% set out.d = dict(out.d, **{key ~ '_7': (last7 | sum / last7 | count) if last7 else none,
+                                             key ~ '_30': (vals | sum / vals | count) if vals else none}) %}
+            {% endfor %}
+            {{ out.d }}
+    sensor:
+      - name: "Health trends"
+        unique_id: health_trends
+        icon: mdi:chart-line
+        state: >-
+          {% if trends is defined and trends is mapping and trends.get('sleep_7') is not none %}
+            {% set t = trends %}
+            Last 7 days: sleep score {{ t.sleep_7 | round(0) | int }}, {{ t.hours_7 | round(1) }} h a night, readiness {{ t.readiness_7 | round(0) | int }}, HRV {{ t.hrv_7 | round(0) | int }} ms, lowest heart rate {{ t.hr_7 | round(0) | int }}, {{ '{:,}'.format(t.steps_7 | round(0) | int) }} steps a day. Last 30 days: sleep score {{ t.sleep_30 | round(0) | int }}, {{ t.hours_30 | round(1) }} h, readiness {{ t.readiness_30 | round(0) | int }}, HRV {{ t.hrv_30 | round(0) | int }} ms, lowest heart rate {{ t.hr_30 | round(0) | int }}, {{ '{:,}'.format(t.steps_30 | round(0) | int) }} steps.
+          {% else %}{{ this.state if this.state not in ['unknown', 'unavailable', None] else 'No data yet' }}{% endif %}
+        attributes:
+          sleep_score_7d: "{{ (trends.sleep_7 | round(1)) if trends is defined and trends is mapping and trends.get('sleep_7') is not none else this.attributes.get('sleep_score_7d') }}"
+          sleep_score_30d: "{{ (trends.sleep_30 | round(1)) if trends is defined and trends is mapping and trends.get('sleep_30') is not none else this.attributes.get('sleep_score_30d') }}"
+          sleep_hours_7d: "{{ (trends.hours_7 | round(2)) if trends is defined and trends is mapping and trends.get('hours_7') is not none else this.attributes.get('sleep_hours_7d') }}"
+          sleep_hours_30d: "{{ (trends.hours_30 | round(2)) if trends is defined and trends is mapping and trends.get('hours_30') is not none else this.attributes.get('sleep_hours_30d') }}"
+          readiness_7d: "{{ (trends.readiness_7 | round(1)) if trends is defined and trends is mapping and trends.get('readiness_7') is not none else this.attributes.get('readiness_7d') }}"
+          hrv_7d: "{{ (trends.hrv_7 | round(1)) if trends is defined and trends is mapping and trends.get('hrv_7') is not none else this.attributes.get('hrv_7d') }}"
+          steps_7d: "{{ (trends.steps_7 | round(0)) if trends is defined and trends is mapping and trends.get('steps_7') is not none else this.attributes.get('steps_7d') }}"

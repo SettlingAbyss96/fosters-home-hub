@@ -1,0 +1,33 @@
+# What every node has: Wi-Fi, the encrypted API Home Assistant talks to, updates over Wi-Fi from
+# the Hub (tools/esphome.sh), the time from the internet so a node keeps working while Home
+# Assistant restarts, and a few numbers about its own health. The secrets (and the timezone, which
+# says roughly where the house is) come from /opt/ha-hub/esphome/secrets.yaml on the Hub
+# (host/78-esphome.sh), never from the repo
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+logger:
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: !secret timezone
+
+sensor:
+  - platform: wifi_signal
+    name: "Wi-Fi signal"
+    update_interval: 120s
+    entity_category: diagnostic
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 300s
+    entity_category: diagnostic

@@ -1,0 +1,113 @@
+{
+ "type": "grid",
+ "column_span": 3,
+ "cards": [
+  {
+   "type": "custom:mushroom-chips-card",
+   "alignment": "center",
+   "chips": [
+    {
+     "type": "template",
+     "icon": "{{ {'Morning': 'mdi:weather-sunset-up', 'Day': 'mdi:white-balance-sunny', 'Evening': 'mdi:weather-sunset', 'Movie': 'mdi:movie-open', 'Calm': 'mdi:candle', 'Night': 'mdi:weather-night', 'Away': 'mdi:home-export-outline'}.get(states('input_select.house_mode'), 'mdi:home') }}",
+     "content": "{{ states('input_select.house_mode') }} mode{{ ' · guests' if is_state('input_boolean.guest_mode', 'on') else '' }}",
+     "tap_action": {
+      "action": "navigate",
+      "navigation_path": "/home-hub/routines"
+     }
+    },
+    {
+     "type": "template",
+     "icon": "mdi:weather-sunset-up",
+     "content": "Morning",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.morning_mode"
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') == 'morning' else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:white-balance-sunny",
+     "content": "Day",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.day_mode"
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') == 'day' else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:weather-sunset",
+     "content": "Evening",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.evening_mode"
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') in ['evening'] else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:movie-open",
+     "content": "Movie",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.movie_night"
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') in ['movie', 'intermission'] else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:candle",
+     "content": "Calm",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.calm_mode"
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') in ['calm'] else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:brightness-7",
+     "content": "Bright",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.lights_look",
+      "data": {
+       "look": "bright"
+      }
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') in ['bright'] else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:bed",
+     "content": "Goodnight",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.goodnight"
+     },
+     "icon_color": "{{ 'amber' if states('input_text.lights_look') in ['night'] else 'grey' }}"
+    },
+    {
+     "type": "template",
+     "icon": "mdi:lightbulb-off-outline",
+     "content": "Lights out",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.lights_look",
+      "data": {
+       "look": "off"
+      },
+      "confirmation": {
+       "text": "Every light off?"
+      }
+     },
+     "icon_color": "{{ 'amber' if states.light | selectattr('state', 'eq', 'on') | list | count == 0 else 'grey' }}"
+    }
+   ],
+   "grid_options": {
+    "columns": "full"
+   }
+  }
+ ]
+}

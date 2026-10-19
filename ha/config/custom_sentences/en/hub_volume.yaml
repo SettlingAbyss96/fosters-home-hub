@@ -1,0 +1,24 @@
+# Relative volume for the Hub's speaker. The intents are in packages/hub_volume.yaml.
+language: "en"
+intents:
+  HubVolumeDown:
+    data:
+      - sentences:
+          - "(turn|bring) [the] volume down [by {step}[%| percent]]"
+          - "(turn|bring) down [the] volume [by {step}[%| percent]]"
+          - "(reduce|lower|decrease) [the] volume [by {step}[%| percent]]"
+          - "volume down [by {step}[%| percent]]"
+          - "[be] quieter"
+  HubVolumeUp:
+    data:
+      - sentences:
+          - "(turn|bring) [the] volume up [by {step}[%| percent]]"
+          - "(turn|bring) up [the] volume [by {step}[%| percent]]"
+          - "(increase|raise) [the] volume [by {step}[%| percent]]"
+          - "volume up [by {step}[%| percent]]"
+          - "louder"
+lists:
+  step:
+    range:
+      from: 1
+      to: 100

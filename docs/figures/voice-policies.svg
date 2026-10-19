@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="430" viewBox="0 0 760 430" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<rect x="0.5" y="0.5" width="759" height="429" rx="10" fill="white" stroke="#e7e6e2"/>
+<text x="84" y="28" font-size="16" font-weight="600" fill="#0b0b0b">Faster against cutting me off</text>
+<text x="84" y="47" font-size="12.5" fill="#52514e">Rules for when to end the turn, replayed on the same saved turns</text>
+<line x1="127.2" y1="62" x2="127.2" y2="366" stroke="#e7e6e2"/>
+<text x="127.2" y="386" font-size="13" text-anchor="middle" fill="#52514e">0</text>
+<line x1="213.6" y1="62" x2="213.6" y2="366" stroke="#e7e6e2"/>
+<text x="213.6" y="386" font-size="13" text-anchor="middle" fill="#52514e">1</text>
+<line x1="300.0" y1="62" x2="300.0" y2="366" stroke="#e7e6e2"/>
+<text x="300.0" y="386" font-size="13" text-anchor="middle" fill="#52514e">2</text>
+<line x1="386.4" y1="62" x2="386.4" y2="366" stroke="#e7e6e2"/>
+<text x="386.4" y="386" font-size="13" text-anchor="middle" fill="#52514e">3</text>
+<line x1="472.8" y1="62" x2="472.8" y2="366" stroke="#e7e6e2"/>
+<text x="472.8" y="386" font-size="13" text-anchor="middle" fill="#52514e">4</text>
+<line x1="559.2" y1="62" x2="559.2" y2="366" stroke="#e7e6e2"/>
+<text x="559.2" y="386" font-size="13" text-anchor="middle" fill="#52514e">5</text>
+<line x1="645.6" y1="62" x2="645.6" y2="366" stroke="#e7e6e2"/>
+<text x="645.6" y="386" font-size="13" text-anchor="middle" fill="#52514e">6</text>
+<line x1="732.0" y1="62" x2="732.0" y2="366" stroke="#e7e6e2"/>
+<text x="732.0" y="386" font-size="13" text-anchor="middle" fill="#52514e">7</text>
+<line x1="84" y1="366.0" x2="732" y2="366.0" stroke="#e7e6e2"/>
+<text x="76" y="370.0" font-size="13" text-anchor="end" fill="#52514e">0.4</text>
+<line x1="84" y1="322.6" x2="732" y2="322.6" stroke="#e7e6e2"/>
+<text x="76" y="326.6" font-size="13" text-anchor="end" fill="#52514e">0.5</text>
+<line x1="84" y1="279.1" x2="732" y2="279.1" stroke="#e7e6e2"/>
+<text x="76" y="283.1" font-size="13" text-anchor="end" fill="#52514e">0.6</text>
+<line x1="84" y1="235.7" x2="732" y2="235.7" stroke="#e7e6e2"/>
+<text x="76" y="239.7" font-size="13" text-anchor="end" fill="#52514e">0.7</text>
+<line x1="84" y1="192.3" x2="732" y2="192.3" stroke="#e7e6e2"/>
+<text x="76" y="196.3" font-size="13" text-anchor="end" fill="#52514e">0.8</text>
+<line x1="84" y1="148.9" x2="732" y2="148.9" stroke="#e7e6e2"/>
+<text x="76" y="152.9" font-size="13" text-anchor="end" fill="#52514e">0.9</text>
+<line x1="84" y1="105.4" x2="732" y2="105.4" stroke="#e7e6e2"/>
+<text x="76" y="109.4" font-size="13" text-anchor="end" fill="#52514e">1</text>
+<line x1="84" y1="62.0" x2="732" y2="62.0" stroke="#e7e6e2"/>
+<text x="76" y="66.0" font-size="13" text-anchor="end" fill="#52514e">1.1</text>
+<line x1="84" y1="366" x2="732" y2="366" stroke="#0b0b0b" stroke-width="1"/>
+<line x1="84" y1="62" x2="84" y2="366" stroke="#0b0b0b" stroke-width="1"/>
+<circle cx="645.6" cy="123.2" r="5" fill="#8a8984" stroke="white" stroke-width="1.5"/>
+<text x="635.6" y="127.2" font-size="12" text-anchor="end" fill="#52514e" font-weight="normal">Any pause from 0.2 s, over 80% (50 turns)</text>
+<circle cx="300.0" cy="227.0" r="5" fill="#8a8984" stroke="white" stroke-width="1.5"/>
+<text x="310.0" y="231.0" font-size="12" text-anchor="start" fill="#52514e" font-weight="normal">From 0.45 s, over 80% (51 turns)</text>
+<text x="310.0" y="247.0" font-size="12" text-anchor="start" fill="#52514e" font-weight="normal">0.45 / 0.6 s at 95 / 85% (51 turns)</text>
+<circle cx="213.6" cy="285.2" r="5" fill="#8a8984" stroke="white" stroke-width="1.5"/>
+<text x="223.6" y="289.2" font-size="12" text-anchor="start" fill="#52514e" font-weight="normal">From 0.6 s, over 80% (53 turns)</text>
+<circle cx="386.4" cy="176.7" r="5" fill="#8a8984" stroke="white" stroke-width="1.5"/>
+<text x="396.4" y="180.7" font-size="12" text-anchor="start" fill="#52514e" font-weight="normal">0.3 / 0.45 / 0.6 s at 97 / 90 / 80% (51 turns)</text>
+<circle cx="300.0" cy="194.0" r="6" fill="#2a78d6" stroke="white" stroke-width="1.5"/>
+<text x="310.0" y="198.0" font-size="12" text-anchor="start" fill="#0b0b0b" font-weight="normal">Running: 0.3 / 0.45 / 0.6 / 0.9 s at 98 / 95 / 85 / 50% (51 turns)</text>
+<text x="408.0" y="414" font-size="13.5" text-anchor="middle" fill="#0b0b0b">Times it cut me off mid-thought (of 69 turns)</text>
+<text x="24" y="214.0" font-size="13.5" text-anchor="middle" fill="#0b0b0b" transform="rotate(-90 24 214.0)">Median seconds saved</text>
+</svg>

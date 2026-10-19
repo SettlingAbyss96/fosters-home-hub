@@ -1,0 +1,109 @@
+# The living room TV (a Fire TV, over ADB): power, volume, playback, apps. Intents in packages/tv.yaml.
+# Whisper tends to hear "turn off my TV", and the built-in sentences only know "the TV", so the
+# request fell through to the local model, which went looking for a TV in the hallway.
+# "Off" means ambient mode, like the remote's short press. All the way off has to be asked for.
+#
+# One intent per direction (on and off, up and down, mute and unmute), not one intent with a slot
+# for which way. Two reasons, both found by testing: fuzzy matching kept landing loose requests
+# ("bring the TV back up") on the slot version with the slot empty, and the cloud agent can call
+# these intents as tools but can't fill a slot, so "a bit quieter" turned it up
+language: "en"
+intents:
+  TvOn:
+    data:
+      - sentences:
+          - "(turn|switch) on [the|my] (TV|television)"
+          - "(turn|switch) [the|my] (TV|television) on"
+          - "[the|my] (TV|television) on"
+          - "wake [up] [the|my] (TV|television) [up]"
+  TvOff:
+    data:
+      - sentences:
+          - "(turn|switch|shut) off [the|my] (TV|television)"
+          - "(turn|switch|shut) [the|my] (TV|television) off"
+          - "[the|my] (TV|television) off"
+  TvFullOff:
+    data:
+      - sentences:
+          - "(turn|switch|shut|power) [the|my] (TV|television) (all the way|completely|fully|right) off"
+          - "(turn|switch|shut|power) [the|my] (TV|television) off (all the way|completely|fully|for real|for the night)"
+          - "(turn|switch|shut|power) (all the way|completely|fully) off [the|my] (TV|television)"
+          - "power down [the|my] (TV|television)"
+  # The built-in volume, mute and pause sentences ignored "TV" and went for the room Jarvis was
+  # asked in, which put the Hub's own speaker at 1%
+  TvVolumeUp:
+    data:
+      - sentences:
+          - "(turn|crank) up [the|my] (TV|television) [volume]"
+          - "(turn|crank) [the|my] (TV|television) [volume] up"
+          - "[the] (TV|television) volume up"
+          - "make [the|my] (TV|television) louder"
+          - "(raise|increase) [the|my] (TV|television) volume"
+  TvVolumeDown:
+    data:
+      - sentences:
+          - "turn down [the|my] (TV|television) [volume]"
+          - "turn [the|my] (TV|television) [volume] down"
+          - "[the] (TV|television) volume down"
+          - "make [the|my] (TV|television) (quieter|softer)"
+          - "(lower|decrease) [the|my] (TV|television) volume"
+  TvVolumeSet:
+    data:
+      - sentences:
+          - "(set|put|turn) [the|my] (TV|television) volume [to] {tv_level} [percent]"
+          - "(set|put|turn) [the] volume (on|of) [the|my] (TV|television) [to] {tv_level} [percent]"
+          - "[the|my] (TV|television) volume [to] {tv_level} [percent]"
+  TvMute:
+    data:
+      - sentences:
+          - "(mute|silence) [the|my] (TV|television)"
+          - "(mute|silence) [the] (TV|television) (sound|audio|volume)"
+  TvUnmute:
+    data:
+      - sentences:
+          - "unmute [the|my] (TV|television)"
+          - "(TV|television) sound [back] on"
+  TvPause:
+    data:
+      - sentences:
+          - "(pause|stop) [the|my] (TV|television)"
+          - "(pause|stop) (it|that|what's) on the (TV|television)"
+  TvResume:
+    data:
+      - sentences:
+          - "(resume|unpause|play) [the|my] (TV|television)"
+          - "(resume|unpause|play) (it|that|what's) on the (TV|television)"
+  TvOpenApp:
+    data:
+      - sentences:
+          - "(open|launch|start|put on) {tv_app} [on the (TV|television)]"
+  TvAmbient:
+    data:
+      - sentences:
+          - "(put|switch|set) [the] (TV|television) (in|into|to) (ambient [mode]|screensaver [mode]|picture mode)"
+          - "(ambient mode|screensaver) [on the (TV|television)]"
+          - "(show|put up) [the] (pictures|ambient pictures|screensaver) on the (TV|television)"
+  TvStatus:
+    data:
+      - sentences:
+          - "what's (on|playing on) [the] (TV|television)"
+          - "what is (on|playing on) [the] (TV|television)"
+          - "is [the] (TV|television) (on|off|playing)"
+          - "what's the (TV|television) doing"
+lists:
+  tv_level:
+    range:
+      from: 0
+      to: 100
+  tv_app:
+    values:
+      - in: "netflix"
+        out: "Netflix"
+      - in: "(youtube|you tube)"
+        out: "YouTube"
+      - in: "(disney plus|disney+|disney)"
+        out: "Disney+"
+      - in: "(prime video|prime|amazon prime)"
+        out: "Prime Video"
+      - in: "spotify"
+        out: "Spotify"

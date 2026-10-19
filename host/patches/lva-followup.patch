@@ -1,0 +1,279 @@
+--- a/linux_voice_assistant/satellite.py
++++ b/linux_voice_assistant/satellite.py
+@@ -3,6 +3,8 @@
+ import asyncio
+ import hashlib
+ import logging
++import os
++import re
+ import posixpath
+ import shutil
+ import threading
+@@ -73,6 +75,30 @@ PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
+ _HAS_AUDIO_DATA2 = "data2" in {f.name for f in VoiceAssistantAudio.DESCRIPTOR.fields}
+ 
+ 
++
++# Phrases that end a conversation, as Whisper writes them (fosters-home-hub patch)
++_CLOSING = re.compile(
++    r"^(no,? )?(thanks|thank you|that'?s (all|it|everything)|that('ll| will) be (all|it)|nothing( else)?|"
++    r"i'?m good|i'?m all set|all good|we'?re (good|done)|never ?mind|perfect|great|awesome|cheers|got it|"
++    r"sounds good|good ?night|night|no|"
++    # and what Whisper (or a YouTube video on the TV) produces out of noise
++    r"thanks for watching|thank you for watching|please subscribe|subscribe|bye( bye)?|you)"
++    r"( (jarvis|sir|very much|so much|for now|thanks|thank you|i appreciate (it|that)))*$")
++# Signs Jarvis didn't manage it, so the person probably isn't done
++_TROUBLE = re.compile(
++    r"\b(sorry|didn'?t catch|couldn'?t|can'?t|not sure|did you mean|which one|no reading|unable|"
++    r"don'?t have|i'?m afraid)\b")
++
++
++def _is_no_reply(speech: str) -> bool:
++    norm = re.sub(r"[^a-z ]", " ", (speech or "").lower())
++    return " ".join(norm.split()) in ("no reply", "")
++
++
++def _is_closing(text: str) -> bool:
++    norm = re.sub(r"[^a-z' ]", " ", (text or "").lower())
++    return bool(_CLOSING.match(" ".join(norm.split())))
++
+ class VoiceSatelliteProtocol(APIServer):
+ 
+     def __init__(self, state: ServerState) -> None:
+@@ -346,6 +372,30 @@ class VoiceSatelliteProtocol(APIServer):
+         self._tts_url: Optional[str] = None
+         self._tts_played = False
+         self._continue_conversation = False
++        # Follow-up window (fosters-home-hub patch): after every spoken answer the mic stays open
++        # for a few seconds, so the conversation carries on without the wake word. Closes quietly
++        # if nobody speaks. Announcements don't open it.
++        self._spoke = False
++        self._followup_heard = False
++        self._followup_closing = False
++        self._followup_run = False  # this run was opened by the satellite, not by the wake word
++        self._followup_seconds = float(os.environ.get("LVA_FOLLOWUP_SECONDS", "6"))
++        # How long the window stays open depends on how the exchange went (_window_for):
++        # short after a one-shot answer or a finished task, medium mid-conversation, long when
++        # Jarvis asked something or didn't manage it, none after "thank you", "that's all" and co
++        self._window_short = float(os.environ.get("LVA_WINDOW_SHORT", "2.5"))
++        self._window_medium = float(os.environ.get("LVA_WINDOW_MEDIUM", "5"))
++        self._window_long = float(os.environ.get("LVA_WINDOW_LONG", "8"))
++        self._listen_cap = float(os.environ.get("LVA_LISTEN_CAP", "15"))
++        self._window = 0.0
++        self._stt_text = ""
++        self._speech = ""
++        self._asked = False
++        self._turns = 0
++        self._silent_reply = False
++        self._run_serial = 0
++        self._tts_serial = 0
++        self._tts_playing = False
+         self._timer_finished = False
+         self._timer_ring_start: Optional[float] = None
+         self._processing = False
+@@ -569,8 +619,12 @@ class VoiceSatelliteProtocol(APIServer):
+         if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_RUN_START:
+             self._tts_url = data.get("url")
+             self._tts_played = False
++            self._followup_closing = False
+             self._continue_conversation = False
+             self._pipeline_active = True
++            self._run_serial += 1
++            self._silent_reply = False
++            self._asked = False
+ 
+         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_START:
+             self._emit(LVAEvent.THINKING)
+@@ -584,6 +638,12 @@ class VoiceSatelliteProtocol(APIServer):
+                     self.duck()
+                     self.state.tts_player.play(self.state.processing_sound)
+ 
++        elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_START:
++            self._followup_heard = True
++            if self._listen_cap > 0:
++                serial = self._run_serial
++                threading.Timer(self._listen_cap, lambda: self._cap_listening(serial)).start()
++
+         elif event_type in (
+             VoiceAssistantEventType.VOICE_ASSISTANT_STT_VAD_END,
+             VoiceAssistantEventType.VOICE_ASSISTANT_STT_END,
+@@ -591,6 +651,10 @@ class VoiceSatelliteProtocol(APIServer):
+             self._is_streaming_audio = False
+             if event_type == VoiceAssistantEventType.VOICE_ASSISTANT_STT_END:
+                 stt_text = data.get("text", "").strip()
++                self._stt_text = stt_text
++                # A closing phrase in a window the satellite opened is either someone wrapping up or
++                # Whisper inventing "Thank you." from room noise. Either way: no reply, just close
++                self._silent_reply = self._followup_run and _is_closing(stt_text)
+                 if stt_text:
+                     self._emit(LVAEvent.STT_TEXT, {"text": stt_text})
+                     _LOGGER.debug("STT transcript: %s", stt_text)
+@@ -601,7 +665,17 @@ class VoiceSatelliteProtocol(APIServer):
+                 self.play_tts()
+ 
+         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_INTENT_END:
+-            if data.get("continue_conversation") == "1":
++            self._speech = data.get("speech", "") or ""
++            self._asked = data.get("continue_conversation") == "1"
++            # Jarvis says "(no reply)" when what it heard wasn't meant for it: people talking to
++            # each other, the TV, a stray "Jarvis" in conversation. Nothing gets said, the ring
++            # goes off, and no follow-up window opens, so one false wake can't turn into a
++            # conversation nobody started
++            if _is_no_reply(self._speech):
++                _LOGGER.info("Not meant for Jarvis, staying quiet: %s", self._stt_text)
++                self._silent_reply = True
++                self._asked = False
++            elif self._asked:
+                 self._continue_conversation = True
+ 
+         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_TTS_START:
+@@ -626,7 +700,10 @@ class VoiceSatelliteProtocol(APIServer):
+             self._tts_played = False
+ 
+         elif event_type == VoiceAssistantEventType.VOICE_ASSISTANT_ERROR:
+-            self._emit(LVAEvent.PIPELINE_ERROR)
++            if self._followup_closing or self._followup_run:
++                _LOGGER.debug("Follow-up closed with nothing understood: %s", data)
++            else:
++                self._emit(LVAEvent.PIPELINE_ERROR)
+ 
+     # ------------------------------------------------------------------
+     # Timer event handler
+@@ -702,6 +779,7 @@ class VoiceSatelliteProtocol(APIServer):
+             self.duck()
+             self._emit(LVAEvent.TTS_SPEAKING)
+             self.state.tts_player.play(urls, done_callback=self._tts_finished)
++            self._watch_tts(msg.text or "")
+ 
+         elif isinstance(msg, VoiceAssistantTimerEventResponse):
+             self.handle_timer_event(VoiceAssistantTimerEventType(msg.event_type), msg)
+@@ -879,6 +957,8 @@ class VoiceSatelliteProtocol(APIServer):
+     # ------------------------------------------------------------------
+ 
+     def wakeup(self, wake_word: Union[MicroWakeWord, OpenWakeWord]) -> None:
++        self._followup_run = False
++        self._turns = 0
+ 
+         if self.state.muted:
+             # Don't respond to wake words when muted (voice_assistant.stop behavior)
+@@ -936,6 +1016,7 @@ class VoiceSatelliteProtocol(APIServer):
+         to ``wakeup()`` but without a wake-word phrase and using the dedicated
+         button-press sound instead of the wake-word chime. Also stops ringing timer.
+         """
++        self._followup_run = False
+         if self.state.muted:
+             return
+ 
+@@ -985,20 +1066,59 @@ class VoiceSatelliteProtocol(APIServer):
+     def play_tts(self) -> None:
+         if (not self._tts_url) or self._tts_played:
+             return
++        if self._silent_reply:
++            _LOGGER.debug("Closing phrase in a follow-up window, ending without a reply")
++            return
+ 
+         self._tts_played = True
++        self._spoke = True
+         _LOGGER.debug("Playing TTS response: %s", self._tts_url)
+ 
+         self.state.active_wake_words.add(self.state.stop_word.id)
+         self._emit(LVAEvent.TTS_SPEAKING)
+         self.state.tts_player.play(self._tts_url, done_callback=self._tts_finished)
++        self._watch_tts()
++
++    def _watch_tts(self, text: Optional[str] = None) -> None:
++        """Stop a spoken answer that's run far past its length, so the satellite can't hang.
++
++        Streamed answers start playing before the full text arrives, so the limit is worked out
++        when the timer fires, from whatever text there is by then (about 0.6 s a word plus 15 s,
++        never under 30 s).
++        """
++        self._tts_serial += 1
++        serial = self._tts_serial
++        started = time.monotonic()
++        self._tts_playing = True
++
++        def check() -> None:
++            if serial != self._tts_serial or not self._tts_playing:
++                return
++            words = len((text if text is not None else self._speech or "").split())
++            limit = max(30.0, words * 0.6 + 15.0)
++            elapsed = time.monotonic() - started
++            if elapsed < limit:
++                threading.Timer(limit - elapsed, check).start()
++                return
++            _LOGGER.warning("Answer still playing after %.0fs, stopping it", elapsed)
++            self.state.tts_player.stop()
++
++        threading.Timer(30.0, check).start()
+ 
+     def _tts_finished(self) -> None:
++        self._tts_playing = False
+         self._pipeline_active = False
+         self.state.active_wake_words.discard(self.state.stop_word.id)
+         self.send_messages([VoiceAssistantAnnounceFinished()])
+         self._emit(LVAEvent.TTS_FINISHED)
+ 
++        answered, self._spoke = self._spoke, False
++        if answered:
++            self._window = self._window_for()
++            self._continue_conversation = self._window > 0
++        else:
++            # an announcement: listen only if Home Assistant asked to (start_conversation)
++            self._window = self._window_long if self._continue_conversation else 0.0
+         if self._continue_conversation:
+             self._continue_conversation = False
+             # Keep pipeline active during the settle delay so the mic stays closed
+@@ -1015,7 +1135,16 @@ class VoiceSatelliteProtocol(APIServer):
+                     return
+                 self.send_messages([VoiceAssistantRequest(start=True)])
+                 self._is_streaming_audio = True
++                self._followup_heard = False
++                self._followup_run = True
++                self._turns += 1
+                 _LOGGER.debug("Continued conversation started")
++                if self._window > 0:
++                    threading.Timer(self._window, self._close_silent_followup).start()
++                # and the whole window, speech or noise, never runs past the cap
++                if self._listen_cap > 0:
++                    serial = self._run_serial
++                    threading.Timer(self._listen_cap, lambda: self._cap_listening(serial, any_run=True)).start()
+ 
+             threading.Timer(self.state.continue_conversation_delay, _start_continued_conversation).start()
+         else:
+@@ -1025,6 +1154,35 @@ class VoiceSatelliteProtocol(APIServer):
+ 
+         _LOGGER.debug("TTS response finished")
+ 
++    def _window_for(self) -> float:
++        """Seconds to keep listening after an answer, from what was said both ways."""
++        if _is_closing(self._stt_text):
++            return 0.0
++        speech = self._speech.lower()
++        if self._asked or "?" in speech or _TROUBLE.search(speech):
++            return self._window_long
++        if self._turns > 0 or len(speech.split()) > 30:
++            return self._window_medium
++        return self._window_short
++
++    def _cap_listening(self, serial: int, any_run: bool = False) -> None:
++        """Room noise can keep the end-of-speech detector waiting forever. Stop at the cap."""
++        # any_run: the whole-window cap on a follow-up window; otherwise the per-turn cap from when
++        # speech started, on whatever run that was
++        if self._is_streaming_audio and ((any_run and self._followup_run) or (not any_run and serial == self._run_serial)):
++            _LOGGER.debug("Listened for %.0fs, closing the turn", self._listen_cap)
++            self._is_streaming_audio = False
++            self.send_messages([VoiceAssistantRequest(start=False)])
++
++    def _close_silent_followup(self) -> None:
++        """Nobody spoke in the follow-up window: stop streaming and let the run end quietly."""
++        if self._followup_heard or not self._is_streaming_audio:
++            return
++        _LOGGER.debug("Nothing said in %.0fs, closing the follow-up window", self._followup_seconds)
++        self._followup_closing = True
++        self._is_streaming_audio = False
++        self.send_messages([VoiceAssistantRequest(start=False)])
++
+     # ------------------------------------------------------------------
+     # Ducking
+     # ------------------------------------------------------------------

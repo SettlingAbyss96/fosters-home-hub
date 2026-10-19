@@ -1,0 +1,180 @@
+# Falling asleep with the lights on. A sleep tracker can't say "asleep" while it's happening: a ring
+# like the Oura only syncs when its app wakes up, its newest heart rate usually hours old, so it
+# confirms a night afterwards and never during. What the house can see live is enough: late (past
+# tonight's planned bedtime, or after 11), you're home, lights or the TV still on, and the house's
+# asleep estimate (binary_sensor.asleep, packages/estimates.yaml) saying so for ten minutes, with
+# nothing at all for twenty: no movement at the Hub, no light switched by hand, the computer
+# untouched, the phone not taken off the charger (sensor.last_sign_of_life, packages/wake.yaml). Its
+# lights go through the arbiter at the same priority as a hand at the switch, so a lamp switched on
+# before dozing off doesn't hold it off all night.
+#
+# Reading in bed looks the same from out here, so it goes in two steps and either can be undone by
+# doing anything:
+#   1. whatever's on dims (the dimmers to a third, nothing switched on that was off) and the TV goes
+#      to ambient mode, no sound. Ten minutes to move, touch a light, pick up the phone or say
+#      something
+#   2. still nothing: goodnight, quietly (Night, the TV off, the computer locked), and the bedside
+#      lamp off too, since Night leaves it on for reading.
+# It runs in Night mode as well, for the reading lamp left on after saying goodnight: then step 2 is
+# just the lights that are still on going off. Then the alarm gets checked: on a workday night the
+# wake-up has to be on for the morning. If the workday setting is Off and nobody said "don't wake
+# me", input_boolean.wake_up_once turns it on for this one morning. A quiet note on the phone says
+# what happened and when the alarm is
+input_boolean:
+  wake_up_once:
+    name: "Wake me this once"
+    icon: mdi:alarm-plus
+
+input_datetime:
+  dozed_off_at:
+    name: "Dozed off with the lights on"
+    icon: mdi:sleep
+    has_date: true
+    has_time: true
+
+automation:
+  - id: asleep_with_lights_on
+    alias: "Fell asleep with the lights on"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_asleep
+        state: "on"
+      - condition: state
+        entity_id: person.resident
+        state: home
+      - condition: state
+        entity_id: [input_boolean.waking_up, input_boolean.keep_me_awake, input_boolean.guest_mode]
+        state: "off"
+      - "{{ states('input_select.house_mode') != 'Away' }}"
+      - condition: time
+        after: "21:00:00"
+        before: "04:30:00"
+      # late for tonight: past the planned bedtime, or after 11 whatever the plan says
+      - >-
+        {% set bed = states('sensor.bedtime_plan') | as_datetime(none) %}
+        {{ now().hour < 5 or now().hour >= 23 or (bed is not none and now() >= as_local(bed)) }}
+      # something's still on
+      - >-
+        {{ expand(label_entities('light_ambient') + label_entities('light_task'))
+           | selectattr('state', 'eq', 'on') | list | count > 0 or is_state('binary_sensor.tv_picture', 'on') }}
+      # the house thinks you're asleep, and has for ten minutes
+      - condition: state
+        entity_id: binary_sensor.asleep
+        state: "on"
+        for: "00:10:00"
+      # and nothing for 20 minutes, whatever the estimate says
+      - >-
+        {% set life = states('sensor.last_sign_of_life') | as_datetime(none) %}
+        {% set typed = states('sensor.computer_last_active') | as_datetime(none) %}
+        {{ (life is none or (now() - life).total_seconds() > 20 * 60)
+           and (typed is none or (now() - typed).total_seconds() > 20 * 60)
+           and is_state('binary_sensor.hub_500_motion', 'off') }}
+    actions:
+      - variables:
+          night: "{{ is_state('input_select.house_mode', 'Night') }}"
+          on_now: >-
+            {{ expand(label_entities('light_ambient') + label_entities('light_task'))
+               | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+          dimmable: >-
+            {{ expand(on_now) | selectattr('attributes.supported_color_modes', 'defined')
+               | selectattr('attributes.brightness', 'defined') | map(attribute='entity_id')
+               | reject('in', label_entities('light_no_dim')) | list }}
+      # 1. dim what's on, quietly. Nothing that's off gets switched on
+      - repeat:
+          for_each: "{{ dimmable }}"
+          sequence:
+            - action: script.light_set
+              continue_on_error: true
+              data:
+                entity: "{{ repeat.item }}"
+                level: 30
+                fade: 5
+                priority: 2
+                source: asleep
+      - if: "{{ states('sensor.tv_status') not in ['Off', 'Ambient mode', 'Unreachable'] }}"
+        then:
+          - action: script.tv_power
+            data:
+              power: "off"
+            continue_on_error: true
+      - wait_for_trigger:
+          - trigger: state
+            entity_id: sensor.last_sign_of_life
+          - trigger: state
+            entity_id: sensor.computer_last_active
+            not_from: [unavailable, unknown]
+            not_to: [unavailable, unknown]
+          - trigger: event
+            event_type: wake_up_confirmed
+          - trigger: state
+            entity_id: input_select.house_mode
+            to: [Night, Away]
+        timeout: "00:10:00"
+        continue_on_timeout: true
+      # anything at all: awake, Calm stays and that's it
+      - condition: "{{ wait.trigger is none }}"
+      # 2. goodnight, quietly, and the reading lamp too
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.dozed_off_at
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - if: "{{ not night }}"
+        then:
+          - action: script.goodnight
+            continue_on_error: true
+          - delay: "00:00:05"
+      - repeat:
+          for_each: >-
+            {{ (expand(label_entities('light_ambient') + label_entities('light_task'))
+                | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list
+                + label_entities('light_bedside') | select('match', 'light[.]') | list) | unique
+                | reject('eq', 'light.bathroom_light' if is_state('binary_sensor.bathroom_occupied', 'on') else '') | list }}
+          sequence:
+            - action: script.light_set
+              continue_on_error: true
+              data:
+                entity: "{{ repeat.item }}"
+                level: 0
+                fade: 3
+                priority: 2
+                source: asleep
+      # the alarm: on for a workday morning unless you said not to
+      - variables:
+          # (times stay inside one template: through a variable they come out as text)
+          workday: "{{ state_attr('sensor.bedtime_plan', 'workday') | default(false) }}"
+          setting: "{{ states('input_select.wake_up_workdays' if workday else 'input_select.wake_up_weekends') }}"
+          skipped: "{{ is_state('input_boolean.skip_wake_up', 'on') }}"
+      - if: "{{ workday and setting == 'Off' and not skipped }}"
+        then:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.wake_up_once
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Lights off"
+          message: >-
+            You'd dozed off, so the lights went off at {{ now().strftime('%-I:%M') }}.
+            {% set wk = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+            {% set w = as_local(wk) if wk is not none else none %}
+            {% if skipped %}No alarm, like you said.
+            {% elif w is not none and (workday or setting != 'Off' or is_state('input_boolean.wake_up_once', 'on')) %}Alarm's set: light from {{ (w - timedelta(minutes=states('input_number.sunrise_minutes') | int(30))).strftime('%-I:%M') }}, up at {{ w.strftime('%-I:%M') }}.
+            {% else %}No alarm tomorrow, it's a day off.{% endif %}
+          data:
+            push:
+              interruption-level: passive
+
+  - id: wake_up_once_resets
+    alias: "Wake me this once, done"
+    triggers:
+      - trigger: time
+        at: "12:00:00"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.wake_up_once

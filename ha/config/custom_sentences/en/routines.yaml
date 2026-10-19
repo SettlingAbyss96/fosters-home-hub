@@ -1,0 +1,105 @@
+# Routines by name. Intents in packages/routines.yaml, "good night" in closing.yaml (it runs the
+# goodnight routine now). One intent per routine and no slots, so neither fuzzy matching nor the
+# cloud agent can call one half-filled
+language: "en"
+intents:
+  MovieNight:
+    data:
+      - sentences:
+          - "movie (night|time|mode)"
+          - "(start|begin) [a] movie [night]"
+          - "it's movie (night|time)"
+          - "let's watch a movie"
+  MovieEnd:
+    data:
+      - sentences:
+          - "[the] (movie's|movie is|movies|film's|film is) (over|done|finished)"
+          - "(end|stop) [the] movie [night|mode]"
+          - "(end|stop) movie (night|mode)"
+  CalmMode:
+    data:
+      - sentences:
+          - "(calm|relax|chill) mode"
+          - "calm the (lights|house) down"
+          - "make it (calm|cozy)"
+  MorningMode:
+    data:
+      - sentences:
+          - "morning (lights|mode)"
+  DayMode:
+    data:
+      - sentences:
+          - "(day|daytime|afternoon) (lights|mode)"
+  EveningMode:
+    data:
+      - sentences:
+          - "evening (lights|mode)"
+  BrightLights:
+    data:
+      - sentences:
+          - "bright (lights|mode)"
+          - "(lights|everything) all the way up"
+  LightsOut:
+    data:
+      - sentences:
+          - "lights out"
+          - "(turn|switch) off (all|every) [the] lights [in the (house|home|flat|apartment)]"
+  LeavingHome:
+    data:
+      - sentences:
+          - "(i'm|i am) (leaving|heading out|going out|off|out)"
+          - "(i'm|i am) (leaving|heading out|going out) now"
+  GuestModeOn:
+    data:
+      - sentences:
+          - "(turn|switch) on guest mode"
+          - "guest mode on"
+          - "(i have|i've got) (guests|company|a guest|someone) over"
+  GuestModeOff:
+    data:
+      - sentences:
+          - "(turn|switch) off guest mode"
+          - "guest mode off"
+  MorningBriefing:
+    data:
+      - sentences:
+          - "good morning [jarvis|sir]"
+          - "(brief me|morning briefing|give me the briefing)"
+          - "what (does|do) (my day|today) look like"
+          - "what's (my day|today) look like"
+  KeepMeAwake:
+    data:
+      - sentences:
+          - "keep me awake [tonight]"
+          - "(i'm|i am) staying up [late] [tonight]"
+          - "no bedtime [nudge|reminder] tonight"
+  BedtimeSnooze:
+    data:
+      - sentences:
+          - "remind me in an hour"
+          - "(give me|i need|i want) another hour"
+  BedtimeWhen:
+    data:
+      - sentences:
+          - "when should i go to bed [tonight]"
+          - "what time (is|should i go to) bed[time] [tonight]"
+          - "when('s| is) bedtime [tonight]"
+  DayOffTomorrow:
+    data:
+      - sentences:
+          - "(i'm|i am) off [work] tomorrow"
+          - "(no|i have no|i don't have) work tomorrow"
+          - "(i'm|i am) not working tomorrow"
+          - "tomorrow is a day off"
+  ImUp:
+    data:
+      - sentences:
+          - "(i'm|i am) (up|awake)"
+          - "(i'm|i am) getting up"
+          - "stop the alarm"
+  SkipWakeUp:
+    data:
+      - sentences:
+          - "(don't|do not) wake me [up] tomorrow"
+          - "no (alarm|wake up) tomorrow [morning]"
+          - "let me sleep in tomorrow"

@@ -1,0 +1,68 @@
+[
+  {
+    "Id": "ed92393e-1dbc-4de4-9682-c282fc46c529",
+    "Name": "Lock",
+    "EntityName": "lock",
+    "Type": "LockCommand",
+    "EntityType": "Button",
+    "Command": "",
+    "KeyCode": 0,
+    "RunAsLowIntegrity": false,
+    "Keys": []
+  },
+  {
+    "Id": "c65c8173-035d-4009-9153-7559a0efa4a6",
+    "Name": "Sleep",
+    "EntityName": "sleep",
+    "Type": "SleepCommand",
+    "EntityType": "Button",
+    "Command": "",
+    "KeyCode": 0,
+    "RunAsLowIntegrity": false,
+    "Keys": []
+  },
+  {
+    "Id": "f91b3eae-d078-4336-97f5-bf6fca17347f",
+    "Name": "Screen off",
+    "EntityName": "screen_off",
+    "Type": "MonitorSleepCommand",
+    "EntityType": "Button",
+    "Command": "",
+    "KeyCode": 0,
+    "RunAsLowIntegrity": false,
+    "Keys": []
+  },
+  {
+    "Id": "9be9dbc9-0fdc-4c6c-808e-5d48a4299be4",
+    "Name": "Screen on",
+    "EntityName": "screen_on",
+    "Type": "MonitorWakeCommand",
+    "EntityType": "Button",
+    "Command": "",
+    "KeyCode": 0,
+    "RunAsLowIntegrity": false,
+    "Keys": []
+  },
+  {
+    "Id": "68b6eb6b-e7eb-4758-97d9-e7dc9a764659",
+    "Name": "Shut down",
+    "EntityName": "shut_down",
+    "Type": "ShutdownCommand",
+    "EntityType": "Button",
+    "Command": "",
+    "KeyCode": 0,
+    "RunAsLowIntegrity": false,
+    "Keys": []
+  },
+  {
+    "Id": "fdd93ec8-0b88-4d07-ab0d-993a90d91cfc",
+    "Name": "Restart",
+    "EntityName": "restart",
+    "Type": "RestartCommand",
+    "EntityType": "Button",
+    "Command": "",
+    "KeyCode": 0,
+    "RunAsLowIntegrity": false,
+    "Keys": []
+  }
+]

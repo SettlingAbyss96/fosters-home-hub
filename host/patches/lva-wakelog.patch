@@ -1,0 +1,105 @@
+--- a/linux_voice_assistant/__main__.py
++++ b/linux_voice_assistant/__main__.py
+@@ -640,6 +640,68 @@ def _setup_logging(args: argparse.Namespace) -> None:
+ # -----------------------------------------------------------------------------
+ 
+ 
++class _WakeLog:
++    """Writes down every wake word that came close and every one that fired, with how close.
++
++    Without it a missed "Hey Jarvis" leaves nothing behind, and there's no telling a quiet room from
++    a deaf microphone from a model that just didn't like it. Every 15 minutes it also writes the
++    loudest sound the mic heard, so a dead mic shows up as a number instead of a mystery.
++    """
++
++    EPISODE = 1.5  # seconds of quiet that end one "Hey Jarvis"
++    REPORT = 15 * 60
++
++    def __init__(self) -> None:
++        self.peak: dict = {}
++        self.until: dict = {}
++        self.fired: dict = {}
++        self.threshold: dict = {}
++        self.loudest = -120.0
++        self.close_calls = 0
++        self.wakes = 0
++        self.next_report = time.monotonic() + self.REPORT
++
++    def level(self, audio_chunk: bytes) -> None:
++        samples = np.frombuffer(audio_chunk, dtype=np.int16).astype(np.float32)
++        if samples.size:
++            rms = float(np.sqrt(np.mean(samples * samples)))
++            self.loudest = max(self.loudest, 20 * np.log10(max(rms, 1.0) / 32768))
++        now = time.monotonic()
++        self._close_episodes(now)
++        if now >= self.next_report:
++            _LOGGER.info(
++                "wake log: loudest %.0f dBFS in the last 15 min, %d wake(s), %d close call(s)",
++                self.loudest, self.wakes, self.close_calls,
++            )
++            self.loudest, self.close_calls, self.wakes = -120.0, 0, 0
++            self.next_report = now + self.REPORT
++
++    def see(self, index: int, prob: float, threshold: float) -> None:
++        if prob < max(0.1, threshold * 0.45):
++            return
++        self.peak[index] = max(self.peak.get(index, 0.0), prob)
++        self.threshold[index] = threshold
++        self.until[index] = time.monotonic() + self.EPISODE
++
++    def woke(self, index: int, muted: bool) -> None:
++        self.fired[index] = "muted" if muted else "woke"
++
++    def _close_episodes(self, now: float) -> None:
++        for index in [i for i, t in self.until.items() if now > t]:
++            fired = self.fired.pop(index, None)
++            peak, threshold = self.peak.pop(index), self.threshold.pop(index)
++            del self.until[index]
++            if fired:
++                self.wakes += 1
++                _LOGGER.info("wake word %d %s: peak %.2f, needs %.2f", index + 1, fired, peak, threshold)
++            else:
++                self.close_calls += 1
++                _LOGGER.info("wake word %d close call: peak %.2f, needs %.2f", index + 1, peak, threshold)
++
++
++_WAKE_LOG = _WakeLog()
++
++
+ def process_audio(state: ServerState, mic, block_size: int):
+     """Process audio chunks from the microphone."""
+     n_channels = state.audio_input_channels
+@@ -776,6 +838,7 @@ def process_audio(state: ServerState, mic, block_size: int):
+                     # Both channels travel in one message: data=ch0 (enhanced), data2=ch1 (raw reference)
+                     audio_chunk_2 = channel_chunks[1] if n_channels >= 2 else None
+                     state.satellite.handle_audio(audio_chunk, audio_chunk_2)
++                    _WAKE_LOG.level(audio_chunk)
+ 
+                     assert micro_features is not None
+                     micro_inputs.clear()
+@@ -808,16 +871,23 @@ def process_audio(state: ServerState, mic, block_size: int):
+                             wake_word.probability_cutoff = threshold
+ 
+                             for micro_input in micro_inputs:
+-                                if wake_word.process_streaming(micro_input):
+-                                    wake_word.debug_probabilities = True
++                                prob = wake_word.process_streaming_prob(micro_input)
++                                if prob is None:
++                                    continue
++                                _WAKE_LOG.see(wake_word_index, prob, threshold)
++                                if prob > threshold:
+                                     activated = True
+                         elif isinstance(wake_word, OpenWakeWord):
+                             for oww_input in oww_inputs:
+                                 for prob in wake_word.process_streaming(oww_input):
++                                    _WAKE_LOG.see(wake_word_index, prob, threshold)
+                                     if prob > threshold:
+                                         _LOGGER.debug("Wake word '%s' activated (probability %.3f exceeded threshold %.3f)", wake_word.wake_word, prob, threshold)  # type: ignore[attr-defined]
+                                         activated = True
+ 
++                        if activated:
++                            _WAKE_LOG.woke(wake_word_index, state.muted)
++
+                         if activated and not state.muted:
+                             # Check refractory
+                             now = time.monotonic()

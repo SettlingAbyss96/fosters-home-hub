@@ -1,0 +1,45 @@
+# Relative volume for the Hub's speaker. Home Assistant's own "turn the volume down" answers
+# "Volume set" and changes nothing on this satellite, and "reduce the volume by 20%" has no
+# built-in sentence at all. So these do the math and set the level outright, in percentage points:
+# "reduce the volume by 70%" from 100 lands on 30. No number means 10.
+# Sentences: custom_sentences/en/hub_volume.yaml
+intent_script:
+  HubVolumeDown:
+    action:
+      - variables:
+          level: >-
+            {% set now = state_attr('media_player.hub_500_voice_media_player', 'volume_level') | float(0.5) %}
+            {{ [0, now - (step | default(10) | float) / 100] | max | round(2) }}
+      - action: media_player.volume_set
+        continue_on_error: true
+        target:
+          entity_id: media_player.hub_500_voice_media_player
+        data:
+          volume_level: "{{ level }}"
+      - variables:
+          result:
+            percent: "{{ (level | float * 100) | round(0) | int }}"
+      - stop: ""
+        response_variable: result
+    speech:
+      text: "Volume {{ action_response.percent }} percent"
+
+  HubVolumeUp:
+    action:
+      - variables:
+          level: >-
+            {% set now = state_attr('media_player.hub_500_voice_media_player', 'volume_level') | float(0.5) %}
+            {{ [1, now + (step | default(10) | float) / 100] | min | round(2) }}
+      - action: media_player.volume_set
+        continue_on_error: true
+        target:
+          entity_id: media_player.hub_500_voice_media_player
+        data:
+          volume_level: "{{ level }}"
+      - variables:
+          result:
+            percent: "{{ (level | float * 100) | round(0) | int }}"
+      - stop: ""
+        response_variable: result
+    speech:
+      text: "Volume {{ action_response.percent }} percent"

@@ -1,0 +1,123 @@
+# 3D printers: what the dashboard's printer page and the rest of the house need that the
+# integrations don't give directly. Two kinds are supported, each optional:
+#   - a Klipper printer through Moonraker (tools/ha-extras.sh installs the integration). Name it
+#     "Klipper" when you add it, so its entities are sensor.klipper_... (docs/devices.md). Its case
+#     light, an output pin, becomes light.klipper_case_light in packages/klipper.yaml
+#   - a Bambu Lab printer through ha-bambulab (also tools/ha-extras.sh). tools/ha-apps.sh renames
+#     its entities to sensor.bambu_... from whatever model-and-serial names the integration gives
+# Celsius throughout, nobody slices in Fahrenheit. A Home Assistant set to US units converts the
+# printer's targets to Fahrenheit, so those get converted back here, and the targets have no
+# temperature device class on purpose: with one, Home Assistant turns them straight back again.
+#
+# Power: printers rarely measure their own. A Bambu printer can pull around 1100 W heating, a
+# Klipper printer with an AC bed most of that again, and two heating at once on one 15 A circuit at
+# 120 V is close to what it should carry continuously (1440 W). A measuring plug under each, named
+# so its power is sensor.klipper_power and sensor.bambu_power, fills the meter in; until then the
+# page says "no meter" and the Klipper printer shows how hard its heaters are working instead
+# (Klipper reports each heater's duty)
+template:
+  - binary_sensor:
+      # any printer mid-print, and the lights that go with them: a look never turns those off while
+      # they print (packages/lights.yaml), the camera and the timelapse need them
+      - name: "Printing"
+        unique_id: printing
+        icon: mdi:printer-3d-nozzle
+        state: >-
+          {{ states('sensor.klipper_current_print_state') in ['printing', 'paused']
+             or states('sensor.bambu_print_status') in ['running', 'pause', 'prepare'] }}
+        attributes:
+          lights: >-
+            {{ (['light.klipper_case_light'] if states('sensor.klipper_current_print_state') in ['printing', 'paused'] else [])
+               + (['light.bambu_chamber_light'] if states('sensor.bambu_print_status') in ['running', 'pause', 'prepare'] else []) }}
+
+  - sensor:
+      - name: "Klipper summary"
+        unique_id: klipper_summary
+        icon: mdi:printer-3d
+        state: >-
+          {% set s = states('sensor.klipper_current_print_state') %}
+          {% set pct = states('sensor.klipper_progress') | float(0) | round(0) | int %}
+          {% set left = (states('sensor.klipper_print_time_left') | float(0) * 60) | round(0) | int %}
+          {% set file = states('sensor.klipper_filename') | replace('.gcode', '') | replace('_', ' ') %}
+          {% set file = file if file not in ['', 'unknown', 'unavailable'] else none %}
+          {% if s == 'printing' %}Printing{{ ' ' ~ file if file }}, {{ pct }}%, {{ (left // 60 ~ ' h ' if left >= 60 else '') ~ (left % 60) ~ ' min' }} left
+          {% elif s == 'paused' %}Paused at {{ pct }}%
+          {% elif s == 'complete' %}Done{{ ', ' ~ file if file }}
+          {% elif s == 'cancelled' %}Cancelled
+          {% elif s == 'error' %}Error: {{ states('sensor.klipper_printer_message') }}
+          {% elif s in ['unknown', 'unavailable'] %}Offline
+          {% else %}Idle{% endif %}
+      - name: "Klipper nozzle target"
+        unique_id: klipper_nozzle_target_c
+        unit_of_measurement: "°C"
+        state: >-
+          {% set e = 'number.klipper_extruder_target' %}{% set v = states(e) | float(0) %}
+          {{ (((v - 32) * 5 / 9) if state_attr(e, 'unit_of_measurement') == '°F' else v) | round(0) }}
+      - name: "Klipper bed target"
+        unique_id: klipper_bed_target_c
+        unit_of_measurement: "°C"
+        state: >-
+          {% set e = 'number.klipper_bed_target' %}{% set v = states(e) | float(0) %}
+          {{ (((v - 32) * 5 / 9) if state_attr(e, 'unit_of_measurement') == '°F' else v) | round(0) }}
+      - name: "Klipper chamber target"
+        unique_id: klipper_chamber_target_c
+        unit_of_measurement: "°C"
+        state: >-
+          {% set e = 'number.klipper_chamber_heater_target' %}{% set v = states(e) | float(0) %}
+          {{ (((v - 32) * 5 / 9) if state_attr(e, 'unit_of_measurement') == '°F' else v) | round(0) }}
+      - name: "Bambu layer"
+        unique_id: bambu_layer
+        icon: mdi:layers-outline
+        state: >-
+          {% set t = states('sensor.bambu_total_layer_count') | int(0) %}
+          {{ states('sensor.bambu_current_layer') | int(0) ~ ' / ' ~ t if t else '-' }}
+      - name: "Klipper layer"
+        unique_id: klipper_layer
+        icon: mdi:layers-outline
+        state: >-
+          {% set t = states('sensor.klipper_total_layer') | int(0) %}
+          {{ states('sensor.klipper_current_layer') | int(0) ~ ' / ' ~ t if t else '-' }}
+      - name: "Klipper time left"
+        unique_id: klipper_time_left_text
+        icon: mdi:timer-sand
+        state: >-
+          {% set m = (states('sensor.klipper_print_time_left') | float(0) * 60) | round(0) | int %}
+          {{ '%d:%02d' | format(m // 60, m % 60) if is_state('sensor.klipper_current_print_state', 'printing') else '-' }}
+      - name: "Bambu time left"
+        unique_id: bambu_time_left_text
+        icon: mdi:timer-sand
+        state: >-
+          {% set m = (states('sensor.bambu_remaining_time') | float(0) * 60) | round(0) | int %}
+          {{ '%d:%02d' | format(m // 60, m % 60) if states('sensor.bambu_print_status') in ['running', 'pause'] else '-' }}
+      # the heaters' combined effort on the Klipper printer, a stand-in for its power until there's a meter
+      - name: "Klipper heater duty"
+        unique_id: klipper_heater_duty
+        icon: mdi:radiator
+        unit_of_measurement: "%"
+        state_class: measurement
+        state: "{{ states('sensor.klipper_bed_power') | float(0) | round(0) | int }}"
+        attributes:
+          nozzle: "{{ states('sensor.klipper_extruder_power') | float(0) | round(0) | int }}"
+          chamber: "{{ states('sensor.klipper_chamber_heater_power') | float(0) | round(0) | int }}"
+      - name: "Printers power"
+        unique_id: printers_power
+        icon: mdi:flash
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        availability: "{{ has_value('sensor.klipper_power') or has_value('sensor.bambu_power') }}"
+        state: "{{ (states('sensor.klipper_power') | float(0) + states('sensor.bambu_power') | float(0)) | round(0) }}"
+      - name: "Printers meter"
+        unique_id: printers_meter
+        icon: mdi:flash
+        state: >-
+          {{ (states('sensor.klipper_power') | float(0) + states('sensor.bambu_power') | float(0)) | round(0) | int ~ ' W'
+             if has_value('sensor.klipper_power') or has_value('sensor.bambu_power') else 'no meter' }}
+      - name: "Klipper meter"
+        unique_id: klipper_meter
+        icon: mdi:flash
+        state: "{{ states('sensor.klipper_power') | float(0) | round(0) | int ~ ' W' if has_value('sensor.klipper_power') else 'no meter' }}"
+      - name: "Bambu meter"
+        unique_id: bambu_meter
+        icon: mdi:flash
+        state: "{{ states('sensor.bambu_power') | float(0) | round(0) | int ~ ' W' if has_value('sensor.bambu_power') else 'no meter' }}"

@@ -1,0 +1,283 @@
+# Routines: the things you ask the house for by name. Each one sets the house mode (which does
+# the lights, packages/house_mode.yaml) and whatever else belongs to it. Voice, the dashboard and
+# the cloud agent all run the same scripts. Sentences: custom_sentences/en/routines.yaml
+#
+# Movie night: the movie look (dark but for the printers' lights), the TV on, and Jarvis muted
+# so the film can't wake him (input_boolean.movie_mutes_jarvis). Pausing for more than a few
+# seconds brings the lamps up a little, playing again puts them back down. It ends by itself when
+# the TV goes off or into ambient mode for a minute, or with "the movie's over", and Jarvis gets
+# his ears back only if it was the movie that muted him.
+# Goodnight: Night (everything off but the bedside lamp, if it's on), the TV all the way off, the
+# computer locked
+input_boolean:
+  movie_mutes_jarvis:
+    name: "Movies mute Jarvis"
+    icon: mdi:microphone-off
+  jarvis_muted_by_movie:
+    name: "Jarvis muted for the movie"
+    icon: mdi:movie-open-outline
+
+script:
+  movie_night:
+    alias: "Movie night"
+    description: "Movie night: lights down to the movie look, the TV on, Jarvis muted for the film. Ends by itself when the TV goes off."
+    icon: mdi:movie-open
+    mode: single
+    sequence:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Movie
+      - if: "{{ states('sensor.tv_status') in ['Off', 'Ambient mode', 'Unreachable'] }}"
+        then:
+          - action: script.tv_power
+            data:
+              power: "on"
+            continue_on_error: true
+      - if: "{{ is_state('input_boolean.movie_mutes_jarvis', 'on') and is_state('input_boolean.jarvis_muted', 'off') }}"
+        then:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.jarvis_muted_by_movie
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.jarvis_muted
+
+  movie_end:
+    alias: "Movie's over"
+    description: "Ends movie night: the lights come back up to what the time of day calls for, and Jarvis listens again."
+    icon: mdi:movie-open-off
+    mode: single
+    sequence:
+      - if: "{{ is_state('input_select.house_mode', 'Movie') }}"
+        then:
+          - action: script.house_mode_set
+            continue_on_error: true
+            data:
+              mode: natural
+
+  calm_mode:
+    alias: "Calm mode"
+    description: "Calm: low, warm lights, and Jarvis speaks softer."
+    icon: mdi:candle
+    mode: single
+    sequence:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Calm
+
+  morning_mode:
+    alias: "Morning lights"
+    description: "Morning: the lamps on, the sunrise light on but not full. Task lights only if they're already on."
+    icon: mdi:weather-sunset-up
+    mode: single
+    sequence:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Morning
+
+  day_mode:
+    alias: "Day"
+    description: "Daytime: lamps and ambient lights on, following the daylight and warming through the afternoon, the sunrise light off, task lights left alone."
+    icon: mdi:white-balance-sunny
+    mode: single
+    sequence:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Day
+
+  evening_mode:
+    alias: "Evening lights"
+    description: "The normal evening lights: lamps on, overheads dimmed if they're on."
+    icon: mdi:weather-sunset
+    mode: single
+    sequence:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Evening
+
+  goodnight:
+    alias: "Goodnight"
+    description: "Bedtime: every light off except the bedside lamp if it's on, the TV all the way off, Jarvis quiet until morning."
+    icon: mdi:bed
+    mode: single
+    sequence:
+      - action: script.house_mode_set
+        continue_on_error: true
+        data:
+          mode: Night
+      - if: "{{ states('sensor.tv_status') not in ['Off', 'Unreachable'] }}"
+        then:
+          - action: script.tv_power
+            data:
+              power: "off"
+            continue_on_error: true
+      - action: script.computer_lock
+        continue_on_error: true
+
+automation:
+  - id: movie_paused
+    alias: "Movie paused, lamps up a little"
+    triggers:
+      - trigger: state
+        entity_id: media_player.tv
+        to: paused
+        for: "00:00:05"
+    conditions:
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Movie
+    actions:
+      - action: script.lights_look
+        continue_on_error: true
+        data:
+          look: intermission
+          priority: 3
+
+  - id: movie_resumed
+    alias: "Movie playing again, lamps back down"
+    triggers:
+      - trigger: state
+        entity_id: media_player.tv
+        from: paused
+        to: playing
+    conditions:
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Movie
+    actions:
+      - action: script.lights_look
+        continue_on_error: true
+        data:
+          look: movie
+          priority: 3
+
+  - id: movie_over_when_tv_off
+    alias: "Movie's over when the TV goes off"
+    triggers:
+      - trigger: state
+        entity_id: media_player.tv
+        to: ["off", "standby"]
+        for: "00:01:00"
+    conditions:
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Movie
+    actions:
+      - action: script.movie_end
+        continue_on_error: true
+
+  # Whatever ends Movie (the movie's over, leaving, goodnight), the mute the movie added comes off
+  - id: movie_unmutes_jarvis
+    alias: "Jarvis listens again after the movie"
+    triggers:
+      - trigger: state
+        entity_id: input_select.house_mode
+        from: Movie
+    conditions:
+      - condition: state
+        entity_id: input_boolean.jarvis_muted_by_movie
+        state: "on"
+    actions:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.jarvis_muted_by_movie
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.jarvis_muted
+
+intent_script:
+  MovieNight:
+    description: "Starts movie night."
+    action:
+      - action: script.movie_night
+        continue_on_error: true
+    speech:
+      text: "Enjoy the film."
+  MovieEnd:
+    description: "Ends movie night and brings the lights back up."
+    action:
+      - action: script.movie_end
+        continue_on_error: true
+    speech:
+      text: "Lights up."
+  CalmMode:
+    description: "Calm mode: low lights, softer voice."
+    action:
+      - action: script.calm_mode
+        continue_on_error: true
+    speech:
+      text: "Calm mode."
+  MorningMode:
+    description: "The morning lights: most lights on."
+    action:
+      - action: script.morning_mode
+        continue_on_error: true
+    speech:
+      text: "Morning lights."
+  DayMode:
+    description: "Daytime: lamps and ambient lights on."
+    action:
+      - action: script.day_mode
+        continue_on_error: true
+    speech:
+      text: "Daytime."
+  EveningMode:
+    description: "The normal evening lights."
+    action:
+      - action: script.evening_mode
+        continue_on_error: true
+    speech:
+      text: "Evening lights."
+  BrightLights:
+    description: "Every light in the home all the way up."
+    action:
+      - action: script.lights_look
+        continue_on_error: true
+        data:
+          look: bright
+          override: true
+    speech:
+      text: "Lights up."
+  LightsOut:
+    description: "Every light in the home off, the bedside lamp included."
+    action:
+      - action: script.lights_look
+        continue_on_error: true
+        data:
+          look: "off"
+          override: true
+    speech:
+      text: "Lights out."
+  LeavingHome:
+    description: "Heading out: lights and TV off a minute later, and the vacuum asked about."
+    action:
+      - action: script.turn_on
+        continue_on_error: true
+        target:
+          entity_id: script.leaving_home
+        data:
+          variables:
+            wait: 60
+    speech:
+      text: "Very good. Lights off in a minute."
+  GuestModeOn:
+    description: "Guest mode on: the house stops reacting to the phone leaving."
+    action:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.guest_mode
+    speech:
+      text: "Guest mode."
+  GuestModeOff:
+    description: "Guest mode off."
+    action:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.guest_mode
+    speech:
+      text: "Guest mode off."

@@ -1,0 +1,57 @@
+# A room node: is anyone in here, and the air. Parts, about $12 with the board (docs/esp32.md):
+#   - an LD2410C 24 GHz radar on the UART (D6 TX to its RX, D7 RX to its TX, 5 V): presence even
+#     when someone's sitting still, which the Hub's PIR can't do. 256000 baud is its default
+#   - an SHT40 on I2C (0x44): temperature and humidity. In the bathroom that's the shower
+#   - the board itself as a Bluetooth proxy, so the phone and the ring can be placed by room later
+# The light sensor at eye level is its own package (eye-light.yaml), for the rooms that get one
+uart:
+  id: radar_uart
+  tx_pin: GPIO16
+  rx_pin: GPIO17
+  baud_rate: 256000
+  parity: NONE
+  stop_bits: 1
+
+ld2410:
+  uart_id: radar_uart
+
+binary_sensor:
+  - platform: ld2410
+    has_target:
+      name: "Presence"
+    has_moving_target:
+      name: "Moving"
+    has_still_target:
+      name: "Still"
+
+sensor:
+  - platform: ld2410
+    moving_distance:
+      name: "Moving distance"
+    still_distance:
+      name: "Still distance"
+    detection_distance:
+      name: "Detection distance"
+  - platform: sht4x
+    address: 0x44
+    update_interval: 60s
+    temperature:
+      name: "Temperature"
+    humidity:
+      name: "Humidity"
+
+number:
+  - platform: ld2410
+    timeout:
+      name: "Presence timeout"
+    max_move_distance_gate:
+      name: "Max moving gate"
+    max_still_distance_gate:
+      name: "Max still gate"
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+
+bluetooth_proxy:
+  active: true

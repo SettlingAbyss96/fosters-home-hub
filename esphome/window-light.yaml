@@ -1,0 +1,30 @@
+# The daylight coming in: a VEML7700 on the sill, facing out through the glass and shaded from the
+# direct sun's spot. The light curve (ha/config/custom_templates/lighting.jinja) works its daylight
+# out from the sun's height and the cloud cover until this is up; then it's the real number, and
+# the floor lamp can follow the daylight properly. About $8: the board and the sensor
+substitutions:
+  name: window-light
+  friendly_name: "Window light"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  board: !include common/xiao-c6.yaml
+  base: !include common/base.yaml
+
+sensor:
+  - platform: veml7700
+    address: 0x10
+    update_interval: 15s
+    ambient_light:
+      name: "Daylight"
+      filters:
+        # a cloud passing shouldn't be a step in the lamp: a minute's median, then a slow average
+        - median:
+            window_size: 4
+            send_every: 4
+        - exponential_moving_average:
+            alpha: 0.3
+            send_every: 1

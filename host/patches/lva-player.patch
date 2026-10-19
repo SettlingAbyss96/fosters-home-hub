@@ -1,0 +1,15 @@
+--- a/linux_voice_assistant/player/libmpv.py
++++ b/linux_voice_assistant/player/libmpv.py
+@@ -179,7 +179,11 @@ class LibMpvPlayer(AudioPlayer):
+ 
+             # Only process "eof" (reason=0) events as actual track completion.
+             # Other reasons are from track changes, stops, or errors.
+-            if not is_eof:
++            # fosters-home-hub patch: an error (4) is the end of the track too. A TTS stream
++            # that broke off used to leave the satellite stuck in "responding" for good
++            if reason == 4:
++                self._log.warning("_on_end_file: playback ended with an error, treating it as finished")
++            elif not is_eof:
+                 self._log.debug("_on_end_file: ignoring non-eof event (reason=%s)", reason)
+                 return
+ 

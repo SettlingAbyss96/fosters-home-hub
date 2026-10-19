@@ -1,0 +1,21 @@
+# Quick questions answered straight from the at-a-glance sensors (packages/glance.yaml) instead of
+# going through an agent: a small local model can't find a sensor to save its life ("the work
+# calendar area does not exist"), and these are instant. Intents in packages/glance.yaml.
+language: "en"
+intents:
+  WorkStatus:
+    data:
+      - sentences:
+          - "am I (free|busy|in a meeting) [right now|now|at the moment|for work]"
+          - "do I have [a|any] (meeting|meetings|calls|anything) [on] [right now|now|next|today|coming up|later]"
+          - "(when|what time) is my next (meeting|call)"
+          - "(what's|what is|how's|how is) my (calendar|schedule|day) [looking] [like] [today]"
+          - "when am I free [today]"
+  WeatherToday:
+    data:
+      - sentences:
+          - "(is it|will it|is it going to) rain [today|later|tonight|this afternoon|this evening]"
+          - "do I need (an umbrella|a jacket|a coat) [today]"
+          - "(what's|what is) the forecast [for today|today]"
+          - "(what's|what is) [the] weather [going to be] like today"
+          - "(what's|what is) today's weather"

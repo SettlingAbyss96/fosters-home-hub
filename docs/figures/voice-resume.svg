@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="430" viewBox="0 0 760 430" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+<rect x="0.5" y="0.5" width="759" height="429" rx="10" fill="white" stroke="#e7e6e2"/>
+<text x="78" y="28" font-size="16" font-weight="600" fill="#0b0b0b">The longer the pause, the less likely I carry on</text>
+<text x="78" y="47" font-size="12.5" fill="#52514e">Every pause in the 69 saved turns with speech, from Silero's speech runs</text>
+<line x1="78.0" y1="62" x2="78.0" y2="366" stroke="#e7e6e2"/>
+<text x="78.0" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.1</text>
+<line x1="150.7" y1="62" x2="150.7" y2="366" stroke="#e7e6e2"/>
+<text x="150.7" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.2</text>
+<line x1="223.3" y1="62" x2="223.3" y2="366" stroke="#e7e6e2"/>
+<text x="223.3" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.3</text>
+<line x1="296.0" y1="62" x2="296.0" y2="366" stroke="#e7e6e2"/>
+<text x="296.0" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.4</text>
+<line x1="368.7" y1="62" x2="368.7" y2="366" stroke="#e7e6e2"/>
+<text x="368.7" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.5</text>
+<line x1="441.3" y1="62" x2="441.3" y2="366" stroke="#e7e6e2"/>
+<text x="441.3" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.6</text>
+<line x1="514.0" y1="62" x2="514.0" y2="366" stroke="#e7e6e2"/>
+<text x="514.0" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.7</text>
+<line x1="586.7" y1="62" x2="586.7" y2="366" stroke="#e7e6e2"/>
+<text x="586.7" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.8</text>
+<line x1="659.3" y1="62" x2="659.3" y2="366" stroke="#e7e6e2"/>
+<text x="659.3" y="386" font-size="13" text-anchor="middle" fill="#52514e">0.9</text>
+<line x1="732.0" y1="62" x2="732.0" y2="366" stroke="#e7e6e2"/>
+<text x="732.0" y="386" font-size="13" text-anchor="middle" fill="#52514e">1</text>
+<line x1="78" y1="366.0" x2="732" y2="366.0" stroke="#e7e6e2"/>
+<text x="70" y="370.0" font-size="13" text-anchor="end" fill="#52514e">0</text>
+<line x1="78" y1="325.5" x2="732" y2="325.5" stroke="#e7e6e2"/>
+<text x="70" y="329.5" font-size="13" text-anchor="end" fill="#52514e">0.1</text>
+<line x1="78" y1="284.9" x2="732" y2="284.9" stroke="#e7e6e2"/>
+<text x="70" y="288.9" font-size="13" text-anchor="end" fill="#52514e">0.2</text>
+<line x1="78" y1="244.4" x2="732" y2="244.4" stroke="#e7e6e2"/>
+<text x="70" y="248.4" font-size="13" text-anchor="end" fill="#52514e">0.3</text>
+<line x1="78" y1="203.9" x2="732" y2="203.9" stroke="#e7e6e2"/>
+<text x="70" y="207.9" font-size="13" text-anchor="end" fill="#52514e">0.4</text>
+<line x1="78" y1="163.3" x2="732" y2="163.3" stroke="#e7e6e2"/>
+<text x="70" y="167.3" font-size="13" text-anchor="end" fill="#52514e">0.5</text>
+<line x1="78" y1="122.8" x2="732" y2="122.8" stroke="#e7e6e2"/>
+<text x="70" y="126.8" font-size="13" text-anchor="end" fill="#52514e">0.6</text>
+<line x1="78" y1="82.3" x2="732" y2="82.3" stroke="#e7e6e2"/>
+<text x="70" y="86.3" font-size="13" text-anchor="end" fill="#52514e">0.7</text>
+<line x1="78" y1="366" x2="732" y2="366" stroke="#0b0b0b" stroke-width="1"/>
+<line x1="78" y1="62" x2="78" y2="366" stroke="#0b0b0b" stroke-width="1"/>
+<path d="M78.0,187.4 L92.5,187.4 L107.1,195.9 L121.6,198.0 L136.1,221.5 L150.7,224.1 L165.2,225.4 L179.7,226.7 L194.3,232.3 L208.8,235.2 L223.3,235.2 L237.9,235.2 L252.4,241.3 L266.9,244.4 L281.5,254.2 L296.0,261.1 L310.5,264.7 L325.1,264.7 L339.6,268.3 L354.1,275.9 L368.7,275.9 L383.2,279.9 L397.7,279.9 L412.3,283.9 L426.8,283.9 L441.3,283.9 L455.9,283.9 L470.4,283.9 L484.9,288.1 L499.5,296.7 L514.0,301.1 L528.5,301.1 L543.1,301.1 L557.6,301.1 L572.1,305.7 L586.7,310.5 L601.2,310.5 L615.7,315.3 L630.3,319.7 L644.8,323.7 L659.3,323.7 L673.9,323.7 L688.4,323.7 L702.9,323.0 L717.5,328.6 L732.0,328.6" fill="none" stroke="#2a78d6" stroke-width="2" stroke-linejoin="round"/>
+<path d="M78.0,357.9 L223.3,357.9 L223.3,357.9 L332.3,357.9 L332.3,345.7 L441.3,345.7 L441.3,305.2 L659.3,305.2 L659.3,163.3 L732.0,163.3 L732.0,163.3" fill="none" stroke="#eb6834" stroke-width="2" stroke-linejoin="round" stroke-dasharray="6 4"/>
+<circle cx="223.3" cy="357.9" r="4" fill="#eb6834" stroke="white" stroke-width="1.5"/>
+<circle cx="332.3" cy="345.7" r="4" fill="#eb6834" stroke="white" stroke-width="1.5"/>
+<circle cx="441.3" cy="305.2" r="4" fill="#eb6834" stroke="white" stroke-width="1.5"/>
+<circle cx="659.3" cy="163.3" r="4" fill="#eb6834" stroke="white" stroke-width="1.5"/>
+<rect x="313.2" y="72.0" width="408.8" height="52" rx="6" fill="white" fill-opacity="0.94" stroke="#e7e6e2"/>
+<line x1="323.2" y1="86.0" x2="347.2" y2="86.0" stroke="#2a78d6" stroke-width="3"/>
+<text x="355.2" y="90.0" font-size="12.5" fill="#0b0b0b">I start talking again, given the pause got this long</text>
+<line x1="323.2" y1="106.0" x2="347.2" y2="106.0" stroke="#eb6834" stroke-width="3" stroke-dasharray="6 4"/>
+<text x="355.2" y="110.0" font-size="12.5" fill="#0b0b0b">Doubt Smart Turn may have and still end the turn</text>
+<text x="405.0" y="414" font-size="13.5" text-anchor="middle" fill="#0b0b0b">Pause so far (s)</text>
+<text x="24" y="214.0" font-size="13.5" text-anchor="middle" fill="#0b0b0b" transform="rotate(-90 24 214.0)">Probability</text>
+</svg>

@@ -1,0 +1,185 @@
+{#-
+  The house's control blocks, in one place (docs/control.md, "How it's built").
+
+  Home Assistant loads this file at startup and any template can use it:
+    {% from 'control.jinja' import param, bayes_step %}
+  Macros always hand back text, so numbers come out through | float and structures through
+  | from_json. Everything here is plain arithmetic, no reading of the house, except gate(), which
+  asks the light arbiter (packages/control.yaml).
+
+  The blocks:
+    param(name)                         the house's named settings: hold times, thresholds, model numbers
+    bayes_step(b, stay, enter, ratio)   one minute of a two-state Bayes filter (memory)
+    schmitt(x, on, off, was_on)         a threshold with hysteresis, so a value on the line doesn't chatter
+    lowpass(prev, x, dt, tau)           first-order low-pass filter, time constant tau
+    rate(prev, x, dt)                   change per second, for derivatives (filter first, they amplify noise)
+    pid(sp, pv, state, dt, ...)         one PID step with anti-windup, state carried as JSON
+    gate(entity, priority, override)    may a request of this priority change this light right now
+    holds_next(kind, data)              the light arbiter's holds after one event (packages/arbiter.yaml)
+    commands_next(kind, data)           and its memory of what was last asked of each light
+-#}
+
+{#- The settings. Each has its reason next to it in docs/control.md. Priorities: the lower the number,
+    the more it wins. 1 the alarm and safety, 2 me by hand (and the fell-asleep check, which has to
+    beat a light I switched on before dozing off), 3 routines, 4 the mode's look, 5 background -#}
+{%- macro param(name) -%}
+{%- set p = {
+  'priority_alarm': 1, 'priority_manual': 2, 'priority_routine': 3, 'priority_look': 4, 'priority_background': 5,
+  'manual_hold_minutes': 180,
+  'alarm_hold_minutes': 75,
+  'command_settle_seconds': 10,
+  'command_match_seconds': 120,
+  'command_match_pct': 6,
+  'asleep_on': 0.85,
+  'asleep_max': 0.99,
+  'asleep_off': 0.35,
+  'asleep_hazard_late': 0.008,
+  'asleep_hazard_evening': 0.003,
+  'asleep_hazard_early': 0.003,
+  'asleep_hazard_day': 0.0003,
+  'asleep_hazard_max': 0.3,
+  'asleep_wake_hazard': 0.002,
+  'asleep_activity_ratio': 0.05,
+  'empty_after_door_minutes': 5,
+  'arrival_after_door_minutes': 10,
+  'asleep_typing_ratio': 0.001,
+  'ambient_level_dark': 80,
+  'ambient_level_daylight': 50,
+  'ambient_level_wind_down': 35,
+  'kelvin_morning': 4000,
+  'kelvin_evening': 2700,
+  'kelvin_floor': 2700,
+  'daylight_full_elevation': 35,
+  'wind_down_ramp_minutes': 60,
+  'blend_fade_seconds': 60,
+  'blend_ratio': 0.05,
+  'blend_min_step': 2,
+  'blend_mired_step': 3,
+  'blend_minutes': 45,
+  'calm_before_bed_minutes': 60,
+  'bedtime_without_plan': '22:30',
+  'wake_without_plan': '07:00',
+  'stand_in_band': 15,
+} -%}
+{{- p[name] -}}
+{%- endmacro -%}
+
+{#- Bayes filter, one step. b is the belief the hidden state is "on" (asleep, say) a step ago.
+    Predict with the transition chances, then correct with the evidence:
+      prior = b * stay + (1 - b) * enter
+      b'    = prior * ratio / (prior * ratio + (1 - prior))
+    stay is the chance of staying in the state for one more step, enter the chance of going into it
+    from the other one, and ratio is P(what was seen | on) / P(what was seen | off). A ratio of 1 is
+    "saw nothing useful", and then it's pure prediction. -#}
+{%- macro bayes_step(b, stay, enter, ratio) -%}
+{%- set prior = (b | float) * (stay | float) + (1 - (b | float)) * (enter | float) -%}
+{%- set num = prior * (ratio | float) -%}
+{%- set den = num + (1 - prior) -%}
+{{- ([[(num / den) if den > 0 else prior, 0.0001] | max, 0.9999] | min) | round(6) -}}
+{%- endmacro -%}
+
+{#- Hysteresis (a Schmitt trigger): on above `on`, off below `off`, and in between it stays as it was -#}
+{%- macro schmitt(x, on, off, was_on) -%}
+{%- set x = x | float -%}
+{{- 'on' if x >= (on | float) else ('off' if x <= (off | float) else ('on' if was_on in [true, 'on', 'true', 'True'] else 'off')) -}}
+{%- endmacro -%}
+
+{#- First-order low-pass: the output moves toward the input by a fraction that depends on how long
+    it's been (dt) against the time constant (tau), both in seconds. Exact for any dt, so an uneven
+    update rate doesn't change the filter -#}
+{%- macro lowpass(prev, x, dt, tau) -%}
+{%- if prev in [none, '', 'unknown', 'unavailable'] -%}{{ x | float }}{%- else -%}
+{%- set a = 1 - e ** (-(dt | float) / ([tau | float, 0.001] | max)) -%}
+{{- ((prev | float) + a * ((x | float) - (prev | float))) | round(6) -}}
+{%- endif -%}
+{%- endmacro -%}
+
+{#- Rate of change per second -#}
+{%- macro rate(prev, x, dt) -%}
+{{- (((x | float) - (prev | float)) / ([dt | float, 0.001] | max)) | round(6) -}}
+{%- endmacro -%}
+
+{#- One PID step. state is the JSON this returned last time ('' or none to start). The integral only
+    grows while the output isn't pinned at a limit (conditional integration, the simplest
+    anti-windup), and the derivative is on the measurement, not the error, so a setpoint change
+    doesn't kick the output. Returns {"u": output, "i": integral, "pv": measurement} -#}
+{%- macro pid(sp, pv, state, dt, kp, ki, kd, lo, hi) -%}
+{%- set s = state | from_json if state not in [none, '', 'unknown', 'unavailable'] else {} -%}
+{%- set err = (sp | float) - (pv | float) -%}
+{%- set i = s.get('i', 0.0) | float -%}
+{%- set last_pv = s.get('pv', pv) | float -%}
+{%- set d = -((pv | float) - last_pv) / ([dt | float, 0.001] | max) -%}
+{%- set i_new = i + err * (dt | float) -%}
+{%- set u_try = (kp | float) * err + (ki | float) * i_new + (kd | float) * d -%}
+{%- set pinned = (u_try > (hi | float) and err > 0) or (u_try < (lo | float) and err < 0) -%}
+{%- set i_used = i if pinned else i_new -%}
+{%- set u = (kp | float) * err + (ki | float) * i_used + (kd | float) * d -%}
+{{- {'u': ([[u, lo | float] | max, hi | float] | min) | round(4), 'i': i_used | round(6), 'pv': pv | float} | to_json -}}
+{%- endmacro -%}
+
+{#- The arbiter's question: can a request of this priority change this light now? A hold from a
+    stronger (lower numbered) request in force says no; equal or weaker, the newest wins (the
+    alarm's next sunrise step past its own last one, the fell-asleep check past a hand at the
+    switch). override lets an explicit ask (me picking a mode) past holds from me by hand and
+    below. The alarm's never overridden. Answers "go" or who's holding it -#}
+{%- macro gate(entity, priority, override=false) -%}
+{%- set holds = state_attr('sensor.light_arbiter', 'holds') or {} -%}
+{%- set h = holds.get(entity) -%}
+{%- set pr = priority | int(4) -%}
+{%- if h is none or (h.until | float(0)) <= now().timestamp() -%}go
+{%- elif (h.priority | int(9)) >= pr -%}go
+{%- elif override in [true, 'true', 'True'] and (h.priority | int(9)) >= 2 -%}go
+{%- else -%}held by {{ h.source }} until {{ (h.until | float(0)) | timestamp_custom('%-I:%M %p') }}
+{%- endif -%}
+{%- endmacro -%}
+
+{#- The arbiter's memory, one event at a time. Holds and commands are keyed by light; a hold is
+    {priority, until (epoch seconds), source}, a command {level, fade, at, source}. Expired holds and
+    commands older than ten minutes drop out on the way through -#}
+{%- macro holds_next(kind, data) -%}
+{%- set t = now().timestamp() -%}
+{%- set ns = namespace(h={}) -%}
+{%- for e, v in (state_attr('sensor.light_arbiter', 'holds') or {}).items() if (v.until | float(0)) > t -%}
+{%- set ns.h = dict(ns.h, **{e: v}) -%}
+{%- endfor -%}
+{%- if kind == 'hold' and data.entity is defined -%}
+{%- set ns.h = dict(ns.h, **{data.entity: {'priority': data.priority | default(4) | int(4),
+                                           'until': (t + (data.minutes | default(0) | float(0)) * 60) | round(0),
+                                           'source': data.source | default('?')}}) -%}
+{%- elif kind == 'release' and data.entity == 'all' -%}
+{%- set ns.h = dict(ns.h | items | selectattr('1.priority', 'le', 1) | list) -%}
+{%- elif kind == 'release' and data.entity is defined -%}
+{%- set ns.h = dict(ns.h | items | rejectattr('0', 'eq', data.entity) | list) -%}
+{%- endif -%}
+{{- ns.h | to_json -}}
+{%- endmacro -%}
+
+{%- macro commands_next(kind, data) -%}
+{%- set t = now().timestamp() -%}
+{%- set ns = namespace(c={}) -%}
+{%- for e, v in (state_attr('sensor.light_arbiter', 'commands') or {}).items() if t - (v.at | float(0)) < 600 -%}
+{%- set ns.c = dict(ns.c, **{e: v}) -%}
+{%- endfor -%}
+{%- if kind == 'cmd' and data.entity is defined -%}
+{%- set ns.c = dict(ns.c, **{data.entity: {'level': data.level | default(0) | int(0), 'fade': data.fade | default(0) | float(0),
+                                           'from': data['from'] | default(data.level | default(0)) | int(0),
+                                           'at': t | round(1), 'source': data.source | default('?')}}) -%}
+{%- endif -%}
+{{- ns.c | to_json -}}
+{%- endmacro -%}
+
+{#- A list kept in a sensor's own attributes, one event at a time: the reminders
+    (packages/reminders.yaml). Items are {id, message, due (epoch seconds)}. "add" puts one in,
+    "done" takes one out by id, "clear" empties it. Kept in order of when they're due -#}
+{%- macro reminders_next(kind, data) -%}
+{%- set items = state_attr('sensor.reminders', 'items') or [] -%}
+{%- if kind == 'add' and data.message is defined -%}
+{%- set items = items + [{'id': (data.id | default(now().timestamp() | int)) | string, 'message': data.message | string,
+                          'due': data.due | float(0)}] -%}
+{%- elif kind == 'done' -%}
+{%- set items = items | rejectattr('id', 'eq', data.id | default('') | string) | list -%}
+{%- elif kind == 'clear' -%}
+{%- set items = [] -%}
+{%- endif -%}
+{{- items | sort(attribute='due') | to_json -}}
+{%- endmacro -%}

@@ -1,0 +1,772 @@
+# Waking up: a sunrise in the bedroom, then the house starts the morning, then it makes sure you
+# actually stay up. Built for a deep sleeper, so the light alone won't do it and isn't meant to.
+# The phone alarm stays, and this is the part around it.
+#
+# When: the wake time in tonight's plan (sensor.bedtime_plan, packages/bedtime.yaml), so on workdays
+# it's the time you need to be at work worked backwards, at weekends your usual wake time.
+# What happens on each kind of day is a setting (input_select.wake_up_workdays and
+# wake_up_weekends): "Sunrise and alarm", "Sunrise only" or "Off". Workdays start on the first,
+# weekends on Off. "Don't wake me tomorrow" skips one morning.
+#
+# The research it's built on, in short (more in docs/routines.md):
+#   - a dawn simulation (light rising over the last 30 minutes) makes waking up less groggy and
+#     the first half hour sharper, even though it rarely wakes anyone by itself
+#   - grogginess (sleep inertia) is worst right after waking and wears off over 15 to 30 minutes,
+#     longer after short sleep or waking out of deep sleep. That's the window where people go back
+#     to bed, so it's the window this watches
+#   - bright light and getting up and moving are the things that actually clear it. Lying there
+#     with a phone doesn't
+#   - a voice saying your name and a rising, melodic sound wake people better than a flat beep
+#
+# The steps:
+#   1. 30 minutes out: the sunrise lights (labelled light_sunrise, usually the bedroom overhead)
+#      fade up from 28% to 100% on a curve (slow at first, the way eyes see it). 28% because plenty
+#      of dimmable bulbs don't glow at all below about that, so a sunrise from 2% spends its first
+#      half in the dark. Switching it off by hand stops the fade, not the rest
+#   2. wake time: Morning (most lights on, packages/lights.yaml), the sunrise lights full and the
+#      bedside lamp (light_bedside) on, and Jarvis says good morning on the Hub. If the computer's
+#      awake, Jarvis says it out of the computer too (best effort: one that's asleep or has its lid
+#      shut just gets skipped), handy when the Hub isn't in the bedroom
+#   3. "Sunrise and alarm" only: until the Hub sees you, someone types or moves the mouse on the
+#      computer, or the Hub hears "I'm up" or "good morning", it gets louder. 10 minutes: Jarvis
+#      again at full volume and a time-sensitive notification. 20: a critical alert on the phone,
+#      which rings through silent and Focus. 30: another, at full volume
+#   Hard to break on purpose: a Home Assistant restart in the middle picks the morning up where it
+#   was (input_boolean.waking_up survives a restart, the script doesn't), being home goes by the
+#   house not being Away rather than the phone's GPS alone, and the computer only counts as up when
+#   it's unlocked and someone touched it in the last minute and a half, so nothing it does by itself
+#   in the night can switch the alarm off
+#   4. staying up: for 45 minutes after the wake time, if there's been no sign of life for 12
+#      minutes (Hub motion, lights switched, the phone coming off the charger, the TV, the computer)
+#      and the bathroom isn't occupied (a shower is fine), Jarvis asks if you're still with him and
+#      the bedroom goes full again. Five more quiet minutes and it's a critical alert
+#
+# And a backstop that shares nothing with all of the above but the plan. A start automation that
+# errors every minute from its first tick is all it takes for nothing to happen at all, and you wake
+# up by yourself hours later. So: 3 minutes past an alarm morning's wake time, if the wake-up isn't
+# running and nothing says you're up, it's straight to a critical alert on the phone, Jarvis at full
+# volume and the bedroom lights, then it tries the normal alarm too. Its own few lines, no script, so
+# whatever broke the wake-up can't break this as well. An error from any wake-up automation in the
+# morning is also a critical alert by itself (packages/controls.yaml)
+input_select:
+  wake_up_workdays:
+    name: "Waking up on workdays"
+    icon: mdi:weather-sunset-up
+    options: ["Sunrise and alarm", "Sunrise only", "Off"]
+  wake_up_weekends:
+    name: "Waking up on days off"
+    icon: mdi:weather-sunset-up
+    options: ["Sunrise and alarm", "Sunrise only", "Off"]
+
+input_number:
+  sunrise_minutes:
+    name: "Sunrise length"
+    icon: mdi:weather-sunset-up
+    min: 10
+    max: 60
+    step: 5
+    unit_of_measurement: min
+
+input_boolean:
+  skip_wake_up:
+    name: "Don't wake me tomorrow"
+    icon: mdi:alarm-off
+  waking_up:
+    name: "Waking up now"
+    icon: mdi:alarm
+
+input_datetime:
+  # when this morning's wake-up started, the wake time it was going for, when you were first seen
+  # up, and when the last stay-up nudge went out
+  wake_up_started:
+    name: "Wake-up started"
+    has_date: true
+    has_time: true
+  wake_up_at:
+    name: "Wake-up time"
+    has_date: true
+    has_time: true
+  wake_up_seen:
+    name: "Seen up"
+    has_date: true
+    has_time: true
+  wake_up_nudged:
+    name: "Last stay-up nudge"
+    has_date: true
+    has_time: true
+  wake_up_backstop_at:
+    name: "Wake-up backstop went off"
+    has_date: true
+    has_time: true
+
+template:
+  # The last sign you're awake and moving. Only real changes count (not the unavailable a restart
+  # puts in between), so it survives restarts too. And only a person's: a light counts when the
+  # arbiter says a person changed it (light_manual, packages/arbiter.yaml), never because a look or
+  # a fade moved it. The TV counts going on, not off, and the phone's battery going to full is the
+  # charger finishing, not anyone (iPhones say Full, Android full)
+  - trigger:
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+      - trigger: state
+        entity_id: [binary_sensor.tv_picture, sensor.phone_battery_state, sensor.computer_last_active]
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+      - trigger: event
+        event_type: light_manual
+      - trigger: state
+        entity_id: [binary_sensor.bedroom_door, binary_sensor.bathroom_door]
+        from: ["on", "off"]
+        to: ["on", "off"]
+      - trigger: event
+        event_type: wake_up_confirmed
+      # the phone's own moments, from phone Shortcuts (packages/inference.yaml). The ones a person
+      # does, not the sleep schedule's
+      - trigger: event
+        event_type: phone_signal
+        event_data: {what: off_charger}
+      - trigger: event
+        event_type: phone_signal
+        event_data: {what: on_charger}
+      - trigger: event
+        event_type: phone_signal
+        event_data: {what: alarm_stopped}
+      - trigger: event
+        event_type: phone_signal
+        event_data: {what: alarm_snoozed}
+    sensor:
+      - name: "Last sign of life"
+        unique_id: last_sign_of_life
+        icon: mdi:human-greeting
+        device_class: timestamp
+        state: >-
+          {% set nobody = trigger.platform == 'state' and (
+               (trigger.entity_id == 'binary_sensor.tv_picture' and trigger.to_state.state == 'off')
+               or (trigger.entity_id == 'sensor.phone_battery_state' and trigger.to_state.state | lower == 'full')) %}
+          {{ (this.state if this is defined else none) if nobody else now().isoformat() }}
+        attributes:
+          what: >-
+            {% set nobody = trigger.platform == 'state' and (
+                 (trigger.entity_id == 'binary_sensor.tv_picture' and trigger.to_state.state == 'off')
+                 or (trigger.entity_id == 'sensor.phone_battery_state' and trigger.to_state.state | lower == 'full')) %}
+            {% if nobody %}{{ this.attributes.get('what') if this is defined else none }}
+            {% elif trigger.platform == 'state' %}{{ trigger.entity_id }}
+            {% elif trigger.event.event_type == 'light_manual' %}{{ trigger.event.data.entity }} by hand
+            {% elif trigger.event.event_type == 'phone_signal' %}phone: {{ trigger.event.data.what }}
+            {% else %}said so{% endif %}
+
+script:
+  wake_up:
+    alias: "Wake up"
+    description: "The wake-up: a sunrise in the bedroom, then Morning, then (with alarm) louder until someone's seen up."
+    icon: mdi:weather-sunset-up
+    mode: single
+    # The computer counts as up only by its last input changing: real hands on the keyboard. Not "at
+    # the desk", which also turns on from the desk's power draw and could go on with you asleep.
+    # test: true runs it without touching the house mode or this morning's bookkeeping (so a test
+    # the night before can't stop the real one), and only "I'm up" or "stop" ends it early, so a
+    # test can be watched all the way through from the desk. step is the minutes between the
+    # alarm's steps, 10 for real, 1 for a test
+    fields:
+      minutes:
+        description: "How long the sunrise takes (the setting if left out)"
+        selector:
+          number: {min: 1, max: 60}
+      alarm:
+        description: "Get louder until someone's seen up"
+        selector:
+          boolean:
+      step:
+        description: "Minutes between the alarm's steps (10)"
+        selector:
+          number: {min: 1, max: 30}
+      test:
+        description: "A test: leave the house mode and this morning's records alone"
+        selector:
+          boolean:
+      resume:
+        description: "Carrying on after a restart: keep this morning's start time"
+        selector:
+          boolean:
+      until_plan:
+        description: "Run the sunrise until the plan's wake time (how the morning starts it)"
+        selector:
+          boolean:
+      until_set:
+        description: "Run the sunrise until the wake time already set (carrying on after a restart)"
+        selector:
+          boolean:
+    sequence:
+      # how long the sunrise is. Worked out here, in one template each, never handed over through a
+      # variable: a time put in a variable comes out the other side as text, and an automation doing
+      # the sum itself is exactly the kind of thing that fails on a real morning
+      - variables:
+          n: >-
+            {% set plan = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+            {% set at = states('input_datetime.wake_up_at') | as_datetime(none) %}
+            {% if until_plan | default(false) | bool and plan is not none and as_local(plan).date() == now().date() %}
+              {{ [(((plan - now()).total_seconds()) / 60) | round(0) | int, 1] | max }}
+            {% elif until_set | default(false) | bool and at is not none %}
+              {{ [((((at | as_local) - now()).total_seconds()) / 60) | round(0) | int, 1] | max }}
+            {% else %}
+              {{ (minutes if minutes is defined and minutes not in [none, ''] else states('input_number.sunrise_minutes')) | int(30) }}
+            {% endif %}
+          loud: "{{ alarm | default(true) | bool }}"
+          resuming: "{{ resume | default(false) | bool }}"
+          started: "{{ states('input_datetime.wake_up_started') if resume | default(false) | bool else now().strftime('%Y-%m-%d %H:%M:%S') }}"
+          started_ts: "{{ (state_attr('input_datetime.wake_up_started', 'timestamp') | float(0)) if resume | default(false) | bool else now().timestamp() }}"
+          wake_at: "{{ (now() + timedelta(minutes=n)).isoformat() }}"
+          floor: 28
+          gap: "{{ step | default(10) | int(10) }}"
+          testing: "{{ test | default(false) | bool }}"
+          sunrise: "{{ label_entities('light_sunrise') | select('match', 'light[.]') | list }}"
+      # wake_up_at always (the end-of-morning check goes by it), wake_up_started only for real: it's
+      # what stops a second run the same day
+      - if: "{{ not testing and not resuming }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.wake_up_started
+            data:
+              datetime: "{{ started }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.wake_up_at
+        data:
+          datetime: "{{ as_datetime(wake_at).strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.waking_up
+      # 1. the sunrise: one step a minute from the bulbs' first glow (floor) to full, squared so
+      # the start is slow. A sunrise light switched off by hand drops out, and the fade stops when
+      # they're all off, or when the wake-up is called off
+      - repeat:
+          while:
+            - "{{ repeat.index <= n }}"
+            - condition: state
+              entity_id: input_boolean.waking_up
+              state: "on"
+            - "{{ repeat.index == 1 or expand(sunrise) | selectattr('state', 'eq', 'on') | list | count > 0 }}"
+          sequence:
+            - variables:
+                level: "{{ (floor + (100 - floor) * ((repeat.index - 1) / ([n - 1, 1] | max)) ** 2) | round(0) | int }}"
+                lit: >-
+                  {{ sunrise if repeat.index == 1
+                     else expand(sunrise) | selectattr('state', 'eq', 'on') | map(attribute='entity_id') | list }}
+            - repeat:
+                for_each: "{{ lit }}"
+                sequence:
+                  - action: script.light_set
+                    continue_on_error: true
+                    data:
+                      entity: "{{ repeat.item }}"
+                      level: "{{ level }}"
+                      fade: 55
+                      priority: 1
+                      hold: "{% from 'control.jinja' import param %}{{ param('alarm_hold_minutes') }}"
+                      source: wake-up
+            - delay: "00:01:00"
+      - wait_template: "{{ now() >= as_datetime(wake_at) or is_state('input_boolean.waking_up', 'off') }}"
+      - condition: state
+        entity_id: input_boolean.waking_up
+        state: "on"
+      # 2. wake time. Morning puts the sunrise lights at 60, so wait for the look to land before
+      # taking them to full
+      - variables:
+          # up: the house's one answer to that (sensor.seen_up, packages/estimates.yaml), since this
+          # morning's start
+          up_already: "{{ not testing and as_timestamp(states('sensor.seen_up'), 0) >= started_ts | float(0) }}"
+      - if: "{{ not testing }}"
+        then:
+          - action: script.house_mode_set
+            continue_on_error: true
+            data:
+              mode: Morning
+          - wait_template: "{{ is_state('input_text.lights_look', 'morning') }}"
+            timeout: "00:00:30"
+          - delay: "00:00:03"
+      - if: "{{ not up_already }}"
+        then:
+          - action: script.wake_up_bedroom_full
+            continue_on_error: true
+          - action: assist_satellite.announce
+            continue_on_error: true
+            target:
+              entity_id: assist_satellite.hub_500_voice_assist_satellite
+            data:
+              message: "Good morning. It's {{ now().strftime('%-I:%M') }}."
+              preannounce: true
+          - action: script.turn_on
+            continue_on_error: true
+            target:
+              entity_id: script.computer_say
+            data:
+              variables:
+                message: "Good morning. It's {{ now().strftime('%-I:%M') }}."
+                volume: 0.6
+        else:
+          - stop: "Already up"
+      - condition: "{{ loud }}"
+      # 3. louder until someone's seen up
+      - repeat:
+          for_each:
+            - {say: "It's {time}. Time to get up.", phone: "time-sensitive", volume: 0.9}
+            - {say: "It's {time}. Up you get.", phone: "critical", volume: 1.0, phone_volume: 0.7}
+            - {say: "It's {time}. Please get up.", phone: "critical", volume: 1.0, phone_volume: 1.0}
+          sequence:
+            - wait_for_trigger:
+                - trigger: state
+                  entity_id: sensor.seen_up
+                  not_to: [unavailable, unknown]
+                  id: seen
+                - trigger: event
+                  event_type: wake_up_confirmed
+                  id: said
+                - trigger: state
+                  entity_id: input_boolean.waking_up
+                  to: "off"
+                  id: said
+              timeout:
+                minutes: "{{ gap }}"
+              continue_on_timeout: true
+            - if: "{{ wait.trigger is not none and (not testing or wait.trigger.id == 'said') }}"
+              then:
+                - stop: "Up"
+            - variables:
+                said: "{{ repeat.item.say | replace('{time}', now().strftime('%-I:%M')) }}"
+            - action: media_player.volume_set
+              continue_on_error: true
+              target:
+                entity_id: media_player.hub_500_voice_media_player
+              data:
+                volume_level: "{{ repeat.item.volume }}"
+            - action: assist_satellite.announce
+              continue_on_error: true
+              target:
+                entity_id: assist_satellite.hub_500_voice_assist_satellite
+              data:
+                message: "{{ said }}"
+                preannounce: true
+            - action: script.turn_on
+              continue_on_error: true
+              target:
+                entity_id: script.computer_say
+              data:
+                variables:
+                  message: "{{ said }}"
+                  volume: 1.0
+            - action: script.wake_up_bedroom_full
+              continue_on_error: true
+            - choose:
+                - conditions: "{{ repeat.item.phone == 'critical' }}"
+                  sequence:
+                    - action: notify.mobile_app_phone
+                      continue_on_error: true
+                      data:
+                        title: "Wake up"
+                        message: "{{ said }}"
+                        data:
+                          push:
+                            sound:
+                              name: default
+                              critical: 1
+                              volume: "{{ repeat.item.phone_volume }}"
+                          actions:
+                            - action: WAKE_UP_CONFIRMED
+                              title: "I'm up"
+              default:
+                - action: notify.mobile_app_phone
+                  continue_on_error: true
+                  data:
+                    title: "Wake up"
+                    message: "{{ said }}"
+                    data:
+                      push:
+                        interruption-level: time-sensitive
+                      actions:
+                        - action: WAKE_UP_CONFIRMED
+                          title: "I'm up"
+
+  # the sunrise lights full and the bedside lamp on, as the alarm (priority 1, packages/arbiter.yaml):
+  # nothing else, a look or a light switched by hand earlier, can take them back down for the morning
+  wake_up_bedroom_full:
+    alias: "Bedroom full, for the alarm"
+    icon: mdi:lightbulb-on
+    mode: parallel
+    sequence:
+      - repeat:
+          for_each: >-
+            {{ (label_entities('light_sunrise') + label_entities('light_bedside')) | select('match', 'light[.]') | unique | list }}
+          sequence:
+            - action: script.light_set
+              continue_on_error: true
+              data:
+                entity: "{{ repeat.item }}"
+                level: 100
+                fade: 1
+                priority: 1
+                hold: "{% from 'control.jinja' import param %}{{ param('alarm_hold_minutes') }}"
+                source: wake-up
+
+  # the computer back to how loud it was before the alarm
+  wake_up_computer_back:
+    alias: "Computer volume back after the alarm"
+    icon: mdi:volume-medium
+    sequence:
+      - condition: "{{ states('input_number.computer_volume_before') | float(-1) >= 0 }}"
+      - action: media_player.volume_set
+        continue_on_error: true
+        target:
+          entity_id: media_player.computer
+        data:
+          volume_level: "{{ states('input_number.computer_volume_before') | float(0.3) }}"
+      - action: input_number.set_value
+        target:
+          entity_id: input_number.computer_volume_before
+        data:
+          value: -1
+
+  wake_up_stop:
+    alias: "Stop waking me up"
+    icon: mdi:alarm-off
+    sequence:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.waking_up
+      - action: script.turn_off
+        target:
+          entity_id: script.wake_up
+
+automation:
+  - id: wake_up_starts
+    alias: "Wake-up starts before the wake time"
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+    conditions:
+      # home: the phone says so, or it's on the home Wi-Fi. The house not being Away (below) covers a
+      # GPS that wandered off in the night
+      - "{{ is_state('person.resident', 'home') or is_state('binary_sensor.phone_on_home_wifi', 'on') or not is_state('input_select.house_mode', 'Away') }}"
+      - condition: state
+        entity_id: [input_boolean.waking_up, input_boolean.skip_wake_up]
+        state: "off"
+      # not already up and about. Morning counts as asleep too: it can come from a trip past the Hub
+      # in the night, and the alarm mustn't hang on that
+      - condition: state
+        entity_id: input_select.house_mode
+        state: [Night, Calm, Evening, Morning]
+      - "{{ (states('input_datetime.wake_up_started') | as_datetime(none)) is none or (states('input_datetime.wake_up_started') | as_datetime | as_local).date() < now().date() }}"
+      # inside the sunrise window of this morning's planned wake time (a restart halfway through
+      # still gets the rest of it), and this kind of day isn't set to Off
+      # (if the plan's broken or never rolled over to today, a workday still has a wake time: the
+      # arrival time worked back, the same sum the plan does. The alarm can't hang on the plan)
+      - >-
+        {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+        {% set wd = state_attr('sensor.bedtime_plan', 'workday') %}
+        {% if w is none or as_local(w).date() != now().date() %}
+          {% set wd = now().weekday() < 5 and is_state('input_boolean.day_off_tomorrow', 'off') %}
+          {% set a = (states('input_datetime.work_arrival') or '09:00:00')[:5] %}
+          {% set lead = states('input_number.commute_minutes') | int(30) + states('input_number.arrive_early_minutes') | int(10) + states('input_number.morning_prep_minutes') | int(45) %}
+          {% set w = (today_at(a) - timedelta(minutes=lead)) if now().weekday() < 5 and is_state('input_boolean.day_off_tomorrow', 'off') else none %}
+        {% endif %}
+        {% set n = states('input_number.sunrise_minutes') | int(30) %}
+        {% set setting = states('input_select.wake_up_workdays' if wd else 'input_select.wake_up_weekends') %}
+        {{ w is not none and as_local(w).date() == now().date()
+           and w - timedelta(minutes=n) <= now() < w - timedelta(minutes=2)
+           and (setting != 'Off' or is_state('input_boolean.wake_up_once', 'on')) }}
+    actions:
+      - variables:
+          setting: >-
+            {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+            {% set wd = state_attr('sensor.bedtime_plan', 'workday') if w is not none and as_local(w).date() == now().date()
+                        else now().weekday() < 5 and is_state('input_boolean.day_off_tomorrow', 'off') %}
+            {{ states('input_select.wake_up_workdays' if wd else 'input_select.wake_up_weekends') }}
+      - action: script.turn_on
+        continue_on_error: true
+        target:
+          entity_id: script.wake_up
+        data:
+          variables:
+            until_plan: true
+            alarm: "{{ setting == 'Sunrise and alarm' or (setting == 'Off' and is_state('input_boolean.wake_up_once', 'on')) }}"
+
+  # Seen up: the Hub saw you, or you said so. Ends the alarm part and starts the watch
+  - id: wake_up_seen
+    alias: "Wake-up: seen up"
+    triggers:
+      - trigger: state
+        entity_id: sensor.seen_up
+        not_to: [unavailable, unknown]
+    conditions:
+      - condition: state
+        entity_id: input_boolean.waking_up
+        state: "on"
+      - "{{ (states('input_datetime.wake_up_seen') | as_datetime(none)) is none or states('input_datetime.wake_up_seen') < states('input_datetime.wake_up_started') }}"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.wake_up_seen
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: script.wake_up_computer_back
+        continue_on_error: true
+      - action: media_player.volume_set
+        continue_on_error: true
+        target:
+          entity_id: media_player.hub_500_voice_media_player
+        data:
+          volume_level: "{{ states('input_number.jarvis_normal_volume') | float(0.66) }}"
+
+  # 4. staying up
+  - id: wake_up_stay_up
+    alias: "Wake-up: still up?"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.waking_up
+        state: "on"
+      # in the shower (the bathroom door shut with the light on), or watching TV, is up. A bathroom
+      # light left on with the door open would otherwise count as a shower all morning
+      - condition: state
+        entity_id: [binary_sensor.bathroom_occupied, binary_sensor.tv_picture]
+        state: "off"
+      - >-
+        {% set seen = states('input_datetime.wake_up_seen') %}
+        {% set at = states('input_datetime.wake_up_at') | as_datetime(none) %}
+        {% set life = states('sensor.last_sign_of_life') | as_datetime(none) %}
+        {% set nudged = states('input_datetime.wake_up_nudged') | as_datetime(none) %}
+        {{ seen >= states('input_datetime.wake_up_started') and at is not none
+           and now() < as_local(at) + timedelta(minutes=45)
+           and (life is none or (now() - life).total_seconds() > 12 * 60)
+           and (nudged is none or (now() - as_local(nudged)).total_seconds() > 5 * 60) }}
+    actions:
+      - variables:
+          second: "{{ states('input_datetime.wake_up_nudged') >= states('input_datetime.wake_up_seen') }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.wake_up_nudged
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: script.wake_up_bedroom_full
+        continue_on_error: true
+      - action: assist_satellite.announce
+        continue_on_error: true
+        target:
+          entity_id: assist_satellite.hub_500_voice_assist_satellite
+        data:
+          message: "Still with me? It's {{ now().strftime('%-I:%M') }}."
+          preannounce: true
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Still up?"
+          message: "It's {{ now().strftime('%-I:%M') }}. Tap if you're up."
+          data:
+            push: "{{ {'sound': {'name': 'default', 'critical': 1, 'volume': 1.0}} if second else {'interruption-level': 'time-sensitive'} }}"
+            actions:
+              - action: WAKE_UP_CONFIRMED
+                title: "I'm up"
+
+  # A restart in the middle of the morning kills the running script but not input_boolean.waking_up.
+  # If it's still on and the morning isn't over, carry on: the rest of the sunrise if it's not wake
+  # time yet, otherwise straight to the alarm part (unless you've already been seen up)
+  - id: wake_up_resumes
+    alias: "Wake-up carries on after a restart"
+    triggers:
+      - trigger: homeassistant
+        event: start
+    conditions:
+      - condition: state
+        entity_id: input_boolean.waking_up
+        state: "on"
+    actions:
+      - delay: "00:00:45"
+      - variables:
+          left: >-
+            {% set at = states('input_datetime.wake_up_at') | as_datetime(none) %}
+            {{ (((as_local(at) - now()).total_seconds() / 60) | round(0) | int) if at is not none else -999 }}
+          setting: "{{ states('input_select.wake_up_workdays' if state_attr('sensor.bedtime_plan', 'workday') else 'input_select.wake_up_weekends') }}"
+          seen_up: "{{ states('input_datetime.wake_up_seen') >= states('input_datetime.wake_up_started') }}"
+      - choose:
+          # too late to matter, or already up: just tidy up
+          - conditions: "{{ left < -30 or seen_up }}"
+            sequence:
+              - if: "{{ left < -30 }}"
+                then:
+                  - action: script.wake_up_stop
+                    continue_on_error: true
+        default:
+          - action: script.turn_on
+            continue_on_error: true
+            target:
+              entity_id: script.wake_up
+            data:
+              variables:
+                until_set: true
+                alarm: "{{ setting == 'Sunrise and alarm' or is_state('input_boolean.wake_up_once', 'on') }}"
+                resume: true
+
+  # The backstop. Deliberately dumb: every minute, is it an alarm morning, 3 to 60 minutes past
+  # the wake time, the wake-up script not running (never started, or stopped thinking you were up
+  # when you weren't), nobody seen at the Hub or the computer since half an hour before and no "I'm
+  # up", and it hasn't gone off yet today. Then the loud things, directly
+  - id: wake_up_backstop
+    alias: "Wake-up backstop: the alarm never got going"
+    triggers:
+      - trigger: time_pattern
+        minutes: "/1"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.skip_wake_up
+        state: "off"
+      - "{{ is_state('person.resident', 'home') or is_state('binary_sensor.phone_on_home_wifi', 'on') or not is_state('input_select.house_mode', 'Away') }}"
+      - >-
+        {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+        {% set wd = state_attr('sensor.bedtime_plan', 'workday') %}
+        {% if w is none or as_local(w).date() != now().date() %}
+          {% set wd = now().weekday() < 5 and is_state('input_boolean.day_off_tomorrow', 'off') %}
+          {% set a = (states('input_datetime.work_arrival') or '09:00:00')[:5] %}
+          {% set lead = states('input_number.commute_minutes') | int(30) + states('input_number.arrive_early_minutes') | int(10) + states('input_number.morning_prep_minutes') | int(45) %}
+          {% set w = (today_at(a) - timedelta(minutes=lead)) if now().weekday() < 5 and is_state('input_boolean.day_off_tomorrow', 'off') else none %}
+        {% endif %}
+        {% set setting = states('input_select.wake_up_workdays' if wd else 'input_select.wake_up_weekends') %}
+        {% set said = states('input_datetime.wake_up_seen') | as_datetime(none) %}
+        {% set fired = states('input_datetime.wake_up_backstop_at') | as_datetime(none) %}
+        {% set seen = state_attr('sensor.hub_last_saw_someone', 'last_on') | as_datetime(none) %}
+        {% set typed = states('sensor.computer_last_active') | as_datetime(none) %}
+        {% if w is none %}false{% else %}
+          {% set w = as_local(w) %}
+          {{ w.date() == now().date() and w + timedelta(minutes=3) <= now() < w + timedelta(minutes=60)
+             and (setting == 'Sunrise and alarm' or is_state('input_boolean.wake_up_once', 'on'))
+             and not is_state('script.wake_up', 'on')
+             and (said is none or as_local(said) < w - timedelta(minutes=30))
+             and (fired is none or as_local(fired).date() < now().date())
+             and (seen is none or seen < w - timedelta(minutes=30))
+             and (typed is none or typed < w - timedelta(minutes=30)) }}
+        {% endif %}
+    actions:
+      - variables:
+          bedroom: >-
+            {{ (label_entities('light_sunrise') + label_entities('light_bedside')) | select('match', 'light[.]') | unique | list }}
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.wake_up_backstop_at
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: notify.mobile_app_phone
+        data:
+          title: "Wake up"
+          message: "It's {{ now().strftime('%-I:%M') }} and the wake-up didn't start. This is the backup alarm."
+          data:
+            push:
+              sound:
+                name: default
+                critical: 1
+                volume: 1.0
+            actions:
+              - action: WAKE_UP_CONFIRMED
+                title: "I'm up"
+        continue_on_error: true
+      # straight to the lights, past the arbiter: the backstop shares nothing it doesn't have to. It
+      # still says what it asked for, so the lights answering don't look like someone at the switch
+      - repeat:
+          for_each: "{{ bedroom }}"
+          sequence:
+            - event: light_commanded
+              event_data: {entity: "{{ repeat.item }}", level: 100, fade: 0, source: backstop, priority: 1}
+      - if: "{{ bedroom | count > 0 }}"
+        then:
+          - action: light.turn_on
+            target:
+              entity_id: "{{ bedroom }}"
+            continue_on_error: true
+      - action: media_player.volume_set
+        target:
+          entity_id: media_player.hub_500_voice_media_player
+        data:
+          volume_level: 1.0
+        continue_on_error: true
+      - action: assist_satellite.announce
+        target:
+          entity_id: assist_satellite.hub_500_voice_assist_satellite
+        data:
+          message: "It's {{ now().strftime('%-I:%M') }}. Time to get up."
+          preannounce: true
+        continue_on_error: true
+      - action: script.turn_on
+        continue_on_error: true
+        target:
+          entity_id: script.computer_say
+        data:
+          variables:
+            message: "It's {{ now().strftime('%-I:%M') }}. Time to get up."
+            volume: 1.0
+      # and the real alarm from here, getting louder until you're up
+      - action: script.turn_on
+        continue_on_error: true
+        target:
+          entity_id: script.wake_up
+        data:
+          variables:
+            minutes: 1
+            alarm: true
+
+  - id: wake_up_phone_answer
+    alias: "Wake-up: I'm up from the phone"
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: WAKE_UP_CONFIRMED
+    actions:
+      - event: wake_up_confirmed
+
+  # an hour after the wake time, or leaving, or Away, it's over
+  - id: wake_up_ends
+    alias: "Wake-up ends"
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+      # Away is the leaving routine having run (gone and off the Wi-Fi), not one bad GPS fix
+      - trigger: state
+        entity_id: input_select.house_mode
+        to: Away
+    conditions:
+      - condition: state
+        entity_id: input_boolean.waking_up
+        state: "on"
+      - >-
+        {% set at = states('input_datetime.wake_up_at') | as_datetime(none) %}
+        {{ trigger.platform != 'time_pattern' or at is none or now() > as_local(at) + timedelta(hours=1) }}
+    actions:
+      - action: script.wake_up_stop
+        continue_on_error: true
+      - action: script.wake_up_computer_back
+        continue_on_error: true
+      - action: media_player.volume_set
+        continue_on_error: true
+        target:
+          entity_id: media_player.hub_500_voice_media_player
+        data:
+          volume_level: "{{ states('input_number.jarvis_normal_volume') | float(0.66) }}"
+
+intent_script:
+  ImUp:
+    description: "You're up: stop the wake-up alarm."
+    action:
+      - event: wake_up_confirmed
+    speech:
+      text: "Good morning."
+  SkipWakeUp:
+    description: "No wake-up lights or alarm tomorrow morning."
+    action:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.skip_wake_up
+    speech:
+      text: "I'll let you sleep tomorrow."

@@ -1,0 +1,84 @@
+{#-
+  The house's models of the person living in it, the parts that are about a house rather than control in general
+  (that's control.jinja). packages/estimates.yaml runs them. docs/control.md explains the model.
+-#}
+
+{#- Asleep, one minute of the filter (a two-state hidden Markov model run forward).
+
+    The clock and the context don't count as evidence each minute, they set the chance of falling
+    asleep in this minute (the hazard). Evidence that repeats every minute (the phone on the charger,
+    the house in Night) would otherwise add up minute after minute and get very sure of itself, which
+    is the naive Bayes trap the old sensor fell into. The only per-minute evidence is something
+    happening: a sign of life since the last update is twenty times likelier awake, typing at the
+    computer a thousand times. "Since the last update" rather than "in the last 60 seconds", so one
+    landing exactly on a tick, or a late tick, still counts once.
+
+    Returns JSON: b (the new belief), enter and wake (this minute's hazards), ratio (the evidence),
+    quiet (minutes since the last sign of life), at (when this update ran) -#}
+{%- macro asleep_next() -%}
+{%- from 'control.jinja' import param, bayes_step -%}
+{%- set prev = (states('sensor.asleep_belief') | float(5)) / 100 -%}
+{%- set h = now().hour -%}
+{%- set base = param('asleep_hazard_late') | float if (h >= 23 or h < 4)
+               else (param('asleep_hazard_evening') | float if h >= 21
+               else (param('asleep_hazard_early') | float if h < 7
+               else param('asleep_hazard_day') | float)) -%}
+{%- set life = states('sensor.last_sign_of_life') | as_datetime(none) -%}
+{%- set quiet = ((now() - life).total_seconds() / 60) if life is not none else 999 -%}
+{%- set last_at = (state_attr('sensor.asleep_belief', 'model') or {}).get('at', now().timestamp() - 60) | float -%}
+{%- set active = life is not none and life.timestamp() >= last_at -%}
+{%- set lights_on = expand(label_entities('light_ambient') + label_entities('light_task'))
+                    | selectattr('state', 'eq', 'on') | list | count > 0 -%}
+{%- set typing = is_state('binary_sensor.at_the_desk', 'on') -%}
+{%- set home = is_state('person.resident', 'home') or is_state('binary_sensor.phone_on_home_wifi', 'on')
+               or not is_state('input_select.house_mode', 'Away') -%}
+{%- set m = (3 if is_state('input_select.house_mode', 'Night') else 1)
+          * (1 if lights_on else 2)
+          * (6 if quiet >= 45 else (3 if quiet >= 15 else 1))
+          * (1.5 if is_state('input_boolean.phone_on_charger', 'on') else 1)
+          * (1.3 if is_state('binary_sensor.phone_focus', 'on') else 1)
+          * (0.5 if is_state('binary_sensor.tv_picture', 'on') else 1)
+          * (1.5 if is_state('binary_sensor.bedroom_door', 'off') and (h >= 21 or h < 6) else 1) -%}
+{%- set enter = 0 if typing else [base * m, param('asleep_hazard_max') | float] | min -%}
+{%- set wake = param('asleep_wake_hazard') | float * (4 if 5 <= h < 11 else 1)
+             * (5 if is_state('input_boolean.waking_up', 'on') else 1) -%}
+{%- set ratio = param('asleep_typing_ratio') | float if typing
+                else (param('asleep_activity_ratio') | float if active else 1) -%}
+{#- never surer than 99%: from 99.99 a three-minute trip to the bathroom couldn't pull it back -#}
+{%- set b = 0.0001 if not home else [bayes_step(prev, 1 - wake, enter, ratio) | float, param('asleep_max') | float] | min -%}
+{{- {'b': b, 'enter': enter | round(5), 'wake': wake | round(5), 'ratio': ratio, 'quiet': quiet | round(0) | int, 'at': now().timestamp() | round(1)} | to_json -}}
+{%- endmacro -%}
+
+{#- Someone home, from the front door and what moves inside, phone or no phone: the "wasp in a box".
+    A person can't get in or out without the door, so:
+      door closes                    -> checking: is anyone still in there?
+      anything inside moves after it -> in, and in stays in until the door opens again (sitting
+                                        still in the bedroom for an hour doesn't make the house empty)
+      nothing inside for N minutes   -> out
+    "Inside" is the Hub seeing someone (not while the robot vacuum's out or just back), a light changed
+    by hand, the TV coming on, typing at the computer, someone talking to Jarvis, "I'm up".
+    kind is what just happened, label says what it was, for the record.
+    Returns JSON: phase (in, checking, out, unknown), door_closed_at and last_inside (epoch
+    seconds), why -#}
+{%- macro occupancy_next(kind, label='') -%}
+{%- from 'control.jinja' import param -%}
+{%- set t = now().timestamp() -%}
+{%- set me = 'binary_sensor.someone_home' -%}
+{%- set phase = state_attr(me, 'phase') or 'unknown' -%}
+{%- set closed = state_attr(me, 'door_closed_at') | float(0) -%}
+{%- set inside = state_attr(me, 'last_inside') | float(0) -%}
+{%- set why = state_attr(me, 'why') or '' -%}
+{%- set vac = states.vacuum.robot_vacuum -%}
+{#- (just back counts for five minutes, but not a restart making it look just changed) -#}
+{%- set started = (states('sensor.home_assistant_started') | as_datetime(now() - timedelta(hours=1))) + timedelta(seconds=60) -%}
+{%- set vacuum_about = vac is not none and (vac.state in ['cleaning', 'returning', 'paused']
+                       or ((now() - vac.last_changed).total_seconds() < 300 and vac.last_changed > started)) -%}
+{%- if kind == 'door_close' -%}
+  {%- set phase, closed, why = 'checking', t, 'the door closed, waiting to see if anyone moves inside' -%}
+{%- elif kind == 'inside' and not (label == 'the Hub saw someone' and vacuum_about) -%}
+  {%- set phase, inside, why = 'in', t, label -%}
+{%- elif kind == 'tick' and phase == 'checking' and t - closed > (param('empty_after_door_minutes') | float) * 60 -%}
+  {%- set phase, why = 'out', 'nobody moved inside for ' ~ param('empty_after_door_minutes') ~ ' minutes after the door closed' -%}
+{%- endif -%}
+{{- {'phase': phase, 'door_closed_at': closed | round(0), 'last_inside': inside | round(0), 'why': why} | to_json -}}
+{%- endmacro -%}

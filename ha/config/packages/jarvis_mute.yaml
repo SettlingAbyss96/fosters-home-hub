@@ -1,0 +1,56 @@
+# Jarvis's mute, kept. The satellite forgets it whenever it restarts (a deploy, a reboot, a power
+# cut), so input_boolean.jarvis_muted is the one that remembers, and the dashboard's mute button
+# flips it. Muting from anywhere else (the satellite's own switch) gets copied back here, and when
+# the satellite reconnects it gets told the remembered state. A Home Assistant restart is the
+# sneaky case: the satellite reconnects and says "unmuted" before automations are even loaded, so
+# nothing sees the change. So it also checks a minute after startup, and any time after that the
+# two disagree (it used to look every minute, 1,438 runs a day in the logbook for nothing)
+input_boolean:
+  jarvis_muted:
+    name: "Jarvis muted"
+    icon: mdi:microphone-off
+
+automation:
+  - id: jarvis_mute_kept
+    alias: "Jarvis stays muted across restarts"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: input_boolean.jarvis_muted
+        id: remembered
+      - trigger: state
+        entity_id: switch.hub_500_voice_mute
+        from: ["unavailable", "unknown"]
+        id: reconnected
+      - trigger: state
+        entity_id: switch.hub_500_voice_mute
+        from: ["on", "off"]
+        to: ["on", "off"]
+        id: changed_there
+      - trigger: homeassistant
+        event: start
+        id: check
+      - trigger: template
+        value_template: >-
+          {{ states('switch.hub_500_voice_mute') in ['on', 'off']
+             and not is_state('switch.hub_500_voice_mute', states('input_boolean.jarvis_muted')) }}
+        for: "00:00:05"
+        id: check
+    actions:
+      - choose:
+          - conditions:
+              - condition: trigger
+                id: changed_there
+            sequence:
+              - action: "input_boolean.turn_{{ trigger.to_state.state }}"
+                target:
+                  entity_id: input_boolean.jarvis_muted
+        default:
+          - if: "{{ trigger.id == 'check' and trigger.platform == 'homeassistant' }}"
+            then:
+              - delay: "00:01:00"
+          - if: "{{ states('switch.hub_500_voice_mute') in ['on', 'off'] and not is_state('switch.hub_500_voice_mute', states('input_boolean.jarvis_muted')) }}"
+            then:
+              - action: "switch.turn_{{ states('input_boolean.jarvis_muted') }}"
+                target:
+                  entity_id: switch.hub_500_voice_mute

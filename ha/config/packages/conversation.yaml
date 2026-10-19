@@ -1,0 +1,20 @@
+# How conversations with Jarvis end. The phrases are in custom_sentences/en/closing.yaml; these
+# answer them straight away, in the same voice as the rest of Jarvis, without a trip to the cloud.
+# Never-mind is already built in and ends silently
+intent_script:
+  JarvisDone:
+    speech:
+      text: "{{ ['Of course.', 'Very good.', 'Anytime.'] | random }}"
+  # and runs the goodnight routine (packages/routines.yaml)
+  JarvisGoodnight:
+    description: "Going to bed: runs the goodnight routine."
+    action:
+      - action: script.goodnight
+        continue_on_error: true
+    speech:
+      text: "Good night."
+  # The running joke (custom_sentences/en/banter.yaml). Answered here so it's instant and comes out
+  # exactly right every time: through the cloud agent it sometimes comes out paraphrased
+  WhoAmI:
+    speech:
+      text: "Genius, billionaire, playboy, philanthropist."

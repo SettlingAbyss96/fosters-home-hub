@@ -1,0 +1,14 @@
+# Light at eye level: a VEML7700 on I2C (0x10), at about seated eye height and facing into the room,
+# not at a lamp or a window. The light curve's evening target is about 30 lux at the eye (the
+# 2022 consensus on evening light, docs/lighting.md), and this is what can measure it. It reads up
+# to about 120,000 lux, so a sunny afternoon doesn't pin it the way it pins a BH1750 at 65,535
+sensor:
+  - platform: veml7700
+    address: 0x10
+    update_interval: 30s
+    ambient_light:
+      name: "Light at eye level"
+      filters:
+        - sliding_window_moving_average:
+            window_size: 4
+            send_every: 2

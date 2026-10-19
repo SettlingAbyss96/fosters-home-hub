@@ -1,0 +1,51 @@
+--- a/linux_voice_assistant/satellite.py
++++ b/linux_voice_assistant/satellite.py
+@@ -68,6 +68,11 @@
+ from .peripheral_api import LVAEvent
+ from .util import call_all
+ 
++try:  # Smart Turn, if it's installed (lva-endofturn.patch); without it turns end the usual way
++    from . import end_of_turn
++except Exception:  # noqa: BLE001
++    end_of_turn = None
++
+ _LOGGER = logging.getLogger(__name__)
+ 
+ PROTO_TO_MESSAGE_TYPE = {v: k for k, v in MESSAGE_TYPE_TO_PROTO.items()}
+@@ -387,6 +392,9 @@
+         self._window_medium = float(os.environ.get("LVA_WINDOW_MEDIUM", "5"))
+         self._window_long = float(os.environ.get("LVA_WINDOW_LONG", "8"))
+         self._listen_cap = float(os.environ.get("LVA_LISTEN_CAP", "15"))
++        # Smart Turn hears a finished sentence and ends the turn without waiting out the silence
++        self._end_of_turn = end_of_turn.load(self._finished_talking) if end_of_turn else None
++        self._eot_streaming = False
+         self._window = 0.0
+         self._stt_text = ""
+         self._speech = ""
+@@ -947,10 +955,26 @@
+     def handle_audio(self, audio_chunk: bytes, audio_chunk_2: Optional[bytes] = None) -> None:
+         if not self._is_streaming_audio or self.state.muted:
++            self._eot_streaming = False
+             return
++        if self._end_of_turn is not None and not self._eot_streaming:
++            self._end_of_turn.reset()  # a new turn
++            self._eot_streaming = True
+         if _HAS_AUDIO_DATA2 and audio_chunk_2 is not None:
+             self.send_messages([VoiceAssistantAudio(data=audio_chunk, data2=audio_chunk_2)])
+         else:
+             self.send_messages([VoiceAssistantAudio(data=audio_chunk)])
++        if self._end_of_turn is not None:
++            self._end_of_turn.feed(audio_chunk)
++
++    def _finished_talking(self, p: float, pause: float) -> None:
++        """Smart Turn is sure I've finished: end the turn now, Home Assistant takes it from there.
++
++        The last audio message, flagged as the end, is how a satellite says "that's all I said".
++        VoiceAssistantRequest(start=False) means stop and throw it away: no transcript, no answer
++        """
++        if self._is_streaming_audio:
++            self._is_streaming_audio = False
++            self.send_messages([VoiceAssistantAudio(data=b"", end=True)])
+ 
+     # ------------------------------------------------------------------
+     # Wake word / stop

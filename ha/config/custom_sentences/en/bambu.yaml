@@ -1,0 +1,27 @@
+# A Bambu Lab printer by voice, and every printer at once. Intents in packages/bambu.yaml. Speech
+# to text hears "Bambu" a few ways, and the list takes the model name too ("x1c", "p1s"): add yours
+language: "en"
+intents:
+  BambuStatus:
+    data:
+      - sentences:
+          - "how is [the] {bambu} [print] (going|doing)"
+          - "how's [the] {bambu} [print] (going|doing)"
+          - "(what is|what's) [the] {bambu} (doing|up to)"
+          - "is [the] {bambu} [print] (done|finished|printing|busy) [yet]"
+          - "how (long|much time) is left on [the] {bambu} [print]"
+          - "how far along is [the] {bambu} [print]"
+          - "[what's the] {bambu} status"
+  PrintersStatus:
+    data:
+      - sentences:
+          - "how (are|is) [the] (printers|prints|printer|print) (going|doing)"
+          - "how's [the] (printer|print|3d printer) (going|doing)"
+          - "(what are|what're) the printers (doing|up to)"
+          - "(is|are) [the] (printer|printers|print|prints) (done|finished) [yet]"
+          - "[what's the] printer status"
+lists:
+  bambu:
+    values:
+      - in: "(bambu|bamboo|bambu lab|bamboo lab|bambu printer)"
+        out: "bambu"

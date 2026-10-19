@@ -1,0 +1,9 @@
+# Jarvis being Jarvis. Answered in packages/conversation.yaml, instantly and the same every time.
+# "Tell me about myself" isn't in here on purpose, that one gets a real answer from the agent
+language: "en"
+intents:
+  WhoAmI:
+    data:
+      - sentences:
+          - "[no|so|ok|okay|wait|um|well] [jarvis] who am i [again|then] [jarvis|sir]"
+          - "[no|so|ok|okay|wait|um|well] [jarvis] (do you know|tell me) who i am [jarvis|sir]"

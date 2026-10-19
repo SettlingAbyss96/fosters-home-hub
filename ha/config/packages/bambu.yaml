@@ -1,0 +1,150 @@
+# A Bambu Lab printer (ha-bambulab, from tools/ha-extras.sh). tools/ha-apps.sh renames its entities
+# from the integration's model-and-serial names to sensor.bambu_... (docs/devices.md). Through the
+# Bambu account or straight to the printer, either works: Bambu only allows pause, stop and the rest
+# from outside its own apps when the printer is in LAN-only developer mode, which turns off Bambu
+# Handy, so with Handy on, Home Assistant watches it (progress, temps, the AMS, the camera) and
+# switches the chamber light, and that's about it.
+#
+# Both kinds of printer, here so they're in one place:
+#   - a print finishing or failing gets said through script.tell_resident (out loud at home, the
+#     phone when away or asleep). Failing is urgent
+#   - the Bambu's own health messages (HMS: "threaded rods need lubrication") go the same way when a
+#     new one shows up, urgent only if Bambu calls it serious or fatal
+#   - by voice: "how's the Bambu doing?", and "how are the printers?" (or "how's the print going?")
+#     for both at once. Sentences: custom_sentences/en/bambu.yaml
+template:
+  - sensor:
+      - name: "Bambu summary"
+        unique_id: bambu_summary
+        icon: mdi:printer-3d
+        state: >-
+          {% set s = states('sensor.bambu_print_status') %}
+          {% set pct = states('sensor.bambu_print_progress') | int(0) %}
+          {% set left = (states('sensor.bambu_remaining_time') | float(0) * 60) | round(0) | int %}
+          {% set task = states('sensor.bambu_task_name') %}
+          {% set task = task if task not in ['unknown', 'unavailable', ''] else none %}
+          {% if s == 'running' %}Printing{{ ' ' ~ task if task }}, {{ pct }}%, {{ (left // 60 ~ ' h ' if left >= 60 else '') ~ (left % 60) ~ ' min' }} left
+          {% elif s in ['prepare', 'slicing', 'init'] %}Getting ready{{ ' to print ' ~ task if task }}
+          {% elif s == 'pause' %}Paused at {{ pct }}%
+          {% elif s == 'finish' %}Done{{ ', ' ~ task if task }}
+          {% elif s == 'failed' %}Failed{{ ' at ' ~ pct ~ '%' if pct }}
+          {% elif s in ['offline', 'unknown', 'unavailable'] %}Offline
+          {% else %}Idle{% endif %}
+
+automation:
+  - id: bambu_print_finished
+    alias: "Bambu print finished"
+    triggers:
+      - trigger: state
+        entity_id: sensor.bambu_print_status
+        from: [running, pause]
+        to: finish
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_printers
+        state: "on"
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Bambu"
+          message: >-
+            {% set task = states('sensor.bambu_task_name') %}The Bambu has finished{{ ' ' ~ task if task not in ['unknown', 'unavailable', ''] else ' its print' }}.
+
+  - id: bambu_print_failed
+    alias: "Bambu print failed"
+    triggers:
+      - trigger: state
+        entity_id: sensor.bambu_print_status
+        from: [running, pause, prepare]
+        to: failed
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_printers
+        state: "on"
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Bambu"
+          message: >-
+            The print on the Bambu has failed{{ ' at ' ~ states('sensor.bambu_print_progress') ~ ' percent' if states('sensor.bambu_print_progress') | int(0) > 0 }}.
+            {{ state_attr('binary_sensor.bambu_hms_errors', '1-Error') or '' }}
+          urgent: true
+
+  - id: bambu_health_message
+    alias: "The Bambu has something to say"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.bambu_hms_errors
+        attribute: 1-Code
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_printers
+        state: "on"
+      - "{{ trigger.to_state.attributes.get('1-Error') and trigger.from_state.attributes.get('1-Code') != trigger.to_state.attributes.get('1-Code') }}"
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Bambu"
+          message: "The Bambu says: {{ trigger.to_state.attributes.get('1-Error') }}"
+          urgent: "{{ trigger.to_state.attributes.get('1-Severity') in ['serious', 'fatal'] }}"
+
+  - id: klipper_print_finished
+    alias: "Klipper print finished"
+    triggers:
+      - trigger: state
+        entity_id: sensor.klipper_current_print_state
+        from: [printing, paused]
+        to: complete
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_printers
+        state: "on"
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Printer"
+          message: >-
+            {% set file = states('sensor.klipper_filename') | replace('.gcode', '') | replace('_', ' ') %}The Klipper printer has finished{{ ' ' ~ file if file not in ['', 'unknown', 'unavailable'] else ' its print' }}.
+
+  - id: klipper_print_failed
+    alias: "Klipper print failed"
+    triggers:
+      - trigger: state
+        entity_id: sensor.klipper_current_print_state
+        from: [printing, paused]
+        to: error
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_printers
+        state: "on"
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Printer"
+          message: "The Klipper printer has stopped with an error. {{ states('sensor.klipper_printer_message') if states('sensor.klipper_printer_message') not in ['unknown', 'unavailable', ''] else '' }}"
+          urgent: true
+
+intent_script:
+  BambuStatus:
+    description: "What the Bambu printer is doing."
+    speech:
+      text: >-
+        {% set s = states('sensor.bambu_summary') %}
+        {% if s == 'Offline' %}I can't reach the Bambu right now.
+        {% else %}The Bambu: {{ s | lower | replace(' h ', ' hours ') | replace(' min', ' minutes') }}.{% endif %}
+  PrintersStatus:
+    description: "What both 3D printers are doing."
+    speech:
+      text: >-
+        {% set v = states('sensor.klipper_current_print_state') %}
+        {% set x = states('sensor.bambu_print_status') %}
+        {% set vpct = states('sensor.klipper_progress') | float(0) | round(0) | int %}
+        {% set xs = states('sensor.bambu_summary') | lower | replace(' h ', ' hours ') | replace(' min', ' minutes') %}
+        {% set vs = 'printing, ' ~ vpct ~ ' percent' if v == 'printing' else ('paused' if v == 'paused' else ('done' if v == 'complete' else ('stopped with an error' if v == 'error' else ('offline' if v in ['unknown', 'unavailable'] else 'idle')))) %}
+        {% if v != 'printing' and x != 'running' and v not in ['paused', 'error'] and x not in ['pause', 'failed'] %}Both printers are idle{{ ', the Bambu just finished' if x == 'finish' else '' }}{{ ', the Klipper printer just finished' if v == 'complete' else '' }}.
+        {% else %}The Klipper printer is {{ vs }}. The Bambu: {{ xs }}.{% endif %}

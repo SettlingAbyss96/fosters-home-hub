@@ -1,0 +1,123 @@
+{
+ "type": "grid",
+ "cards": [
+  {
+   "type": "custom:mushroom-template-card",
+   "icon": "mdi:clock-outline",
+   "primary": "{{ now().strftime('%-I:%M %p') }}",
+   "secondary": "{{ now().strftime('%A, %B %-d') }}",
+   "color": "blue",
+   "tap_action": {
+    "action": "none"
+   },
+   "grid_options": {
+    "columns": 6
+   }
+  },
+  {
+   "type": "custom:mushroom-template-card",
+   "entity": "weather.forecast_home",
+   "icon": "{{ {'clear-night': 'mdi:weather-night', 'cloudy': 'mdi:weather-cloudy', 'fog': 'mdi:weather-fog', 'rainy': 'mdi:weather-rainy', 'pouring': 'mdi:weather-pouring', 'snowy': 'mdi:weather-snowy', 'sunny': 'mdi:weather-sunny', 'partlycloudy': 'mdi:weather-partly-cloudy', 'windy': 'mdi:weather-windy', 'lightning': 'mdi:weather-lightning', 'lightning-rainy': 'mdi:weather-lightning-rainy'}.get(states('weather.forecast_home'), 'mdi:weather-partly-cloudy') }}",
+   "primary": "{{ state_attr('weather.forecast_home', 'temperature') | float(0) | round(0) | int }}°",
+   "secondary": "{{ states('weather.forecast_home') | replace('-', ' ') | replace('partlycloudy', 'partly cloudy') | capitalize }}",
+   "color": "amber",
+   "tap_action": {
+    "action": "more-info"
+   },
+   "grid_options": {
+    "columns": 6
+   }
+  },
+  {
+   "type": "custom:mushroom-template-card",
+   "entity": "sensor.needs_attention",
+   "icon": "{{ 'mdi:check-circle-outline' if is_state('sensor.needs_attention', 'All good') else 'mdi:alert-circle-outline' }}",
+   "primary": "{{ 'All good' if is_state('sensor.needs_attention', 'All good') else 'Needs attention' }}",
+   "secondary": "{{ '' if is_state('sensor.needs_attention', 'All good') else states('sensor.needs_attention') }}",
+   "color": "{{ 'green' if is_state('sensor.needs_attention', 'All good') else 'red' }}",
+   "multiline_secondary": true,
+   "tap_action": {
+    "action": "more-info"
+   },
+   "grid_options": {
+    "columns": "full"
+   }
+  },
+  {
+   "type": "custom:mushroom-template-card",
+   "entity": "input_datetime.doorbell_last_ring",
+   "icon": "mdi:doorbell-video",
+   "primary": "Front door",
+   "secondary": "{% set last = states('input_datetime.doorbell_last_ring') | as_datetime(none) %}{% set faces = states.binary_sensor | selectattr('entity_id', 'search', '^binary_sensor\\\\.face_') | rejectattr('entity_id', 'eq', 'binary_sensor.face_unknown') | selectattr('state', 'eq', 'on') | map(attribute='name') | map('replace', 'Face: ', '') | list %}{% if faces %}Looks like {{ faces | join(' and ') }} at the door{% elif is_state('binary_sensor.doorbell_motion', 'on') %}Movement at the door{% elif last is not none and (now() - as_local(last)).total_seconds() < 3600 %}Rang at {{ as_local(last).strftime('%-I:%M') }}{% elif last is not none and as_local(last).year > 2000 %}Last rang {{ as_local(last).strftime('%a %-I:%M') }}{% else %}Quiet{% endif %} · {{ states('sensor.doorbell_battery') }}%",
+   "color": "{{ 'amber' if is_state('binary_sensor.doorbell_recent', 'on') or is_state('binary_sensor.doorbell_motion', 'on') else 'grey' }}",
+   "badge_icon": "{{ 'mdi:motion-sensor' if is_state('binary_sensor.doorbell_motion', 'on') else '' }}",
+   "badge_color": "orange",
+   "tap_action": {
+    "action": "navigate",
+    "navigation_path": "/home-hub/appliances"
+   },
+   "hold_action": {
+    "action": "more-info",
+    "entity": "camera.doorbell"
+   },
+   "grid_options": {
+    "columns": "full"
+   }
+  },
+  {
+   "type": "custom:mushroom-template-card",
+   "entity": "sensor.today_s_weather",
+   "icon": "mdi:weather-partly-rainy",
+   "primary": "Today",
+   "secondary": "{{ states('sensor.today_s_weather') }}",
+   "color": "{{ 'blue' if 'Rain' in states('sensor.today_s_weather') and 'No rain' not in states('sensor.today_s_weather') else 'amber' }}",
+   "multiline_secondary": true,
+   "tap_action": {
+    "action": "more-info"
+   },
+   "grid_options": {
+    "columns": "full"
+   }
+  },
+  {
+   "type": "custom:mushroom-template-card",
+   "entity": "sun.sun",
+   "icon": "{{ 'mdi:weather-sunset-down' if is_state('sun.sun', 'above_horizon') else 'mdi:weather-sunset-up' }}",
+   "primary": "{{ 'Sunset' if is_state('sun.sun', 'above_horizon') else 'Sunrise' }}",
+   "secondary": "{% set t = as_timestamp(state_attr('sun.sun', 'next_setting' if is_state('sun.sun', 'above_horizon') else 'next_rising'), none) %}{{ t | timestamp_custom('%-I:%M %p') if t else '' }}",
+   "color": "orange",
+   "multiline_secondary": true,
+   "tap_action": {
+    "action": "more-info"
+   },
+   "grid_options": {
+    "columns": 6
+   }
+  },
+  {
+   "type": "custom:mushroom-template-card",
+   "entity": "sensor.work_calendar",
+   "icon": "{{ 'mdi:calendar-clock' if 'Busy' in states('sensor.work_calendar') else 'mdi:calendar-check' }}",
+   "primary": "Work",
+   "secondary": "{{ states('sensor.work_calendar') }}",
+   "color": "{{ 'red' if 'Busy' in states('sensor.work_calendar') else 'green' }}",
+   "multiline_secondary": true,
+   "tap_action": {
+    "action": "more-info"
+   },
+   "grid_options": {
+    "columns": 6
+   },
+   "visibility": [
+    {
+     "condition": "state",
+     "entity": "sensor.work_calendar",
+     "state_not": [
+      "unavailable",
+      "unknown"
+     ]
+    }
+   ]
+  }
+ ]
+}

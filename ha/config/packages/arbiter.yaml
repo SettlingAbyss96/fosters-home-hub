@@ -1,0 +1,123 @@
+# Who gets the light. Every light command in the house goes through script.light_set
+# (packages/lights.yaml) with a priority, and this is the memory behind it (docs/control.md, "Who
+# gets the light"):
+#   1 the alarm and safety, 2 a person by hand (and the fell-asleep check), 3 routines, 4 the mode's
+#   look, 5 background
+# A command can leave a hold on a light: for so many minutes, nothing weaker may change it. The
+# alarm holds the sunrise lights for the morning, and a light switched by hand is held for three
+# hours, so the clock moving the house to Evening doesn't undo it. Picking a mode yourself does (the
+# override), and so does the alarm.
+#
+# "By hand" is worked out, not reported. A light that changes with no automation's fingerprint on it
+# (no parent context), and that isn't simply reporting back what the house just asked of it, was
+# changed by a person: the wall, the dashboard, or Jarvis. The second half matters more than it
+# sounds. A Matter light still fading 30 seconds after the command, or an old Kasa switch answering
+# its next poll, comes back with no fingerprint at all, and would otherwise look exactly like someone
+# at the wall (as a sign of life, and as an intruder while you're out)
+#
+# Events, so anything (a script here, a controller running somewhere else) can take part:
+#   light_commanded  {entity, level, fade, source, priority}   what light_set just asked for
+#   light_hold       {entity, priority, minutes, source}       hold it
+#   light_release    {entity}                                  let go of it
+#   light_manual     {entity, state, brightness, by}           a person changed it ("wall" or "app")
+template:
+  - trigger:
+      - trigger: event
+        event_type: light_commanded
+        id: cmd
+      - trigger: event
+        event_type: light_hold
+        id: hold
+      - trigger: event
+        event_type: light_release
+        id: release
+      - trigger: time_pattern
+        minutes: "/1"
+        id: tick
+    sensor:
+      - name: "Light arbiter"
+        unique_id: light_arbiter
+        icon: mdi:traffic-light-outline
+        # (the arbiter's memory updates in library macros and no variables block: a trigger template
+        # with one runs as a task and drops triggers that arrive while it's busy, and a look sends
+        # eight commands at once)
+        state: >-
+          {% from 'control.jinja' import holds_next %}
+          {{ holds_next(trigger.id, trigger.event.data if trigger.platform == 'event' else {}) | from_json | count }}
+        attributes:
+          holds: >-
+            {% from 'control.jinja' import holds_next %}
+            {{ holds_next(trigger.id, trigger.event.data if trigger.platform == 'event' else {}) | from_json }}
+          commands: >-
+            {% from 'control.jinja' import commands_next %}
+            {{ commands_next(trigger.id, trigger.event.data if trigger.platform == 'event' else {}) | from_json }}
+
+automation:
+  # A person changed a light. The list is every light in house.toml, written into house/lights.yaml
+  # by tools/ha-apps.sh: a state trigger needs its entities spelled out, it can't follow a label
+  - id: light_changed_by_hand
+    alias: "A light changed by hand"
+    # each check on its own, never queued: a light that floods state changes (a colour lamp whose
+    # firmware never finishes a fade can report 202, 203, 202 a few times a second, packages/lights.yaml)
+    # would fill a queue and push real changes out. Noise like that fails the first condition in a
+    # millisecond
+    mode: parallel
+    max: 100
+    max_exceeded: silent
+    # on or off, and brightness: a colour lamp also reports its colour and effect all the time, and
+    # none of that is a person
+    triggers:
+      - trigger: state
+        entity_id: !include ../house/lights.yaml
+        to: null
+      - trigger: state
+        entity_id: !include ../house/lights.yaml
+        attribute: brightness
+    conditions:
+      - >-
+        {% set f, to = trigger.from_state, trigger.to_state %}
+        {{ f is not none and to is not none
+           and f.state in ['on', 'off'] and to.state in ['on', 'off']
+           and to.context.parent_id is none
+           and (f.state != to.state
+                or ((f.attributes.get('brightness') | int(0)) - (to.attributes.get('brightness') | int(0))) | abs > 8) }}
+      # not just the light reporting back what the house asked for: inside the fade plus a few
+      # seconds, somewhere on the way from where it was to where it was asked to go; inside two
+      # minutes once it's settled, about the level asked for. "On the way" matters because of the
+      # blending: with a fade running nearly every minute, "anything goes during a fade" would stop
+      # the house ever seeing a hand on a dimmer. From off there's no knowing the way: a light
+      # switched on comes up at whatever it had last, then fades
+      - >-
+        {% from 'control.jinja' import param %}
+        {% set c = (state_attr('sensor.light_arbiter', 'commands') or {}).get(trigger.entity_id) %}
+        {% set to = trigger.to_state %}
+        {% if c is none %}true{% else %}
+          {% set since = now().timestamp() - (c.at | float(0)) %}
+          {% set tol = param('command_match_pct') | int %}
+          {% set want_on = (c.level | int(0)) > 0 %}
+          {% set level = ((to.attributes.get('brightness') | int(255)) / 2.55) | round(0) %}
+          {% set start = c.get('from', c.level) | int(0) %}
+          {% set on_the_way = to.attributes.get('brightness') is none or start == 0
+                              or ([start, c.level | int(0)] | min) - tol <= level <= ([start, c.level | int(0)] | max) + tol %}
+          {% set fading_ok = (to.state == 'on' and on_the_way) or (to.state == 'off' and not want_on) %}
+          {% set same_state = (to.state == 'on') == want_on %}
+          {% set same_level = not want_on or to.attributes.get('brightness') is none
+                              or (level - (c.level | int(0))) | abs <= tol %}
+          {{ not ((fading_ok and since < (c.fade | float(0)) + param('command_settle_seconds') | float)
+                  or (same_state and same_level and since < param('command_match_seconds') | float)) }}
+        {% endif %}
+    actions:
+      - variables:
+          by: "{{ 'app' if trigger.to_state.context.user_id is not none else 'wall' }}"
+      - event: light_manual
+        event_data:
+          entity: "{{ trigger.entity_id }}"
+          state: "{{ trigger.to_state.state }}"
+          brightness: "{{ ((trigger.to_state.attributes.get('brightness') | int(0)) / 2.55) | round(0) | int }}"
+          by: "{{ by }}"
+      - event: light_hold
+        event_data:
+          entity: "{{ trigger.entity_id }}"
+          priority: 2
+          minutes: "{% from 'control.jinja' import param %}{{ param('manual_hold_minutes') | int }}"
+          source: manual

@@ -1,0 +1,20 @@
+# Words Parakeet gets a boost on while it decodes (hub/parakeet_wyoming.py): the ones every house
+# running this repo says. One word or phrase a line. Yours (names, places, the printer you named,
+# the films you ask for) go in parakeet-words.local.txt next to this file, which git ignores, and
+# host/76-parakeet.sh merges the two. Keep it short: every word here is one the model leans towards,
+# and 2.5 times the boost made things worse, not better
+Jarvis
+Home Assistant
+Roborock
+3D printer
+Klipper
+Bambu
+Netflix
+YouTube
+Disney Plus
+Prime Video
+Spotify
+living room lamp
+ambient lights
+movie night
+goodnight

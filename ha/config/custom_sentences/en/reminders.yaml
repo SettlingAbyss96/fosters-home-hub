@@ -1,0 +1,43 @@
+# Reminders (packages/reminders.yaml). These have to win over Home Assistant's own "do this in an
+# hour", which heard "remind me to unplug it in one hour" as a command to run later. Anything said
+# before "remind me" is let through ("I just started charging the car, remind me to...")
+language: "en"
+intents:
+  RemindMe:
+    data:
+      - sentences:
+          - "[{lead}] remind me [to] {reminder} in (an|one|1) hour"
+          - "[{lead}] in (an|one|1) hour remind me [to] {reminder}"
+        slots:
+          minutes: 60
+      - sentences:
+          - "[{lead}] remind me [to] {reminder} in half an hour"
+        slots:
+          minutes: 30
+      - sentences:
+          - "[{lead}] remind me [to] {reminder} in (an|one) hour and a half"
+        slots:
+          minutes: 90
+      - sentences:
+          - "[{lead}] remind me [to] {reminder} in {minutes} minute[s]"
+          - "[{lead}] in {minutes} minute[s] remind me [to] {reminder}"
+          - "[{lead}] remind me [to] {reminder} in {hours} hour[s]"
+          - "[{lead}] in {hours} hour[s] remind me [to] {reminder}"
+  RemindersClear:
+    data:
+      - sentences:
+          - "(cancel|clear|delete) [all] [my] reminders"
+          - "(cancel|clear|delete) [my] reminder"
+lists:
+  lead:
+    wildcard: true
+  reminder:
+    wildcard: true
+  minutes:
+    range:
+      from: 1
+      to: 240
+  hours:
+    range:
+      from: 1
+      to: 12

@@ -1,0 +1,75 @@
+# The robot vacuum. Cleaning a room ("clean the kitchen", "vacuum the bathroom") is built in, and works
+# off the vacuum's rooms being tied to areas (tools/ha-apps.sh does that). "Start the vacuum" and
+# "vacuum the house" are ours, so a shut door keeps it out of that room (packages/vacuum.yaml), and
+# so is "start the vacuum in 15 minutes". Sending it back is built in too, just not the way anyone
+# says it, so those sentences feed the built-in intent.
+language: "en"
+expansion_rules:
+  bot: "[the] (vacuum|robot|roborock|roborock vacuum|robot vacuum)"
+  start: "(start|run|turn on|send out|set off)"
+  flat: "[the] (house|flat|apartment|place|whole place|home)"
+  about: "[about|around|like|roughly]"
+intents:
+  # Later: these win over Home Assistant's own "do this in 15 minutes" (packages/vacuum.yaml says why)
+  VacuumLater:
+    data:
+      - sentences:
+          - "[please] <start> <bot> in <about> {minutes} minute[s] [please]"
+          - "[please] (vacuum|clean) [<flat>] in <about> {minutes} minute[s] [please]"
+          - "[please] in <about> {minutes} minute[s] <start> <bot> [please]"
+          - "[please] <start> <bot> in <about> {hours} hour[s] [please]"
+          - "[please] (vacuum|clean) [<flat>] in <about> {hours} hour[s] [please]"
+      - sentences:
+          - "[please] <start> <bot> in <about> (an|one) hour [please]"
+          - "[please] (vacuum|clean) [<flat>] in <about> (an|one) hour [please]"
+        slots:
+          minutes: 60
+      - sentences:
+          - "[please] <start> <bot> in <about> half an hour [please]"
+          - "[please] (vacuum|clean) [<flat>] in <about> half an hour [please]"
+        slots:
+          minutes: 30
+  VacuumLaterCancel:
+    data:
+      - sentences:
+          - "(cancel|forget|never mind) [about] <bot> [later|for later|timer]"
+          - "(don't|do not) <start> <bot> later"
+  VacuumCleanNow:
+    data:
+      - sentences:
+          - "[please] <start> <bot> [now] [please]"
+          - "[please] (vacuum|clean) <flat> [now] [please]"
+  HassVacuumReturnToBase:
+    data:
+      - sentences:
+          - "send [the] (vacuum|robot|roborock) (home|back|to [the] dock|to [its] base)"
+          - "(dock|park) [the] (vacuum|robot|roborock)"
+          - "(vacuum|robot|roborock) (go home|go back|back to [the] dock)"
+          - "(stop|cancel) [the] (vacuum|robot|roborock) and send it home"
+        slots:
+          name: "Robot vacuum"
+  # Its own rounds, on and off (input_boolean.auto_vacuum, packages/controls.yaml). Docked until you
+  # say otherwise: no vacuuming when you leave, and its app's schedule gets sent back
+  VacuumPauseAuto:
+    data:
+      - sentences:
+          - "(don't|do not|no) (vacuum|vacuuming) [(today|for now|until I say [so|otherwise]|while I'm (out|gone|away))]"
+          - "(pause|stop|turn off|switch off|disable) [the] (automatic vacuuming|vacuum schedule|vacuum automations|vacuum on its own)"
+          - "(keep|leave) [the] (vacuum|robot|roborock) (docked|home|at home) [(for now|until I say [so|otherwise])]"
+          - "(don't|do not) let [the] (vacuum|robot|roborock) (run|clean|out)"
+  VacuumResumeAuto:
+    data:
+      - sentences:
+          - "you can (vacuum|clean) again"
+          - "(resume|turn on|switch on|enable) [the] (automatic vacuuming|vacuum schedule|vacuum automations|vacuum on its own)"
+          - "[the] (vacuum|robot|roborock) can (run|clean) again"
+          - "let [the] (vacuum|robot|roborock) (run|clean) again"
+lists:
+  minutes:
+    range:
+      from: 1
+      to: 240
+  hours:
+    range:
+      from: 1
+      to: 12

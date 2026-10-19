@@ -1,0 +1,91 @@
+# The way to the bathroom at night: a short strip of addressable LEDs low along the wall between the
+# bed and the bathroom door, and a little PIR (an AM312) looking along the floor. Getting up in the
+# night it comes on amber and very dim, about as little light as walking needs, and goes off a
+# minute and a half after the movement stops. Never bright, never white: the 2022 consensus wants
+# the sleep environment under 1 lux and under 10 when something needs seeing (docs/lighting.md).
+# A small study of older adults found they walked better with lines of light along the floor than
+# with a night light alone, so the floor is where this goes.
+#
+# It decides on the chip, not in Home Assistant, so it works with Home Assistant down. It asks Home
+# Assistant whether the house is in Night, and if it can't, it goes by the clock (10 PM to 7 AM).
+# About $10: the board, the PIR and half a metre of WS2812B. 5 V for the strip from the same USB
+# supply, its data on D2 (GPIO2) through a 330 ohm resistor, the PIR's output on D1 (GPIO1)
+substitutions:
+  name: path-light
+  friendly_name: "Path light"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  board: !include common/xiao-c6.yaml
+  base: !include common/base.yaml
+
+text_sensor:
+  - platform: homeassistant
+    id: house_mode
+    entity_id: input_select.house_mode
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: path
+    name: "Path light"
+    pin: GPIO2
+    num_leds: 30
+    rgb_order: GRB
+    chipset: WS2812
+    default_transition_length: 1s
+    restore_mode: ALWAYS_OFF
+
+globals:
+  # the light is on because someone walked by, not because Home Assistant or I put it on
+  - id: by_motion
+    type: bool
+    initial_value: "false"
+
+binary_sensor:
+  - platform: gpio
+    id: path_motion
+    name: "Path motion"
+    device_class: motion
+    pin: GPIO1
+    on_press:
+      - if:
+          condition:
+            lambda: |-
+              if (id(house_mode).has_state())
+                return id(house_mode).state == "Night";
+              auto t = id(sntp_time).now();
+              return t.is_valid() && (t.hour >= 22 || t.hour < 7);
+          then:
+            - script.stop: off_later
+            - globals.set:
+                id: by_motion
+                value: "true"
+            - light.turn_on:
+                id: path
+                brightness: 4%
+                red: 100%
+                green: 40%
+                blue: 0%
+                transition_length: 1s
+    # the minute and a half starts when the movement stops, so a long walk isn't cut short
+    on_release:
+      - if:
+          condition:
+            lambda: "return id(by_motion);"
+          then:
+            - script.execute: off_later
+
+script:
+  - id: off_later
+    mode: restart
+    then:
+      - delay: 90s
+      - light.turn_off:
+          id: path
+          transition_length: 3s
+      - globals.set:
+          id: by_motion
+          value: "false"

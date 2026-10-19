@@ -1,0 +1,507 @@
+{
+ "title": "TV",
+ "path": "tv",
+ "icon": "mdi:television",
+ "type": "sections",
+ "max_columns": 2,
+ "sections": [
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "TV",
+     "icon": "mdi:television",
+     "badges": [
+      {
+       "type": "entity",
+       "entity": "sensor.tv_status",
+       "show_state": false,
+       "show_icon": true,
+       "tap_action": {
+        "action": "more-info"
+       }
+      }
+     ]
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "entity": "media_player.tv",
+     "icon": "{% set s = states('sensor.tv_status') %}{% if s in ['Off', 'Unreachable'] %}mdi:television-off{% elif s == 'Ambient mode' %}mdi:image-filter-hdr{% elif s.endswith('playing') %}mdi:television-play{% elif s.endswith('paused') %}mdi:television-pause{% else %}mdi:television{% endif %}",
+     "color": "{% set s = states('sensor.tv_status') %}{% if s in ['Off', 'Unreachable'] %}grey{% elif s == 'Ambient mode' %}teal{% elif s.endswith('playing') %}green{% elif s.endswith('paused') %}amber{% else %}blue{% endif %}",
+     "primary": "{% set s = states('sensor.tv_status') %}{% set t = state_attr('sensor.tv_status', 'title') %}{% set a = state_attr('sensor.tv_status', 'artist') %}{% if s in ['Off', 'Ambient mode', 'Home screen'] or not t %}{{ s }}{% else %}{{ s }} · {{ t }}{{ ' · ' ~ a if a else '' }}{% endif %}",
+     "secondary": "{% set s = states('sensor.tv_status') %}{% if s == 'Ambient mode' %}The slow pictures. Off after 4 hours on its own{% elif s == 'Off' %}All the way off{% else %}{% set v = state_attr('sensor.tv_status', 'volume') %}{{ 'Muted' if state_attr('sensor.tv_status', 'muted') else 'Volume ' ~ (v if v is not none else '?') }}{% endif %}",
+     "multiline_secondary": true,
+     "tap_action": {
+      "action": "more-info"
+     },
+     "grid_options": {
+      "columns": "full"
+     }
+    },
+    {
+     "type": "markdown",
+     "text_only": true,
+     "content": "<img src=\"{{ state_attr('media_player.tv', 'entity_picture') }}\" width=\"100%\">",
+     "visibility": [
+      {
+       "condition": "state",
+       "entity": "binary_sensor.tv_picture",
+       "state": "on"
+      }
+     ],
+     "grid_options": {
+      "columns": "full"
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:power",
+     "primary": "On",
+     "color": "{{ 'blue' if states('sensor.tv_status') not in ['Off', 'Ambient mode'] else 'grey' }}",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_power",
+      "data": {
+       "power": "on"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:image-filter-hdr",
+     "primary": "Ambient",
+     "color": "{{ 'teal' if states('sensor.tv_status') == 'Ambient mode' else 'grey' }}",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_power",
+      "data": {
+       "power": "ambient"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:power-standby",
+     "primary": "All off",
+     "color": "{{ 'red' if states('sensor.tv_status') == 'Off' else 'grey' }}",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_power",
+      "data": {
+       "power": "off"
+      },
+      "confirmation": {
+       "text": "Turn the TV all the way off?"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:volume-minus",
+     "primary": "Quieter",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_volume",
+      "data": {
+       "step": "down"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:volume-high",
+     "primary": "Mute",
+     "secondary": "{% set v = state_attr('sensor.tv_status', 'volume') %}{{ 'Muted' if state_attr('sensor.tv_status', 'muted') else 'Volume ' ~ (v if v is not none else '?') }}",
+     "color": "blue",
+     "vertical": true,
+     "grid_options": {
+      "columns": 4
+     },
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_mute",
+      "data": {
+       "mute": true
+      }
+     },
+     "visibility": [
+      {
+       "condition": "state",
+       "entity": "binary_sensor.tv_muted",
+       "state": "off"
+      }
+     ]
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:volume-off",
+     "primary": "Unmute",
+     "secondary": "{% set v = state_attr('sensor.tv_status', 'volume') %}{{ 'Muted' if state_attr('sensor.tv_status', 'muted') else 'Volume ' ~ (v if v is not none else '?') }}",
+     "color": "red",
+     "vertical": true,
+     "grid_options": {
+      "columns": 4
+     },
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_mute",
+      "data": {
+       "mute": false
+      }
+     },
+     "visibility": [
+      {
+       "condition": "state",
+       "entity": "binary_sensor.tv_muted",
+       "state": "on"
+      }
+     ]
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:volume-plus",
+     "primary": "Louder",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_volume",
+      "data": {
+       "step": "up"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Remote",
+     "icon": "mdi:remote-tv"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:arrow-left",
+     "primary": "Back",
+     "color": "grey",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_BACK"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:chevron-up",
+     "primary": "Up",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_DPAD_UP"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:home",
+     "primary": "Home",
+     "color": "grey",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_HOME"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:chevron-left",
+     "primary": "Left",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_DPAD_LEFT"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:circle-slice-8",
+     "primary": "OK",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_DPAD_CENTER"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:chevron-right",
+     "primary": "Right",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_DPAD_RIGHT"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:play-pause",
+     "primary": "Play",
+     "color": "grey",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "media_player.media_play_pause",
+      "target": {
+       "entity_id": "media_player.tv"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:chevron-down",
+     "primary": "Down",
+     "color": "blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_DPAD_DOWN"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:menu",
+     "primary": "Menu",
+     "color": "grey",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_MENU"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     }
+    },
+    {
+     "type": "heading",
+     "heading": "Apps",
+     "icon": "mdi:apps"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:netflix",
+     "primary": "Netflix",
+     "color": "red",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_open_app",
+      "data": {
+       "app": "Netflix"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     },
+     "badge_icon": "{{ 'mdi:play' if state_attr('sensor.tv_status', 'app') == 'Netflix' else '' }}",
+     "badge_color": "green"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:youtube",
+     "primary": "YouTube",
+     "color": "red",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_open_app",
+      "data": {
+       "app": "YouTube"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     },
+     "badge_icon": "{{ 'mdi:play' if state_attr('sensor.tv_status', 'app') == 'YouTube' else '' }}",
+     "badge_color": "green"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:star-four-points",
+     "primary": "Disney+",
+     "color": "indigo",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_open_app",
+      "data": {
+       "app": "Disney+"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     },
+     "badge_icon": "{{ 'mdi:play' if state_attr('sensor.tv_status', 'app') == 'Disney Plus' else '' }}",
+     "badge_color": "green"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:filmstrip",
+     "primary": "Prime Video",
+     "color": "light-blue",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_open_app",
+      "data": {
+       "app": "Prime Video"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     },
+     "badge_icon": "{{ 'mdi:play' if state_attr('sensor.tv_status', 'app') == 'Prime Video' else '' }}",
+     "badge_color": "green"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:spotify",
+     "primary": "Spotify",
+     "color": "green",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.tv_open_app",
+      "data": {
+       "app": "Spotify"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     },
+     "badge_icon": "{{ 'mdi:play' if state_attr('sensor.tv_status', 'app') == 'Spotify' else '' }}",
+     "badge_color": "green"
+    },
+    {
+     "type": "custom:mushroom-template-card",
+     "icon": "mdi:view-dashboard-outline",
+     "primary": "Home screen",
+     "color": "grey",
+     "vertical": true,
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "remote.send_command",
+      "target": {
+       "entity_id": "remote.fire_tv_remote"
+      },
+      "data": {
+       "command": "input keyevent KEYCODE_HOME"
+      }
+     },
+     "grid_options": {
+      "columns": 4
+     },
+     "badge_icon": "{{ 'mdi:play' if states('sensor.tv_status') == 'Home screen' else '' }}",
+     "badge_color": "green"
+    }
+   ]
+  }
+ ]
+}

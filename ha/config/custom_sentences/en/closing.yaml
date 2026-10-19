@@ -1,0 +1,19 @@
+# The ways a conversation with Jarvis ends. Answered instantly here instead of by the cloud agent,
+# and the voice satellite sees the same phrases and doesn't open a follow-up window after them
+# (host/patches/lva-followup.patch). Intent in packages/conversation.yaml.
+language: "en"
+intents:
+  JarvisDone:
+    data:
+      - sentences:
+          - "[no] (thanks|thank you) [jarvis|sir] [very much|so much] [i appreciate (it|that)] [jarvis|sir]"
+          - "[no] (that's|that is|that'll be|that will be) (all|it|everything) [for now] [thanks|thank you] [jarvis|sir]"
+          - "[no] (nothing|nothing else|i'm good|i'm all set|all good|we're good|we're done) [thanks|thank you] [jarvis|sir]"
+          - "(perfect|great|awesome|cheers|got it|sounds good) [thanks|thank you] [jarvis|sir]"
+          - "no thanks [jarvis|sir]"
+  JarvisGoodnight:
+    data:
+      - sentences:
+          - "good night [jarvis|sir]"
+          - "goodnight [jarvis|sir]"
+          - "night [jarvis]"

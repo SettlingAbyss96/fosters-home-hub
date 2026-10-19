@@ -1,0 +1,16 @@
+# In bed or not, which the house can only guess at from wherever the Hub is, and the light and air
+# where you sleep. The radar on the wall at the foot of the bed, the light sensor at pillow height
+# facing the room
+substitutions:
+  name: bedroom-sense
+  friendly_name: "Bedroom sense"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+
+packages:
+  board: !include common/xiao-c6.yaml
+  base: !include common/base.yaml
+  room: !include common/room.yaml
+  light: !include common/eye-light.yaml

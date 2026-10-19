@@ -1,0 +1,134 @@
+# The robot vacuum (vacuum.robot_vacuum, tested with a Roborock) and the doors. A room behind a
+# closed door can't be cleaned, and sending it anyway means it bumps the door, decides the room's
+# gone, and sometimes gives up on the rest. So every "go clean" the house sends by itself goes
+# through script.vacuum_clean: all doors open, a whole clean; a door closed, only the rooms it can
+# get to (vacuum.clean_area). The vacuum's own rooms get tied to the house's areas by
+# tools/ha-apps.sh, which also labels those areas vacuum_room. A door's room is the area its sensor
+# is in: binary_sensor.bedroom_door and binary_sensor.bathroom_door, and any other door sensor
+# labelled room_door. A door whose sensor isn't answering counts as open: worst case it bumps it,
+# the way it always did
+#
+# "Start the vacuum in 15 minutes" is a timer here too (timer.vacuum_later). Home Assistant has its
+# own "do this in so many minutes", but it forgets it on a restart and then runs the plain
+# vacuum.start, doors or no doors. "Don't vacuum" (packages/controls.yaml) cancels it
+timer:
+  vacuum_later:
+    name: "Vacuum later"
+    icon: mdi:robot-vacuum-alert
+    restore: true
+
+script:
+  vacuum_clean:
+    alias: "Vacuum the rooms it can get to"
+    description: "Start the vacuum on every room whose door isn't shut."
+    icon: mdi:robot-vacuum
+    mode: single
+    sequence:
+      - variables:
+          doors: >-
+            {{ (['binary_sensor.bedroom_door', 'binary_sensor.bathroom_door']
+                + label_entities('room_door') | select('match', 'binary_sensor[.]') | list) | unique | list }}
+          shut: "{{ doors | select('is_state', 'off') | map('area_id') | reject('none') | unique | list }}"
+          rooms: "{{ label_areas('vacuum_room') }}"
+          open_rooms: "{{ rooms | reject('in', shut) | list }}"
+      # nothing shut, or no rooms known to pick from: a whole clean
+      - if: "{{ shut | count == 0 or rooms | count == 0 }}"
+        then:
+          - action: vacuum.start
+            continue_on_error: true
+            target:
+              entity_id: vacuum.robot_vacuum
+        else:
+          - action: vacuum.clean_area
+            continue_on_error: true
+            target:
+              entity_id: vacuum.robot_vacuum
+            data:
+              cleaning_area_id: "{{ open_rooms }}"
+      - variables:
+          result:
+            skipped: "{{ shut | map('area_name') | map('lower') | list }}"
+            note: >-
+              {% if shut and rooms %}(not the {{ shut | map('area_name') | map('lower') | join(' or the ') }}, the door's shut){% else %}{% endif %}
+      - stop: "Started"
+        response_variable: result
+
+  vacuum_later:
+    alias: "Vacuum in a while"
+    description: "Start the vacuum on the rooms it can get to, so many minutes from now."
+    icon: mdi:robot-vacuum-alert
+    mode: restart
+    fields:
+      minutes:
+        description: "How long from now"
+        example: 15
+        selector:
+          number:
+            min: 1
+            max: 720
+    sequence:
+      - variables:
+          m: "{{ [minutes | int(15), 1] | max }}"
+      - action: timer.start
+        target:
+          entity_id: timer.vacuum_later
+        data:
+          duration: "{{ '%02d:%02d:00' | format(m // 60, m % 60) }}"
+      - variables:
+          result:
+            at: "{{ (now() + timedelta(minutes=m)).strftime('%-I:%M') }}"
+      - stop: "Set"
+        response_variable: result
+
+automation:
+  # also fires on start-up for a timer that ran out while Home Assistant was down (restore: true)
+  - id: vacuum_later_due
+    alias: "Vacuum later: time to go"
+    mode: single
+    triggers:
+      - trigger: event
+        event_type: timer.finished
+        event_data:
+          entity_id: timer.vacuum_later
+    actions:
+      - action: script.vacuum_clean
+        continue_on_error: true
+
+intent_script:
+  VacuumLater:
+    description: "Start the vacuum in so many minutes."
+    action:
+      - action: script.vacuum_later
+        data:
+          minutes: "{{ (minutes | default(0) | int(0)) + (hours | default(0) | int(0)) * 60 }}"
+        response_variable: set
+      - stop: "Done"
+        response_variable: set
+    speech:
+      text: "The vacuum goes at {{ action_response.at if action_response is defined else 'that time' }}."
+  VacuumLaterCancel:
+    description: "Cancel a vacuum that's waiting to start."
+    action:
+      - variables:
+          result:
+            waiting: "{{ states('timer.vacuum_later') in ['active', 'paused'] }}"
+      - action: timer.cancel
+        target:
+          entity_id: timer.vacuum_later
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: >-
+        {{ 'Cancelled, the vacuum stays docked.' if action_response is not defined or action_response.waiting
+           else "There wasn't one waiting." }}
+  # The whole home, by voice, goes the door-aware way too. Single rooms ("clean the kitchen") are
+  # Home Assistant's own and go straight to that room
+  VacuumCleanNow:
+    description: "Vacuum every room the vacuum can get to."
+    action:
+      - action: script.vacuum_clean
+        response_variable: done
+      - stop: "Done"
+        response_variable: done
+    speech:
+      text: "Off it goes{{ (' ' ~ action_response.note) if action_response is defined and action_response.note else '' }}."

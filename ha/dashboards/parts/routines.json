@@ -1,0 +1,536 @@
+{
+ "title": "Routines",
+ "path": "routines",
+ "icon": "mdi:home-clock-outline",
+ "type": "sections",
+ "max_columns": 2,
+ "sections": [
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Now",
+     "icon": "mdi:home-variant-outline"
+    },
+    {
+     "type": "tile",
+     "entity": "input_select.house_mode",
+     "name": "House mode",
+     "grid_options": {
+      "columns": "full"
+     },
+     "features": [
+      {
+       "type": "select-options"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "person.resident",
+     "grid_options": {
+      "columns": 6
+     },
+     "icon": "mdi:account"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.guest_mode",
+     "name": "Guest mode",
+     "grid_options": {
+      "columns": 6
+     },
+     "icon": "mdi:account-multiple",
+     "tap_action": {
+      "action": "toggle"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "timer.arrival_window",
+     "name": "On the way in",
+     "grid_options": {
+      "columns": 6
+     },
+     "visibility": [
+      {
+       "condition": "state",
+       "entity": "timer.arrival_window",
+       "state": "active"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "timer.arrival_door",
+     "name": "Home, waiting for the door",
+     "grid_options": {
+      "columns": 6
+     },
+     "visibility": [
+      {
+       "condition": "state",
+       "entity": "timer.arrival_door",
+       "state": "active"
+      }
+     ]
+    },
+    {
+     "type": "heading",
+     "heading": "Run",
+     "icon": "mdi:play-circle-outline",
+     "heading_style": "subtitle"
+    },
+    {
+     "type": "tile",
+     "entity": "script.morning_mode",
+     "name": "Morning",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:weather-sunset-up"
+    },
+    {
+     "type": "tile",
+     "entity": "script.day_mode",
+     "name": "Day",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:white-balance-sunny"
+    },
+    {
+     "type": "tile",
+     "entity": "script.evening_mode",
+     "name": "Evening",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:weather-sunset"
+    },
+    {
+     "type": "tile",
+     "entity": "script.movie_night",
+     "name": "Movie night",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:movie-open"
+    },
+    {
+     "type": "tile",
+     "entity": "script.movie_end",
+     "name": "Movie's over",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:movie-open-off"
+    },
+    {
+     "type": "tile",
+     "entity": "script.calm_mode",
+     "name": "Calm",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:candle"
+    },
+    {
+     "type": "tile",
+     "entity": "script.goodnight",
+     "name": "Goodnight",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:bed"
+    },
+    {
+     "type": "tile",
+     "entity": "script.leaving_home",
+     "name": "Leaving",
+     "grid_options": {
+      "columns": 4
+     },
+     "icon": "mdi:exit-run",
+     "tap_action": {
+      "action": "perform-action",
+      "perform_action": "script.leaving_home",
+      "confirmation": {
+       "text": "Run the leaving routine now? Lights and TV go off."
+      }
+     }
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Runs by itself",
+     "icon": "mdi:toggle-switch-outline",
+     "badges": [
+      {
+       "type": "entity",
+       "entity": "sensor.next_wake_up",
+       "name": "Next wake-up",
+       "show_name": false,
+       "show_state": true,
+       "show_icon": true,
+       "icon": "mdi:alarm-check"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_vacuum",
+     "name": "Vacuum on its own",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_clock_modes",
+     "name": "Modes follow the clock",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_welcome",
+     "name": "Lights on when I get home",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_bedtime_nudge",
+     "name": "Bedtime nudges",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_asleep",
+     "name": "Lights off if I fall asleep",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_briefing",
+     "name": "Morning briefing",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_doorbell",
+     "name": "Doorbell announcements",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_security",
+     "name": "Someone's-in alerts",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_laundry",
+     "name": "Laundry reminders",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_printers",
+     "name": "Printer alerts",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_desk",
+     "name": "Desk-left-on reminder",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Settings",
+     "icon": "mdi:tune-variant"
+    },
+    {
+     "type": "tile",
+     "entity": "input_select.vacuum_when_leaving",
+     "name": "Vacuum when I leave",
+     "grid_options": {
+      "columns": "full"
+     },
+     "features": [
+      {
+       "type": "select-options"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.vacuum_docks_on_arrival",
+     "name": "Vacuum goes home when I arrive",
+     "grid_options": {
+      "columns": "full"
+     },
+     "icon": "mdi:robot-vacuum",
+     "tap_action": {
+      "action": "toggle"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.greet_on_arrival",
+     "name": "Jarvis greets me at home",
+     "grid_options": {
+      "columns": "full"
+     },
+     "icon": "mdi:hand-wave",
+     "tap_action": {
+      "action": "toggle"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.movie_mutes_jarvis",
+     "name": "Movies mute Jarvis",
+     "grid_options": {
+      "columns": "full"
+     },
+     "icon": "mdi:microphone-off",
+     "tap_action": {
+      "action": "toggle"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "input_number.wind_down_hours",
+     "name": "Lamps dim this long before bed",
+     "grid_options": {
+      "columns": "full"
+     },
+     "icon": "mdi:weather-sunset-down",
+     "features": [
+      {
+       "type": "numeric-input",
+       "style": "buttons"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_number.jarvis_quiet_volume",
+     "name": "Jarvis's quiet-mode volume",
+     "grid_options": {
+      "columns": "full"
+     },
+     "icon": "mdi:account-voice",
+     "features": [
+      {
+       "type": "numeric-input",
+       "style": "slider"
+      }
+     ]
+    },
+    {
+     "type": "heading",
+     "heading": "Lately",
+     "icon": "mdi:history",
+     "heading_style": "subtitle"
+    },
+    {
+     "type": "logbook",
+     "target": {
+      "entity_id": [
+       "input_select.house_mode",
+       "person.resident",
+       "input_boolean.guest_mode",
+       "script.leaving_home",
+       "script.arriving_home",
+       "script.movie_night",
+       "script.goodnight"
+      ]
+     },
+     "hours_to_show": 48,
+     "grid_options": {
+      "columns": "full",
+      "rows": 6
+     }
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Waking up",
+     "icon": "mdi:weather-sunset-up"
+    },
+    {
+     "type": "markdown",
+     "content": "{% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}{% set wd = state_attr('sensor.bedtime_plan', 'workday') %}{% set s = states('input_select.wake_up_workdays' if wd else 'input_select.wake_up_weekends') %}{% if is_state('input_boolean.waking_up', 'on') %}**Waking up now**, for {{ as_local(states('input_datetime.wake_up_at') | as_datetime).strftime('%-I:%M') }}{% elif w is none %}No plan yet{% elif is_state('input_boolean.skip_wake_up', 'on') or s == 'Off' %}No wake-up for {{ as_local(w).strftime('%-I:%M') }}, sleeping in{% else %}Next: **{{ as_local(w).strftime('%a %-I:%M') }}**, {{ s | lower }}, sunrise from {{ (as_local(w) - timedelta(minutes=states('input_number.sunrise_minutes') | int(30))).strftime('%-I:%M') }}{% endif %}"
+    },
+    {
+     "type": "tile",
+     "entity": "input_select.wake_up_workdays",
+     "name": "Workdays",
+     "grid_options": {
+      "columns": "full"
+     },
+     "features": [
+      {
+       "type": "select-options"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_select.wake_up_weekends",
+     "name": "Days off",
+     "grid_options": {
+      "columns": "full"
+     },
+     "features": [
+      {
+       "type": "select-options"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_number.sunrise_minutes",
+     "name": "Sunrise length",
+     "grid_options": {
+      "columns": "full"
+     },
+     "features": [
+      {
+       "type": "numeric-input",
+       "style": "slider"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.skip_wake_up",
+     "name": "Don't wake me tomorrow",
+     "grid_options": {
+      "columns": 6
+     },
+     "icon": "mdi:alarm-off",
+     "tap_action": {
+      "action": "toggle"
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.wake_up_once",
+     "name": "Wake me this once",
+     "icon": "mdi:alarm-plus",
+     "tap_action": {
+      "action": "toggle"
+     },
+     "grid_options": {
+      "columns": 6
+     }
+    },
+    {
+     "type": "tile",
+     "entity": "script.wake_up_stop",
+     "name": "Stop",
+     "grid_options": {
+      "columns": 6
+     },
+     "icon": "mdi:alarm-off",
+     "visibility": [
+      {
+       "condition": "state",
+       "entity": "input_boolean.waking_up",
+       "state": "on"
+      }
+     ]
+    },
+    {
+     "type": "tile",
+     "entity": "input_datetime.dozed_off_at",
+     "name": "Last dozed off with the lights on",
+     "grid_options": {
+      "columns": "full"
+     }
+    }
+   ]
+  }
+ ]
+}

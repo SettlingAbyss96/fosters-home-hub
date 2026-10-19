@@ -1,0 +1,125 @@
+# An LG washer (or washer-dryer), through LG's ThinQ cloud (Home Assistant's own LG ThinQ
+# integration, with a personal access token from LG's developer site). Name the device "Washer" in
+# Home Assistant so its entities are sensor.washer_... and the rest (docs/devices.md). LG tells Home
+# Assistant when a load is done and when something's wrong, it doesn't have to be guessed from the
+# power draw.
+#   - done: "The washing's done" through script.tell_resident (out loud at home, the phone if away,
+#     quietly on the phone overnight and in the morning briefing)
+#   - a problem (out of balance, water supply, the door): the same, but urgent
+#   - binary_sensor.washer_running and the finish time for the dashboard and for Jarvis
+#   - left in the machine: LG keeps saying "end" until the door's opened or it powers itself off, so
+#     still "end" 45 minutes after it finished, with you home and awake, gets one reminder, and
+#     another 45 minutes later. Then it's left alone
+template:
+  - binary_sensor:
+      - name: "Washer running"
+        unique_id: washer_running
+        icon: mdi:washing-machine
+        state: >-
+          {{ states('sensor.washer_current_status') in ['detecting', 'running', 'rinsing', 'spinning', 'drying',
+                                                         'cool_down', 'refreshing', 'rinse_hold', 'pause'] }}
+        attributes:
+          finishes: >-
+            {% set t = states('sensor.washer_remaining_time') | as_datetime(none) %}
+            {{ as_local(t).strftime('%-I:%M %p') if t is not none else none }}
+
+input_datetime:
+  washer_done_at:
+    name: "Washer last finished"
+    icon: mdi:washing-machine-alert
+    has_date: true
+    has_time: true
+
+automation:
+  - id: washer_done
+    alias: "The washing's done"
+    triggers:
+      - trigger: state
+        entity_id: event.washer_notification
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+      # in case LG's event doesn't come, the status settling on end does the same
+      - trigger: state
+        entity_id: sensor.washer_current_status
+        to: end
+        for: "00:01:00"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_laundry
+        state: "on"
+      - "{{ trigger.entity_id != 'event.washer_notification' or trigger.to_state.attributes.event_type == 'washing_is_complete' }}"
+      # once a load, whichever of the two gets here first
+      - >-
+        {% set last = states('input_datetime.washer_done_at') | as_datetime(none) %}
+        {{ last is none or (now() - as_local(last)).total_seconds() > 30 * 60 }}
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.washer_done_at
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Laundry"
+          message: "The washing's done."
+
+  - id: washer_problem
+    alias: "The washer has a problem"
+    triggers:
+      - trigger: state
+        entity_id: event.washer_error
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+      - trigger: state
+        entity_id: event.washer_notification
+        not_from: [unavailable, unknown]
+        not_to: [unavailable, unknown]
+    conditions:
+      - "{{ trigger.entity_id == 'event.washer_error' or trigger.to_state.attributes.event_type == 'error_during_washing' }}"
+    actions:
+      - variables:
+          what: >-
+            {{ {'out_of_balance_error': 'the load is out of balance', 'door_open_error': 'the door is open',
+                'water_supply_error': "it isn't getting water", 'water_drain_error': "it isn't draining",
+                'unable_to_lock_error': "the door won't lock", 'overfill_error': "it's overfilled",
+                'power_fail_error': 'the power cut out'}.get(trigger.to_state.attributes.event_type, 'something went wrong') }}
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Washer problem"
+          message: "The washer's stopped: {{ what }}."
+          urgent: true
+
+  - id: washer_left_in
+    alias: "The washing's still in there"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.washer_current_status
+        to: end
+        for: "00:45:00"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_laundry
+        state: "on"
+    actions:
+      - repeat:
+          count: 2
+          sequence:
+            - wait_template: >-
+                {{ is_state('person.resident', 'home') and states('input_select.house_mode') not in ['Night', 'Away'] }}
+              timeout: "04:00:00"
+              continue_on_timeout: false
+            - condition: state
+              entity_id: sensor.washer_current_status
+              state: end
+            - action: script.tell_resident
+              continue_on_error: true
+              data:
+                title: "Laundry"
+                message: "The washing's still in the machine."
+            - delay: "00:45:00"
+            - condition: state
+              entity_id: sensor.washer_current_status
+              state: end

@@ -1,0 +1,146 @@
+# Someone in while you're out. The house is Away (the leaving routine ran: gone and off the
+# Wi-Fi), there are no guests, and something happens that takes a person:
+#   - a light switched at the wall: the arbiter's light_manual event with by "wall" (no automation
+#     did it, it isn't the light reporting back a command, and it's not the dashboard or the app,
+#     packages/arbiter.yaml)
+#   - the computer unlocked and used
+#   - the TV coming on
+#   - the Hub seeing movement twice, at least a minute apart. Once can be a robot vacuum rolling
+#     past, so the first one only starts a ten-minute watch, and nothing counts while the vacuum's
+#     out or just back
+# Any of those sends a time-sensitive notification with what it was and a fresh doorbell snapshot
+# (when there's a doorbell camera), with two buttons: "That's a guest" turns guest mode on (and
+# that's the end of it), "Not me" makes it critical and keeps the lights from being switched off by
+# the house. Arriving (the on-the-way-in window, or waiting for the door) never counts, that's you
+automation:
+  - id: someone_in_while_away
+    alias: "Someone's in while I'm out"
+    mode: single
+    max_exceeded: silent
+    triggers:
+      - trigger: event
+        event_type: light_manual
+        event_data:
+          by: wall
+        id: switch
+      - trigger: template
+        value_template: >-
+          {% set t = states('sensor.computer_last_active') | as_datetime(none) %}
+          {{ is_state('sensor.computer_session_state', 'Unlocked') and t is not none and (now() - t).total_seconds() < 90 }}
+        id: laptop
+      - trigger: state
+        entity_id: binary_sensor.tv_picture
+        from: "off"
+        to: "on"
+        id: tv
+      - trigger: state
+        entity_id: binary_sensor.hub_500_motion
+        from: "off"
+        to: "on"
+        id: motion
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_security
+        state: "on"
+      - condition: state
+        entity_id: input_select.house_mode
+        state: Away
+      - condition: state
+        entity_id: input_boolean.guest_mode
+        state: "off"
+      - condition: state
+        entity_id: [timer.arrival_window, timer.arrival_door]
+        state: idle
+      - "{{ not is_state('person.resident', 'home') }}"
+      # someone coming in through the front door gets the door's own message (packages/occupancy.yaml)
+      - >-
+        {% set d = states.binary_sensor.front_door %}
+        {{ d is none or d.state not in ['on', 'off'] or (now() - d.last_changed).total_seconds() > 600 }}
+      # the vacuum out, or back in the last five minutes, makes the Hub's motion meaningless
+      - >-
+        {{ trigger.id != 'motion' or (states('vacuum.robot_vacuum') not in ['cleaning', 'returning', 'paused']
+           and (now() - states.vacuum.robot_vacuum.last_changed).total_seconds() > 300) }}
+    actions:
+      - if: "{{ trigger.id == 'motion' }}"
+        then:
+          # once is maybe nothing: a second time, a minute or more later, is someone
+          - delay: "00:01:00"
+          - wait_for_trigger:
+              - trigger: state
+                entity_id: binary_sensor.hub_500_motion
+                from: "off"
+                to: "on"
+            timeout: "00:10:00"
+            continue_on_timeout: false
+          - condition: "{{ states('vacuum.robot_vacuum') not in ['cleaning', 'returning', 'paused'] }}"
+      - variables:
+          what: >-
+            {{ {'switch': 'The ' ~ (state_attr(trigger.event.data.entity, 'friendly_name') or 'a light') | lower ~ ' was switched ' ~ trigger.event.data.state ~ ' at the wall' if trigger.id == 'switch' else '',
+                'laptop': 'Someone is using the computer',
+                'tv': 'The TV came on',
+                'motion': 'The Hub keeps seeing movement'}[trigger.id] }}
+      - if: "{{ states.camera.doorbell is not none }}"
+        then:
+          - action: camera.snapshot
+            target:
+              entity_id: camera.doorbell
+            data:
+              filename: /config/www/doorbell_last.jpg
+            continue_on_error: true
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Someone's in?"
+          message: "{{ what }}, and you're out."
+          data:
+            image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
+            push:
+              interruption-level: time-sensitive
+            actions:
+              - action: SOMEONE_IN_GUEST
+                title: "That's a guest"
+              - action: SOMEONE_IN_NOT_ME
+                title: "Not me"
+                destructive: true
+      # one alert per half hour is plenty
+      - delay: "00:30:00"
+
+  - id: someone_in_answer
+    alias: "Someone's in: the answer"
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: SOMEONE_IN_GUEST
+        id: guest
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: SOMEONE_IN_NOT_ME
+        id: intruder
+    actions:
+      - choose:
+          - conditions: "{{ trigger.id == 'guest' }}"
+            sequence:
+              - action: input_boolean.turn_on
+                target:
+                  entity_id: input_boolean.guest_mode
+        default:
+          # every light on, so whoever it is is seen, and on the phone loud
+          - action: script.lights_look
+            continue_on_error: true
+            data:
+              look: bright
+              priority: 1
+              override: true
+          - action: notify.mobile_app_phone
+            continue_on_error: true
+            data:
+              title: "Lights on at home"
+              message: "Every light's on. The doorbell camera has the door, if there is one."
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 0.8

@@ -1,0 +1,192 @@
+# house.toml: your house, in the one file that's yours. Copy this to house.toml in the same folder
+# and fill it in. house.toml is in .gitignore, because it's where your network, your devices and
+# your Wi-Fi's name live, and it should never end up in a repo, yours or anyone's.
+#
+# Nothing in here is a password. Tokens and logins never go in this file: the Home Assistant token
+# lives in ~/.config/ha-hub/token, the broker login on the Hub, the ESPHome Wi-Fi in the Hub's
+# ESPHome secrets (docs/setup.md has each one).
+#
+# tools/ha-apps.sh reads this on every deploy and makes Home Assistant match it: names, rooms,
+# labels, the voice pipeline, and the few settings in ha/config/packages/house.yaml. So change
+# things here and deploy again, rather than in Home Assistant's UI, where the next deploy would put
+# them back. Anything you leave empty is a part of the house you don't have, and the packages that
+# would use it just sit there doing nothing (docs/devices.md lists what each part needs).
+#
+# The addresses below are from 192.0.2.0/24, the range set aside for examples, so nothing here can
+# accidentally point at a real machine. Use yours.
+
+[hub]
+# how this computer reaches the Hub over SSH (host/ scripts, tools/push.sh, the test bench)
+ssh = "hub@ha-hub.local"
+# the Hub's reserved address. Home Assistant reaches the speech engines on the Hub by address rather
+# than by name, because mDNS lookups fail now and then and a failed lookup is a deaf assistant
+address = "192.0.2.10"
+# the room the Hub is in. Voice commands without a room ("turn the lights off") mean this one
+area = "Living Room"
+
+[home_assistant]
+# the Home Assistant VM. This install answers on port 80, so no :8123
+url = "http://homeassistant.local"
+# the same machine for SSH (the Terminal & SSH app, set up by tools/ha-apps.sh)
+host = "homeassistant.local"
+
+[resident]
+# The person the house is built around. Everything here assumes one person living alone, with
+# guests now and then (docs/devices.md, "One resident"). Make the person in Home Assistant first
+# (Settings, People) with the phone attached, then put its entity id here. It gets renamed
+# person.resident, and Jarvis calls you by the person's name.
+person = "person.alex"
+# what a face-recognising doorbell calls you (the name in its app), so that face counts as you
+face = ""
+# your Wi-Fi's name (SSID). The phone on it means the phone's home, whatever the GPS says
+home_wifi = ""
+# the home zone's radius in metres. Big enough that where you park is inside it: a phone that last
+# reported from the car park sits outside a small zone for as long as you're in
+home_radius_m = 150
+
+[voice]
+# the wake word model (Linux Voice Assistant's names: hey_jarvis, okay_nabu, hey_mycroft). Deployed
+# by host/70-voice.sh, which reads it from here
+wake_word = "hey_jarvis"
+# Kokoro's voice (host/74-kokoro.sh). bm_ and bf_ are British, am_ and af_ American
+tts_voice = "bm_daniel"
+tts_language = "en_GB"
+# The cloud agent behind "Hey Jarvis", as Home Assistant calls it after you add a provider's
+# integration (Settings, Devices and services, Add integration, then its conversation agent). It gets
+# renamed conversation.jarvis_cloud and handed ha/context/about.md as its prompt. Empty: Home
+# Assistant's own agent only, which handles the built-in and custom sentences and nothing looser
+cloud_agent = ""
+# a small model on the Hub instead (host/80-ollama.sh). Slow and not very bright on 8 GB, honestly
+local_model = ""
+
+[news]
+# what the welcome home and the morning briefing look up, in plain words. Empty: home news only
+on_arrival = "the day's top story and how the markets did"
+# a few things you're into, for when there's room for one more item
+interests = "cooking, cycling"
+
+[calendar]
+# A free/busy iCal address, for calendar.work (Google Calendar: the calendar's settings, "Secret
+# address in iCal format", with public access set to "See only free/busy"). Only busy blocks come
+# through, no titles. It's a secret of sorts: anyone with it can see when you're busy
+work_ics = ""
+
+[rooms]
+# the areas to make, the way you say them. The Hub's area above has to be one of them
+names = ["Living Room", "Kitchen", "Bedroom", "Bathroom"]
+
+[rooms.aliases]
+# more names for a room, for voice
+"Living Room" = ["lounge"]
+
+# One [[light]] table per light. entity is what Home Assistant called it when it was paired. A plug
+# with a lamp on it is a switch: give its switch entity and it gets wrapped as a light (Switch as X),
+# so "turn off the lights" and the looks treat the lamp like a lamp.
+#   layer   ambient (lamps), task (overheads) or accent (decoration), docs/lighting.md
+#   roles   any of: sunrise (the wake-up fades it up), bedside (on with the alarm, left on at Night
+#           if it's on), no_dim (a dimmer switch on bulbs that can't dim), stand_in (a task light
+#           that takes over the room's ambient level when every lamp in the room is dead), keep (the
+#           looks leave it alone, like a bathroom light on the fan's switch)
+#   becomes the entity id you'd like it to have (optional)
+[[light]]
+entity = "light.floor_lamp"
+becomes = "light.living_room_lamp"
+name = "Lamp"
+area = "Living Room"
+layer = "ambient"
+roles = []
+aliases = ["floor lamp", "living room lamp"]
+
+[[light]]
+entity = "switch.bedside_plug"
+becomes = "light.bedroom_lamp"
+name = "Bedroom lamp"
+area = "Bedroom"
+layer = "ambient"
+roles = ["bedside"]
+aliases = []
+
+[[light]]
+entity = "light.bedroom_ceiling"
+becomes = "light.bedroom_light"
+name = "Bedroom light"
+area = "Bedroom"
+layer = "task"
+roles = ["sunrise", "stand_in"]
+aliases = ["bedroom lights", "main light"]
+
+[[light]]
+entity = "light.kitchen_ceiling"
+becomes = "light.kitchen_light"
+name = "Kitchen light"
+area = "Kitchen"
+layer = "task"
+roles = ["no_dim"]
+aliases = ["kitchen lights"]
+
+[[light]]
+entity = "switch.bathroom_switch"
+becomes = "light.bathroom_light"
+name = "Bathroom light"
+area = "Bathroom"
+layer = "task"
+roles = ["keep"]
+aliases = []
+
+[devices]
+# Things to rename to the standard names in docs/devices.md, by any one of their entities. Every
+# entity on the same device that starts with the same name moves with it: device_tracker.alexs_iphone
+# becomes device_tracker.phone, and sensor.alexs_iphone_ssid becomes sensor.phone_ssid. Empty: you
+# don't have one, or it already has the standard name.
+#   phone     the companion app's device tracker. Easiest of all: call the phone "Phone" in the app
+#             (Settings, Companion app, Device name) before you sign in, and leave this empty. The
+#             notify service, notify.mobile_app_phone, comes from that name and can't be renamed later
+phone = ""
+# HASS.Agent on a Windows computer (pc/install-hass-agent.ps1): call the device "Computer" in it
+computer = ""
+vacuum = ""
+klipper = ""
+bambu = ""
+washer = ""
+doorbell = ""
+front_door = ""
+bedroom_door = ""
+bathroom_door = ""
+# a measuring plug the desk runs from: its power sensor becomes sensor.desk_power
+desk_power = ""
+
+[computer]
+# part of the name of a headset on the computer (as Windows names the audio device). When it's the
+# computer's output and you're at the desk, Jarvis talks in the headset instead of on the Hub.
+# Empty: always the Hub
+headset = ""
+
+[fire_tv]
+# A Fire TV over ADB (ha/config/packages/tv.yaml): its reserved address, and the room it's in.
+# Empty: no TV module. Turn on ADB debugging on the TV first (Settings, My Fire TV, About, click the
+# name seven times, then Developer Options), and accept the prompt on the TV the first time
+address = ""
+area = "Living Room"
+
+[fire_tv.apps]
+# the apps it can open, by Android package name
+"com.netflix.ninja" = "Netflix"
+"com.amazon.firetv.youtube" = "YouTube"
+"com.disney.disneyplus" = "Disney+"
+"com.amazon.firebat" = "Prime Video"
+"com.spotify.tv.android" = "Spotify"
+
+[klipper]
+# Moonraker's address for tools/ha-extras.sh, like http://192.0.2.25:7125. Empty: no Klipper printer
+moonraker = ""
+
+[extras]
+# the community pieces tools/ha-extras.sh installs, each pinned by version and sha256:
+#   mushroom      the cards the dashboard is built from (needed)
+#   moonraker     Klipper printers
+#   bambu         Bambu Lab printers (ha-bambulab)
+#   oura          the Oura ring, straight from Oura's API
+#   hass_agent    the Home Assistant half of HASS.Agent (media player and notify for the computer)
+#   vacuum_map    the interactive map card and its map image for a Roborock
+#   piper_jarvis  a community Jarvis voice for Piper, the fallback when Kokoro isn't there
+install = ["mushroom"]

@@ -1,0 +1,80 @@
+# Telling you something: one script so every alert picks the right place the same way, instead of
+# each automation deciding for itself. The washer, the doorbell, the printers and the reminders use it.
+#   - home and awake: Jarvis says it on the Hub. At the computer with a headset on (its name in
+#     input_text.headset, from house.toml), he says it in the headset instead, the Hub won't get
+#     through that
+#   - movie night: not out loud unless it's urgent (the doorbell is, the washer isn't), the phone
+#     gets it instead
+#   - Night (asleep) or away: the phone. Quietly at night unless it's urgent
+# phone: true sends it to the phone as well, wherever you are (the doorbell, with a picture), and
+# image attaches one to the phone notification
+script:
+  tell_resident:
+    alias: "Tell the resident"
+    description: "Says something to whoever lives here: out loud at home, on the phone when away or asleep."
+    icon: mdi:account-voice
+    mode: queued
+    fields:
+      message:
+        description: "What to say"
+        required: true
+        selector:
+          text:
+      title:
+        description: "Title for the phone notification"
+        selector:
+          text:
+      urgent:
+        description: "Say it even during a movie, and ring through at night"
+        selector:
+          boolean:
+      phone:
+        description: "Send it to the phone too, even when it's said out loud"
+        selector:
+          boolean:
+      image:
+        description: "A picture for the phone notification (/local/... or /api/camera_proxy/...)"
+        selector:
+          text:
+    sequence:
+      - variables:
+          urgent: "{{ urgent | default(false) | bool }}"
+          # home: the phone says so, or the house can tell someone's in without it (the door and
+          # what moved inside since, packages/occupancy.yaml): a phone left somewhere else shouldn't
+          # make the house go quiet
+          home: "{{ is_state('person.resident', 'home') or is_state('binary_sensor.someone_home', 'on') }}"
+          mode: "{{ states('input_select.house_mode') }}"
+          headset: >-
+            {% set h = states('input_text.headset') %}
+            {{ h not in ['', 'unknown', 'unavailable'] and is_state('binary_sensor.at_the_desk', 'on')
+               and states('sensor.computer_audio_default_device') is search(h) }}
+          aloud: "{{ home and mode != 'Night' and (mode != 'Movie' or urgent) }}"
+      - if: "{{ aloud and headset }}"
+        then:
+          - action: script.computer_say
+            data:
+              message: "{{ message }}"
+            continue_on_error: true
+      - if: "{{ aloud and not headset }}"
+        then:
+          # one thing at a time: talking over an announcement that's still going errors (a doorbell
+          # alert landing on top of the welcome home, say)
+          - wait_template: "{{ states('assist_satellite.hub_500_voice_assist_satellite') in ['idle', 'unavailable', 'unknown'] }}"
+            timeout: "00:00:30"
+          - action: assist_satellite.announce
+            target:
+              entity_id: assist_satellite.hub_500_voice_assist_satellite
+            data:
+              message: "{{ message }}"
+              preannounce: "{{ urgent }}"
+            continue_on_error: true
+      - if: "{{ not aloud or not home or (phone | default(false) | bool) }}"
+        then:
+          - action: notify.mobile_app_phone
+            continue_on_error: true
+            data:
+              title: "{{ title | default('Home') }}"
+              message: "{{ message }}"
+              data: >-
+                {% set d = {'push': {'interruption-level': 'time-sensitive' if urgent else ('passive' if mode == 'Night' else 'active')}} %}
+                {{ dict(d, image=image) if image is defined and image else d }}

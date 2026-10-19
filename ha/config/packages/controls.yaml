@@ -1,0 +1,283 @@
+# The house's own off switches, one for each thing it does by itself, so any one of them can be
+# stopped without touching the rest. The first one I needed: boxes all over the kitchen floor and a
+# robot vacuum that would happily drive into them the minute I left. Every automation below its
+# switch checks it first, and that's the whole mechanism. No disabling automations by hand in the
+# settings, which works too but is exactly the kind of thing I'd forget I did.
+#
+# What each switch stops (and what it leaves alone):
+#   - Vacuum on its own: no vacuuming when you leave, and if the vacuum starts anyway (its own app's
+#     schedule, the button on top) it gets sent back to the dock with a "let it clean" button on the
+#     phone. Starting it from the dashboard or by voice still works, that's you asking
+#   - Modes follow the clock: Evening at sunset, Calm at wind-down, Morning when you're up, Day at
+#     sunrise. Off, the house stays in whatever mode it's in until you change it
+#   - Lights on when I get home: the welcome look. The house still leaves Away when you're back
+#   - Bedtime nudges, the morning briefing, the fell-asleep check, laundry reminders, printer
+#     alerts, the doorbell announcing, someone's-in alerts and the desk-left-on reminder: just those.
+#     A washer that's stopped with a problem still says so, that's never a reminder
+#   - The wake-up isn't here. It has its own settings (workdays, weekends, "don't wake me
+#     tomorrow"), and one more switch that can quietly turn off the alarm is the last thing it needs
+#
+# Anything paused shows on the Home screen in the attention line ("Paused: vacuum") for as long as
+# it's off, so nothing stays off because someone forgot about it.
+#
+# Below that, the house checking on itself, because an alarm that fails with an error every minute
+# looks, from bed, exactly like no alarm, and nothing says so:
+#   - an error from any automation or script lands on the phone, once per thing per 6 hours. Between
+#     3 and 10 in the morning, one from the wake-up is a critical alert: if the alarm's broken, the
+#     message about it has to be the alarm
+#   - sensor.next_wake_up says what tomorrow morning will do, in words, and says "Problem" when
+#     something it depends on is missing or switched off
+input_boolean:
+  auto_vacuum:
+    name: "Vacuum on its own"
+    icon: mdi:robot-vacuum
+  auto_clock_modes:
+    name: "Modes follow the clock"
+    icon: mdi:clock-outline
+  auto_welcome:
+    name: "Lights on when I get home"
+    icon: mdi:home-lightbulb-outline
+  auto_bedtime_nudge:
+    name: "Bedtime nudges"
+    icon: mdi:bed-clock
+  auto_asleep:
+    name: "Lights off if I fall asleep"
+    icon: mdi:sleep
+  auto_briefing:
+    name: "Morning briefing"
+    icon: mdi:newspaper-variant-outline
+  auto_security:
+    name: "Someone's-in alerts"
+    icon: mdi:shield-home-outline
+  auto_doorbell:
+    name: "Doorbell announcements"
+    icon: mdi:doorbell
+  auto_laundry:
+    name: "Laundry reminders"
+    icon: mdi:washing-machine
+  auto_printers:
+    name: "Printer alerts"
+    icon: mdi:printer-3d
+  auto_desk:
+    name: "Desk-left-on reminder"
+    icon: mdi:desk
+
+input_datetime:
+  # the last time Home Assistant itself asked the vacuum to do something: me on the dashboard, by
+  # voice, or a routine that's allowed to. Long ago means never
+  vacuum_asked_at:
+    name: "Vacuum last asked to clean"
+    icon: mdi:robot-vacuum
+    has_date: true
+    has_time: true
+  house_error_at:
+    name: "Last error alert"
+    icon: mdi:alert-octagon-outline
+    has_date: true
+    has_time: true
+
+input_text:
+  house_error_from:
+    name: "Last error alert from"
+    icon: mdi:alert-octagon-outline
+    max: 255
+
+# every error in the log becomes an event, which is what the error alert listens for
+system_log:
+  fire_event: true
+
+template:
+  - sensor:
+      - name: "Paused"
+        unique_id: house_paused
+        icon: mdi:pause-circle-outline
+        state: >-
+          {{ states.input_boolean | selectattr('object_id', 'match', 'auto_')
+             | selectattr('state', 'eq', 'off') | list | count }}
+        attributes:
+          names: >-
+            {{ states.input_boolean | selectattr('object_id', 'match', 'auto_')
+               | selectattr('state', 'eq', 'off') | map(attribute='name') | list }}
+          # the short version for the attention line
+          short: >-
+            {% set short = {'auto_vacuum': 'vacuum', 'auto_clock_modes': 'clock modes', 'auto_welcome': 'welcome lights',
+                            'auto_bedtime_nudge': 'bedtime nudges', 'auto_asleep': 'asleep check',
+                            'auto_briefing': 'briefing', 'auto_security': "someone's-in alerts",
+                            'auto_doorbell': 'doorbell', 'auto_laundry': 'laundry', 'auto_printers': 'printer alerts',
+                            'auto_desk': 'desk reminder'} %}
+            {% set ns = namespace(out=[]) %}
+            {% for s in states.input_boolean if s.object_id.startswith('auto_') and s.state == 'off' %}
+              {% set ns.out = ns.out + [short.get(s.object_id, s.name)] %}
+            {% endfor %}
+            {{ ns.out | join(', ') }}
+
+      # What the next morning will do, worked out from the same plan and settings the wake-up uses.
+      # A sentence for the screen, and "Problem: ..." if something it needs isn't there
+      - name: "Next wake-up"
+        unique_id: next_wake_up
+        icon: mdi:alarm-check
+        state: >-
+          {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
+          {% set workday = state_attr('sensor.bedtime_plan', 'workday') %}
+          {% set setting = states('input_select.wake_up_workdays' if workday else 'input_select.wake_up_weekends') %}
+          {% set once = is_state('input_boolean.wake_up_once', 'on') %}
+          {% if w is none %}Problem: no wake time in the plan
+          {% elif states.automation | selectattr('attributes.id', 'defined') | selectattr('attributes.id', 'in', ['wake_up_starts', 'wake_up_backstop'])
+                  | selectattr('state', 'eq', 'on') | list | count < 2 %}Problem: a wake-up automation is switched off
+          {% elif setting in ['unknown', 'unavailable'] %}Problem: the wake-up setting is missing
+          {% else %}
+            {% set w = as_local(w) %}
+            {% set day = 'today' if w.date() == now().date() else ('tomorrow' if w.date() == (now() + timedelta(days=1)).date() else w.strftime('%A')) %}
+            {% set what = 'sunrise and alarm' if setting == 'Sunrise and alarm' or (setting == 'Off' and once) else ('sunrise only' if setting == 'Sunrise only' else 'nothing') %}
+            {% if is_state('input_boolean.skip_wake_up', 'on') %}Skipping {{ day }}'s wake-up
+            {% elif what == 'nothing' %}No wake-up {{ day }}
+            {% elif w < now() %}Done for {{ day }}
+            {% else %}{{ w.strftime('%-I:%M') }} {{ day }}, {{ what }}{% endif %}
+          {% endif %}
+
+automation:
+  # Home Assistant asked the vacuum to clean: a vacuum service call (the dashboard, voice, a routine)
+  - id: vacuum_asked
+    alias: "Vacuum asked from here"
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: call_service
+        event_data:
+          domain: vacuum
+      - trigger: event
+        event_type: call_service
+        event_data:
+          domain: roborock
+    conditions:
+      - "{{ trigger.event.data.service not in ['return_to_base', 'stop', 'pause', 'locate'] }}"
+    actions:
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.vacuum_asked_at
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+
+  # Paused and it started anyway, with nobody here having asked: back to the dock
+  - id: vacuum_paused_stays_home
+    alias: "Vacuum paused: it goes back to the dock"
+    triggers:
+      - trigger: state
+        entity_id: vacuum.robot_vacuum
+        to: cleaning
+    conditions:
+      - condition: state
+        entity_id: input_boolean.auto_vacuum
+        state: "off"
+      - >-
+        {% set asked = states('input_datetime.vacuum_asked_at') | as_datetime(none) %}
+        {{ asked is none or (now() - as_local(asked)).total_seconds() > 3 * 60 }}
+    actions:
+      - action: vacuum.return_to_base
+        continue_on_error: true
+        target:
+          entity_id: vacuum.robot_vacuum
+      - action: notify.mobile_app_phone
+        continue_on_error: true
+        data:
+          title: "Vacuum"
+          message: "The vacuum started on its own (its app's schedule?). It's paused here, so I sent it back to the dock."
+          data:
+            tag: vacuum_paused
+            actions:
+              - action: VACUUM_LET_IT_CLEAN
+                title: "Let it clean"
+
+  - id: vacuum_let_it_clean
+    alias: "Vacuum paused: let it clean this once"
+    triggers:
+      - trigger: event
+        event_type: mobile_app_notification_action
+        event_data:
+          action: VACUUM_LET_IT_CLEAN
+    actions:
+      - action: script.vacuum_clean
+        continue_on_error: true
+
+  # Something broke. Errors from automations, scripts, templates and Jarvis's own scripts, once per
+  # thing per 6 hours, so one failing every minute is one message
+  - id: house_error_alert
+    alias: "Something in the house broke"
+    mode: queued
+    max: 5
+    triggers:
+      - trigger: event
+        event_type: system_log_event
+        event_data:
+          level: ERROR
+    conditions:
+      # (never about itself, or one failure in here would keep setting it off)
+      - "{{ trigger.event.data.name is search('^homeassistant[.]components[.](automation|script|template|intent_script)')
+           and not trigger.event.data.name.endswith('house_error_alert') }}"
+      - >-
+        {% set at = states('input_datetime.house_error_at') | as_datetime(none) %}
+        {{ trigger.event.data.name != states('input_text.house_error_from')
+           or at is none or (now() - as_local(at)).total_seconds() > 6 * 3600 }}
+    actions:
+      - variables:
+          source: "{{ trigger.event.data.name }}"
+          what: >-
+            {% set id = source.split('.')[-1] %}
+            {% set ent = states.automation | selectattr('attributes.id', 'defined') | selectattr('attributes.id', 'eq', id) | list %}
+            {{ ent[0].name if ent else ('script ' ~ id if '.script.' in source else id) }}
+          message: "{{ (trigger.event.data.message | first | default('') | string)[:200] }}"
+          alarm: "{{ 'wake_up' in source and 3 <= now().hour < 10 }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.house_error_from
+        data:
+          value: "{{ source[:255] }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: input_datetime.house_error_at
+        data:
+          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - if: "{{ alarm }}"
+        then:
+          - action: notify.mobile_app_phone
+            continue_on_error: true
+            data:
+              title: "The alarm is broken"
+              message: "The wake-up just failed ({{ message }}). This is your alarm. It's {{ now().strftime('%-I:%M') }}."
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1.0
+        else:
+          - action: notify.mobile_app_phone
+            continue_on_error: true
+            data:
+              title: "Something broke: {{ what }}"
+              message: "{{ message }}"
+              data:
+                tag: "house_error_{{ source.split('.')[-1] }}"
+
+intent_script:
+  # "pause the vacuum" already means stop where you are, so these are their own words: "don't
+  # vacuum", "you can vacuum again". The rest go by their names through the agent
+  VacuumPauseAuto:
+    description: "Stop the vacuum from running by itself (when you leave, or on its own schedule) until told otherwise."
+    action:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.auto_vacuum
+      - action: timer.cancel
+        target:
+          entity_id: timer.vacuum_later
+    speech:
+      text: "The vacuum stays home until you say otherwise."
+  VacuumResumeAuto:
+    description: "Let the vacuum run by itself again."
+    action:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.auto_vacuum
+    speech:
+      text: "The vacuum's back on its usual rounds."
