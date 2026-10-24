@@ -24,7 +24,7 @@ DEFAULTS = {
     "home_assistant": {"url": "http://homeassistant.local", "host": "homeassistant.local"},
     "resident": {"person": "", "face": "", "home_wifi": "", "home_radius_m": 0},
     "voice": {"wake_word": "hey_jarvis", "tts_voice": "bm_daniel", "tts_language": "en_GB",
-              "cloud_agent": "", "local_model": ""},
+              "cloud_agent": "", "writer": "", "local_model": ""},
     "news": {"on_arrival": "", "interests": ""},
     "calendar": {"work_ics": ""},
     "rooms": {"names": [], "aliases": {}},

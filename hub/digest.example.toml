@@ -1,0 +1,714 @@
+# What Jarvis talks about when you get home (hub/hub_digest.py). Copy this to digest.toml next to
+# it and make it yours, or leave it and host/58-digest.sh installs this one. digest.toml is in
+# .gitignore, like house.toml.
+#
+# Shelves are what you're into, with a weight for how often each comes up and how many days
+# something stays news. Formats are the ways of telling it, and the digest never uses one of the
+# last two. Sources are where it all comes from, checked one at a time, with `who` for how Jarvis
+# would say where it's from. Kinds: feed, forum (a week's top posts, best first), podcast, commits
+# and releases (a GitHub repo, and a cursor, so telling it retires everything up to its newest
+# change), forks (a repo's forks that are picking up stars) and search (new repos under a GitHub
+# topic). GitHub allows 60 API calls an hour without a token, and this stays well inside that.
+#
+# Grant's has no feed linked from its front page, but its commentary page has one (adg.rss).
+# Verdad's weekly research has stopped, so its archive is here as a long read, with no freshness
+# limit (fresh_days = 0).
+
+[voice]
+# what the writer calls you. Empty: the name of person.resident, which Home Assistant sends
+name = ""
+moods = [
+  "dry understatement",
+  "quietly delighted, like it's been saving this one up",
+  "a little conspiratorial, like passing on a good tip",
+  "brisk, with somewhere to be",
+  "wry",
+  "warm",
+  "the barely contained enthusiasm of someone who's read it twice",
+  "deadpan",
+]
+openers = [
+  "Open with a short welcome home, then straight in.",
+  "Cold open: start on the story itself, and welcome {name} home after the first line.",
+  "Welcome {name} home in a way that fits the time of day or the weather.",
+  "Keep the welcome to two or three words, then straight in.",
+  "Open with the house notes if one's worth saying, otherwise a plain welcome home, then the material.",
+]
+late_openers = [
+  "A quiet welcome home, it's late, then the one thing.",
+  "Start quietly on the one thing, and welcome {name} home at the end.",
+]
+
+[shelves.printing]
+weight = 3.0
+fresh_days = 21
+
+[shelves.market]
+weight = 2.5
+fresh_days = 7
+
+[shelves.robotics_ai]
+weight = 2.0
+fresh_days = 10
+
+[shelves.wild]
+weight = 1.0
+fresh_days = 14
+
+[shelves.f1]
+weight = 0.4
+fresh_days = 3
+
+# -- formats. `needs` is what every item has to be (a shelf, a kind, a tag, "changes" for a repo's
+# commits or releases, "github" for forks and new repos). `mix` false lets two items share a shelf
+
+[[format]]
+name = "one story"
+items = 1
+late = true
+weight = 1.0
+how = "One thing, told properly: what it is, why it's interesting, and the one detail that makes it stick."
+
+[[format]]
+name = "two and a twist"
+items = 2
+weight = 1.2
+how = "Two things from different worlds, a couple of sentences each, then one closing line that ties them together, or wryly admits it can't."
+
+[[format]]
+name = "rapid fire"
+items = 4
+min = 3
+weight = 0.8
+length = "five or six short spoken sentences, about thirty seconds"
+how = "Quick hits, one sentence each, no throat-clearing between them."
+
+[[format]]
+name = "the changelog"
+items = 1
+needs = ["changes"]
+weight = 1.2
+how = "What's changed in one of the projects {name} follows since {name} last heard about it. Pick the one or two changes worth knowing, say them in plain words and what they'd mean on a printer, and skip the rest."
+
+[[format]]
+name = "new on GitHub"
+items = 2
+min = 1
+needs = ["github"]
+mix = false
+weight = 1.0
+how = "A project or a fork that's taking off: what it does, who's behind it if it says, how many stars, and why people are excited about it."
+
+[[format]]
+name = "from the forums"
+items = 2
+min = 1
+needs = ["forum"]
+mix = false
+weight = 0.8
+how = "What the community's been excited about this week, like a friend who reads the forums so {name} doesn't have to."
+
+[[format]]
+name = "the market letter"
+items = 1
+late = true
+needs = ["market"]
+weight = 1.0
+how = "One market writer's argument, in their framing and credited by name. It's an idea to chew on, never a tip or a warning."
+
+[[format]]
+name = "the long read"
+items = 1
+needs = ["deep"]
+weight = 0.6
+how = "Something from a slower, deeper source, boiled down to its one surprising idea and who came up with it."
+
+[[format]]
+name = "the number"
+items = 1
+late = true
+weight = 0.7
+how = "Open on one striking number from the item, then the story behind it. If there's no good number, tell it straight."
+
+[[format]]
+name = "connect the dots"
+items = 2
+weight = 0.7
+how = "Two things from different worlds that turn out to have something in common. Find the thread and say it."
+
+[[format]]
+name = "the weekend project"
+items = 1
+needs = ["printing"]
+weight = 0.6
+how = "Something from the item {name} could try on a printer this weekend: what it is and why it'd be fun. Not a chore, a toy."
+
+# -- the market, from people who live in it
+
+[[source]]
+name = "Almost Daily Grant's"
+shelf = "market"
+kind = "feed"
+url = "https://www.grantspub.com/adg.rss"
+who = "Almost Daily Grant's, the free letter from Grant's Interest Rate Observer"
+weight = 1.6
+
+[[source]]
+name = "Verdad"
+shelf = "market"
+kind = "feed"
+url = "https://verdadcap.com/archive?format=rss"
+who = "Verdad Capital's research"
+tags = ["deep"]
+fresh_days = 0
+weight = 0.8
+
+[[source]]
+name = "Doomberg"
+shelf = "market"
+kind = "feed"
+url = "https://newsletter.doomberg.com/feed"
+who = "Doomberg, the energy and commodities newsletter"
+weight = 1.2
+
+[[source]]
+name = "Net Interest"
+shelf = "market"
+kind = "feed"
+url = "https://www.netinterest.co/feed"
+who = "Marc Rubinstein's Net Interest, on banks and money"
+
+[[source]]
+name = "Klement on Investing"
+shelf = "market"
+kind = "feed"
+url = "https://klementoninvesting.substack.com/feed"
+who = "Joachim Klement"
+weight = 0.8
+
+[[source]]
+name = "Concoda"
+shelf = "market"
+kind = "feed"
+url = "https://concoda.substack.com/feed"
+who = "Concoda, on the plumbing of the money markets"
+tags = ["deep"]
+fresh_days = 14
+
+[[source]]
+name = "Yet Another Value Blog"
+shelf = "market"
+kind = "feed"
+url = "https://www.yetanothervalueblog.com/feed"
+who = "Andrew Walker's Yet Another Value Blog"
+
+[[source]]
+name = "Capital Flows"
+shelf = "market"
+kind = "feed"
+url = "https://www.capitalflowsresearch.com/feed"
+who = "Capital Flows Research"
+weight = 0.8
+
+[[source]]
+name = "The Grumpy Economist"
+shelf = "market"
+kind = "feed"
+url = "https://www.grumpy-economist.com/feed"
+who = "John Cochrane, the Grumpy Economist"
+tags = ["deep"]
+fresh_days = 14
+weight = 0.7
+
+[[source]]
+name = "Musings on Markets"
+shelf = "market"
+kind = "feed"
+url = "https://aswathdamodaran.blogspot.com/feeds/posts/default"
+who = "Aswath Damodaran"
+tags = ["deep"]
+fresh_days = 30
+
+[[source]]
+name = "Alpha Architect"
+shelf = "market"
+kind = "feed"
+url = "https://alphaarchitect.com/feed/"
+who = "Alpha Architect's research on value and momentum"
+tags = ["deep"]
+fresh_days = 21
+weight = 0.7
+
+[[source]]
+name = "Apricitas"
+shelf = "market"
+kind = "feed"
+url = "https://www.apricitas.io/feed"
+who = "Joseph Politano's Apricitas Economics"
+tags = ["deep"]
+fresh_days = 21
+weight = 0.7
+
+[[source]]
+name = "Odd Lots"
+shelf = "market"
+kind = "podcast"
+url = "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/8a94442e-5a74-4fa2-8b8d-ae27003a8d6b/982f5071-765c-403d-969d-ae27003a8d83/podcast.rss"
+who = "the Odd Lots podcast"
+fresh_days = 10
+
+[[source]]
+name = "Epsilon Theory"
+shelf = "market"
+kind = "podcast"
+url = "https://feeds.soundcloud.com/users/soundcloud:users:27653596/sounds.rss"
+who = "the Epsilon Theory podcast"
+fresh_days = 21
+weight = 0.6
+
+# -- 3D printing: the repos, their forks, new projects, the forums
+
+[[source]]
+name = "Kalico"
+shelf = "printing"
+kind = "commits"
+repo = "KalicoCrew/kalico"
+who = "Kalico, the Klipper fork"
+weight = 1.6
+
+[[source]]
+name = "Kalico releases"
+shelf = "printing"
+kind = "releases"
+repo = "KalicoCrew/kalico"
+who = "Kalico"
+weight = 1.4
+
+[[source]]
+name = "Klipper"
+shelf = "printing"
+kind = "commits"
+repo = "Klipper3d/klipper"
+who = "Klipper"
+weight = 1.4
+
+[[source]]
+name = "Klipper releases"
+shelf = "printing"
+kind = "releases"
+repo = "Klipper3d/klipper"
+who = "Klipper"
+weight = 1.5
+
+[[source]]
+name = "OrcaSlicer"
+shelf = "printing"
+kind = "releases"
+repo = "OrcaSlicer/OrcaSlicer"
+who = "OrcaSlicer"
+skip = "nightly"
+weight = 1.5
+
+[[source]]
+name = "OrcaSlicer forks"
+shelf = "printing"
+kind = "forks"
+repo = "OrcaSlicer/OrcaSlicer"
+who = "OrcaSlicer's forks"
+min_stars = 40
+max_age_days = 300
+weight = 1.4
+
+[[source]]
+name = "Klipper forks"
+shelf = "printing"
+kind = "forks"
+repo = "Klipper3d/klipper"
+who = "Klipper's forks"
+min_stars = 40
+weight = 1.2
+
+[[source]]
+name = "Kalico forks"
+shelf = "printing"
+kind = "forks"
+repo = "KalicoCrew/kalico"
+who = "Kalico's forks"
+min_stars = 8
+
+[[source]]
+name = "PrusaSlicer"
+shelf = "printing"
+kind = "releases"
+repo = "prusa3d/PrusaSlicer"
+who = "PrusaSlicer"
+
+[[source]]
+name = "Bambu Studio"
+shelf = "printing"
+kind = "releases"
+repo = "bambulab/BambuStudio"
+who = "Bambu Studio"
+weight = 0.9
+
+[[source]]
+name = "Shake&Tune"
+shelf = "printing"
+kind = "releases"
+repo = "Frix-x/klippain-shaketune"
+who = "Shake and Tune, the input shaper tool"
+weight = 0.9
+
+[[source]]
+name = "Happy Hare"
+shelf = "printing"
+kind = "releases"
+repo = "moggieuk/Happy-Hare"
+who = "Happy Hare, the multi-material firmware"
+weight = 0.7
+
+[[source]]
+name = "AFC"
+shelf = "printing"
+kind = "releases"
+repo = "ArmoredTurtle/AFC-Klipper-Add-On"
+who = "Armored Turtle's AFC add-on for the BoxTurtle"
+weight = 0.7
+
+[[source]]
+name = "BoxTurtle"
+shelf = "printing"
+kind = "commits"
+repo = "ArmoredTurtle/BoxTurtle"
+who = "the BoxTurtle"
+weight = 0.5
+
+[[source]]
+name = "Awesome Toolheads"
+shelf = "printing"
+kind = "commits"
+repo = "SartorialGrunt0/Awesome-Toolheads"
+who = "the Awesome Toolheads list, where new toolheads turn up"
+
+[[source]]
+name = "Xol"
+shelf = "printing"
+kind = "commits"
+repo = "Armchair-Heavy-Industries/Xol-Toolhead"
+who = "the Xol toolhead"
+weight = 0.6
+
+[[source]]
+name = "TMC Autotune"
+shelf = "printing"
+kind = "commits"
+repo = "andrewmcgr/klipper_tmc_autotune"
+who = "the TMC autotune plugin"
+weight = 0.5
+
+[[source]]
+name = "FullControl"
+shelf = "printing"
+kind = "commits"
+repo = "FullControlXYZ/fullcontrol"
+who = "FullControl, g-code by design"
+weight = 0.6
+
+[[source]]
+name = "BrickLayers"
+shelf = "printing"
+kind = "commits"
+repo = "GeekDetour/BrickLayers"
+who = "BrickLayers, the interlocking layers post-processor"
+weight = 0.6
+
+[[source]]
+name = "Moonraker"
+shelf = "printing"
+kind = "releases"
+repo = "Arksine/moonraker"
+who = "Moonraker"
+weight = 0.6
+
+[[source]]
+name = "Mainsail"
+shelf = "printing"
+kind = "releases"
+repo = "mainsail-crew/mainsail"
+who = "Mainsail"
+weight = 0.6
+
+[[source]]
+name = "Spoolman"
+shelf = "printing"
+kind = "releases"
+repo = "Donkie/Spoolman"
+who = "Spoolman"
+weight = 0.6
+
+[[source]]
+name = "Crowsnest"
+shelf = "printing"
+kind = "releases"
+repo = "mainsail-crew/crowsnest"
+who = "Crowsnest, the printer camera streamer"
+weight = 0.4
+
+[[source]]
+name = "KIAUH"
+shelf = "printing"
+kind = "releases"
+repo = "dw-0/kiauh"
+who = "KIAUH"
+weight = 0.4
+
+[[source]]
+name = "Katapult"
+shelf = "printing"
+kind = "commits"
+repo = "Arksine/katapult"
+who = "Katapult, the bootloader"
+weight = 0.4
+
+[[source]]
+name = "New under klipper"
+shelf = "printing"
+kind = "search"
+query = "topic:klipper"
+min_stars = 25
+who = "new projects under GitHub's klipper topic"
+weight = 1.2
+
+[[source]]
+name = "New under voron"
+shelf = "printing"
+kind = "search"
+query = "topic:voron"
+min_stars = 10
+days = 45
+who = "new projects under GitHub's voron topic"
+weight = 0.8
+
+[[source]]
+name = "New in 3D printing"
+shelf = "printing"
+kind = "search"
+query = "topic:3d-printing"
+min_stars = 60
+who = "new projects under GitHub's 3D printing topic"
+
+[[source]]
+name = "r/klippers"
+shelf = "printing"
+kind = "forum"
+url = "https://www.reddit.com/r/klippers/top/.rss?t=week"
+who = "r/klippers"
+
+[[source]]
+name = "r/VORONDesign"
+shelf = "printing"
+kind = "forum"
+url = "https://www.reddit.com/r/VORONDesign/top/.rss?t=week"
+who = "r/VORONDesign"
+
+[[source]]
+name = "r/3Dprinting"
+shelf = "printing"
+kind = "forum"
+url = "https://www.reddit.com/r/3Dprinting/top/.rss?t=week"
+who = "r/3Dprinting"
+weight = 0.6
+
+[[source]]
+name = "Hackaday 3D printing"
+shelf = "printing"
+kind = "feed"
+url = "https://hackaday.com/category/3d-printer-hacks/feed/"
+who = "Hackaday"
+weight = 1.2
+
+[[source]]
+name = "Prusa blog"
+shelf = "printing"
+kind = "feed"
+url = "https://blog.prusa3d.com/feed/"
+who = "Prusa's blog"
+weight = 0.6
+
+[[source]]
+name = "3D Printing Industry"
+shelf = "printing"
+kind = "feed"
+url = "https://3dprintingindustry.com/feed/"
+who = "3D Printing Industry"
+weight = 0.3
+
+# -- robotics and AI
+
+[[source]]
+name = "Hackaday robots"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://hackaday.com/category/robots-hacks/feed/"
+who = "Hackaday"
+
+[[source]]
+name = "IEEE Spectrum robotics"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://spectrum.ieee.org/feeds/topic/robotics.rss"
+who = "IEEE Spectrum"
+
+[[source]]
+name = "The Robot Report"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://www.therobotreport.com/feed/"
+who = "The Robot Report"
+weight = 0.5
+
+[[source]]
+name = "LeRobot"
+shelf = "robotics_ai"
+kind = "releases"
+repo = "huggingface/lerobot"
+who = "Hugging Face's LeRobot"
+weight = 0.9
+
+[[source]]
+name = "New in robotics"
+shelf = "robotics_ai"
+kind = "search"
+query = "topic:robotics"
+min_stars = 100
+who = "new projects under GitHub's robotics topic"
+
+[[source]]
+name = "New in ROS 2"
+shelf = "robotics_ai"
+kind = "search"
+query = "topic:ros2"
+min_stars = 30
+days = 45
+who = "new projects under GitHub's ROS 2 topic"
+weight = 0.5
+
+[[source]]
+name = "New in AI agents"
+shelf = "robotics_ai"
+kind = "search"
+query = "topic:ai-agents"
+min_stars = 500
+days = 21
+who = "new projects under GitHub's AI agents topic"
+weight = 0.6
+
+[[source]]
+name = "Simon Willison"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://simonwillison.net/atom/everything/"
+who = "Simon Willison's weblog"
+chars = 900
+weight = 0.9
+
+[[source]]
+name = "Interconnects"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://www.interconnects.ai/feed"
+who = "Nathan Lambert's Interconnects"
+tags = ["deep"]
+weight = 0.8
+
+[[source]]
+name = "Import AI"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://importai.substack.com/feed"
+who = "Jack Clark's Import AI"
+tags = ["deep"]
+weight = 0.8
+
+[[source]]
+name = "Latent Space"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://www.latent.space/feed"
+who = "Latent Space"
+tags = ["deep"]
+weight = 0.6
+
+[[source]]
+name = "Hugging Face blog"
+shelf = "robotics_ai"
+kind = "feed"
+url = "https://huggingface.co/blog/feed.xml"
+who = "the Hugging Face blog"
+weight = 0.3
+
+[[source]]
+name = "r/robotics"
+shelf = "robotics_ai"
+kind = "forum"
+url = "https://www.reddit.com/r/robotics/top/.rss?t=week"
+who = "r/robotics"
+weight = 0.8
+
+[[source]]
+name = "r/LocalLLaMA"
+shelf = "robotics_ai"
+kind = "forum"
+url = "https://www.reddit.com/r/LocalLLaMA/top/.rss?t=week"
+who = "r/LocalLLaMA"
+weight = 0.8
+
+# -- anything good
+
+[[source]]
+name = "Show HN"
+shelf = "wild"
+kind = "forum"
+url = "https://hnrss.org/show?points=150"
+who = "Show HN on Hacker News"
+
+[[source]]
+name = "Hackaday"
+shelf = "wild"
+kind = "feed"
+url = "https://hackaday.com/blog/feed/"
+who = "Hackaday"
+
+[[source]]
+name = "CNX Software"
+shelf = "wild"
+kind = "feed"
+url = "https://www.cnx-software.com/feed/"
+who = "CNX Software, on embedded boards and chips"
+weight = 0.7
+
+[[source]]
+name = "Not Boring"
+shelf = "wild"
+kind = "feed"
+url = "https://www.notboring.co/feed"
+who = "Packy McCormick's Not Boring"
+weight = 0.5
+
+# -- Formula One, now and then
+
+[[source]]
+name = "Autosport F1"
+shelf = "f1"
+kind = "feed"
+url = "https://www.autosport.com/rss/f1/news/"
+who = "Autosport"
+
+[[source]]
+name = "Racecar Engineering"
+shelf = "f1"
+kind = "feed"
+url = "https://www.racecar-engineering.com/feed/"
+who = "Racecar Engineering"
+fresh_days = 14
+weight = 0.8

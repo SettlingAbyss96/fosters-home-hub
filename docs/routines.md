@@ -129,16 +129,39 @@ A welcome home that reads out `sensor.needs_attention` is a list of chores at th
 in an evening if you come and go four times, and none of it is ever urgent. Problems belong on the
 dashboard and in "anything need my attention?", where you go looking for them.
 
-So it's a short briefing, all good or neutral: a line about what's going on at home or coming up (a
-print finished, the vacuum ran, the washing's done, tomorrow's first meeting, the weather, which is
-tomorrow's from 3 PM), then whatever `news.on_arrival` in `house.toml` asks for, and something from
-`news.interests` if there's room. Anything that went badly gets a few calm words at most. The cloud
-agent writes it, with its web search, which takes about 20 seconds, while the Hub tends to see you 8
-to 30 seconds after the door opens. So it's written on the way in, when you cross into the zone,
-and if the Wi-Fi is the first sign instead, the greeting waits up to 25 seconds for it and then
-says a plain welcome home rather than nothing. Back within three hours of the last full one it's
-"Welcome back" and that's it, and after 10 PM it's two or three sentences. It never mentions how long
-you've been out. Without a cloud agent, it's just "Welcome home".
+So it's a short briefing, all good or neutral, with maybe a line about what's going on at home (a
+print finished, the vacuum ran, tomorrow's first meeting, the weather, which is tomorrow's from
+3 PM) and then something from outside. Asking the cloud agent for "the day's top story and how the
+markets did" works, and it's the same briefing every evening, because two web searches find the same
+market and the same headlines every time.
+
+One evening it might be Kalico's probe taking a second look at a bad first sample instead of failing
+the whole probe, the next a fork of OrcaSlicer that prints pictures on the side walls by varying the
+overhang, then what Almost Daily Grant's made of the bond market. Those come from the digest on the
+Hub (`host/58-digest.sh`), which reads the sources in `hub/digest.toml`, about 70 of them in the
+example, from market letters to the commits and releases of the repos you follow, their forks that
+are picking up stars, new projects under GitHub topics, the week's top posts on a few subreddits,
+and robotics and AI. On the way in Home Assistant asks it for a kit, which is one of 11 ways of
+telling it (never one of the last two), a tone, and one to four things off different shelves than
+last time, and the AI task in `voice.writer` writes that up in about 3 seconds where the web
+searches took about 20.
+
+Nothing it's said comes back a second time. Once you've heard it the kit goes back to the digest
+and everything in it is retired for good. A repo works like a cursor, so hearing about Kalico
+retires every commit up to the newest one and the next Kalico is only what landed since, and the
+same story from somewhere else goes with it, since a fork, the Reddit post about it and a write-up a
+week later share the GitHub repo or most of the headline. Words that went stale before you came in
+leave their kit for next time. Anyone can write anything in a README, so the writer is an AI task
+rather than Jarvis, which never gets the house's tools and, with its web search off, has the kit and
+nothing else. Without the digest (no `hub.address`, no `voice.writer`, or nothing new left) it's the
+old way, the cloud agent looking up `news.on_arrival` and `news.interests`.
+
+It's written on the way in, since crossing into the zone comes 6 to 10 minutes before the door and
+the Hub tends to see you 8 to 30 seconds after it opens. If the Wi-Fi is the first sign instead, the
+greeting waits up to 25 seconds for the words and then says a plain welcome home rather than
+nothing. Back within three hours of the last full one it's "Welcome back" and that's it, and after
+10 PM it's one thing in two or three sentences. It never mentions how long you've been out. Without
+a cloud agent or a writer, it's just "Welcome home".
 
 ### The doors inside
 

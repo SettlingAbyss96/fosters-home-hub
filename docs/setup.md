@@ -83,7 +83,10 @@ satellite and the LED ring, and both speech engines. Each script says what it do
 each is safe to run again. `host/90-test-env.sh` is the test bench ([testing.md](testing.md)), about
 900 MB of Home Assistant on its own Python; worth it if you'll change the packages, skippable if you
 won't (then deploy with `SKIP_TESTS=1`). `host/78-esphome.sh` is only for the ESP32 nodes
-([esp32.md](esp32.md)), and `host/80-ollama.sh` only for a local model.
+([esp32.md](esp32.md)), and `host/80-ollama.sh` only for a local model. `host/58-digest.sh` is the
+digest the welcome home talks from ([routines.md](routines.md#what-jarvis-says-when-you-get-in)),
+optional, and it wants an AI task to write with (step 7). It installs `hub/digest.toml` if you've
+made one from `hub/digest.example.toml`, and the example if not.
 
 ## 5. Home Assistant
 
@@ -122,6 +125,11 @@ integration), then its conversation agent, and put that agent's entity id in `ho
 `ha/context/about.md` as its prompt. Pick its model and its settings in the provider's own options:
 a fast model with low reasoning effort suits a voice, and web search makes the news parts work.
 Copy `ha/context/about.local.example.md` to `about.local.md` and tell it who lives here.
+
+The welcome home is written by a separate AI task when the digest is on the Hub, because the digest
+is text off the internet and an AI task never gets the house's tools. Most providers' integrations
+add one next to the conversation agent. Put its entity id in `house.toml` as `voice.writer` and turn
+its web search off in the provider's options, and the deploy renames it `ai_task.jarvis_writer`.
 
 ## 8. Your devices
 

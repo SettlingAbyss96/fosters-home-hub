@@ -23,6 +23,7 @@ flowchart TD
         R[hub-ring]
         K[Kiosk<br/>labwc +<br/>Chromium]
         X[hub-screen,<br/>hub-stats]
+        Dg[hub-digest<br/>:10230]
     end
     subgraph VM[Home Assistant OS VM]
         HA[Home Assistant]
@@ -37,6 +38,7 @@ flowchart TD
     V -->|ESPHome API| HA
     K --> HA
     X -->|MQTT| MQ
+    HA -->|REST| Dg
     HA -->|Wyoming| S
 ```
 
@@ -47,13 +49,16 @@ other Home Assistant on the network. The two talk over the LAN like strangers wo
 feature: either side can be rebuilt without the other noticing.
 
 The speech engines live on the Debian side because that's where the spare CPU and memory are, and
-each is fenced with nftables so only the VM's MAC (and the Hub itself) can reach its port.
+the digest behind the welcome home does too, since Home Assistant OS has nowhere to keep a service of
+your own running. Each is fenced with nftables so only the VM's MAC (and the Hub itself) can reach
+its port.
 
 | Service | Where | Port | What |
 |---|---|---|---|
 | `linux-voice-assistant` | Hub, user service | 6053 | the satellite: wake word, Smart Turn, pre-roll ([voice.md](voice.md)) |
 | `parakeet-wyoming` | Hub | 10310 | speech to text |
 | `kokoro-wyoming` | Hub | 10210 | text to speech |
+| `hub-digest` | Hub | 10230 | what the welcome home talks about, kept so nothing's said twice ([routines.md](routines.md#what-jarvis-says-when-you-get-in)) |
 | `hub-screen`, `hub-stats` | Hub | MQTT | panel power and brightness, the PIR, CPU and temperatures |
 | `hub-ring` | Hub | local websocket | the LED ring follows the satellite |
 | `ha-kiosk` and its watchdog | Hub | | the dashboard on the touchscreen |

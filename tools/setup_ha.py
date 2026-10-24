@@ -425,6 +425,25 @@ def step_cloud_agent():
     say("cloud agent: prompt set" if ok else f"cloud agent: the prompt didn't go in ({(f or {}).get('errors') or (f or {}).get('reason')})")
 
 
+def step_writer():
+    """The AI task that writes the welcome home from the digest's kit (hub/hub_digest.py): whichever
+    one voice.writer names, renamed ai_task.jarvis_writer. The kit is text off the internet, and an
+    AI task never gets the house's tools, which is the point. Its web search is the provider's own
+    setting and is best off, so the words come from the kit and nothing else"""
+    task = H["voice"]["writer"]
+    if not task:
+        return
+    reg = {e["entity_id"]: e for e in registry()}
+    e = reg.get(task) or reg.get("ai_task.jarvis_writer")
+    if e is None:
+        say(f"{task} isn't in Home Assistant yet: add the provider's AI task first")
+        return
+    if e["entity_id"] != "ai_task.jarvis_writer":
+        rename(e["entity_id"], "ai_task.jarvis_writer")
+    update_entity("ai_task.jarvis_writer", name="Jarvis (writer)")
+    say("writer: ai_task.jarvis_writer")
+
+
 def step_speech():
     """Kokoro and Parakeet on the Hub as Wyoming engines, by the Hub's address (mDNS lookups fail
     now and then, and every one of those is a deaf or a mute assistant). The ports are fenced to
@@ -791,7 +810,8 @@ def step_defaults():
         ssh_ha("cat >> /config/.ha-hub-defaults", ("\n".join(new) + "\n").encode())
         say("starting values:", ", ".join(e.split(".")[1] for e in new))
     # and every run, the settings from house.toml (packages/house.yaml)
-    for entity, value in (("input_text.home_wifi", H["resident"]["home_wifi"]), ("input_text.news", H["news"]["on_arrival"]),
+    for entity, value in (("input_text.home_wifi", H["resident"]["home_wifi"]), ("input_text.hub_address", H["hub"]["address"]),
+                          ("input_text.news", H["news"]["on_arrival"]),
                           ("input_text.interests", H["news"]["interests"]), ("input_text.headset", H.get("computer", {}).get("headset", ""))):
         if entity in have and have[entity]["state"] != value:
             rest("POST", "api/services/input_text/set_value", {"entity_id": entity, "value": value})
@@ -842,7 +862,8 @@ def step_exposure():
             "script.welcome_home", "script.welcome_home_prepare", "script.home_wifi_joined", "script.home_wifi_left",
             "timer.arrival_window", "timer.arrival_door", "timer.arrival_greeting", "sensor.natural_house_mode",
             "script.morning_briefing_text", "script.morning_briefing", "script.morning_briefing_prepare", "script.tell_resident",
-            "input_text.lights_look", "input_text.home_wifi", "input_text.news", "input_text.interests", "input_text.headset",
+            "input_text.lights_look", "input_text.home_wifi", "input_text.hub_address", "input_text.news",
+            "input_text.interests", "input_text.headset",
             "button.computer_shut_down", "button.computer_restart", "sensor.hub_last_saw_someone", "sensor.last_sign_of_life",
             "script.wake_up", "script.wake_up_stop", "input_boolean.waking_up", "binary_sensor.phone_on_home_wifi"]
            + [e for e in states() if e.startswith(("sensor.phone_", "binary_sensor.phone_")) and "battery" not in e]
@@ -906,7 +927,7 @@ def step_fingerprint():
 STEPS = [("apps", step_apps), ("discovered", step_discovered), ("local_model", step_local_model),
          ("system_monitor", step_system_monitor), ("tv", step_tv), ("speech", step_speech), ("rooms", step_rooms),
          ("labels", step_labels), ("renames", step_renames), ("lights", step_lights), ("config", step_config),
-         ("cloud_agent", step_cloud_agent), ("pipelines", step_pipelines), ("vacuum", step_vacuum),
+         ("cloud_agent", step_cloud_agent), ("writer", step_writer), ("pipelines", step_pipelines), ("vacuum", step_vacuum),
          ("doorbell", step_doorbell), ("printers", step_printers), ("backups", step_backups),
          ("presence", step_presence), ("defaults", step_defaults), ("tv_names", step_tv_names),
          ("exposure", step_exposure), ("automations", step_automations), ("calendar", step_calendar),

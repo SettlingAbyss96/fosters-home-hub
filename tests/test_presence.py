@@ -276,6 +276,68 @@ async def test_back_again_the_same_evening_is_just_welcome_back(house_at):
     assert not house.called("conversation.process"), "no second round of news"
 
 
+# the digest on the Hub (hub/hub_digest.py) answering /kit, and the AI task writing it up
+KIT = {"status": 200, "content": {
+    "kit": "k1", "format": "the changelog", "length": "four or five short spoken sentences, about twenty-five seconds",
+    "items": 1, "shelves": ["printing"],
+    "brief": ("This time: the changelog. Pick the one or two changes worth knowing.\n\n"
+              "[1] Kalico, the Klipper fork. One change since the resident last heard about it:\n"
+              "   - probe: retry on a bad sample (October 23)")}}
+WROTE = {"data": ("Welcome home. Kalico's probe now takes a second look at a bad first sample "
+                  "instead of failing the whole probe.")}
+# a house with the digest: the Hub's address set, and an AI task to write with
+DIGEST = {"input_text.hub_address": "192.0.2.10", "ai_task.jarvis_writer": "unknown"}
+
+
+async def test_the_welcome_is_something_new_from_the_digest_and_its_retired_once_heard(house_at):
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
+                                                "binary_sensor.front_door": "off", **OUT, **DIGEST})
+    house.replies["rest_command.digest_kit"] = KIT
+    house.replies["ai_task.generate_data"] = WROTE
+    await arrive(house)
+    assert len(house.called("rest_command.digest_kit", late="0")) == 1
+    asks = house.called("ai_task.generate_data", entity_id="ai_task.jarvis_writer")
+    assert len(asks) == 1, "written once, on the way in"
+    assert "probe: retry on a bad sample" in asks[0].data["instructions"]
+    assert "nothing alarming" in asks[0].data["instructions"]
+    assert not house.called("conversation.process"), "the kit is the news, no web search"
+    assert house.said("Kalico's probe now takes a second look")
+    told = house.called("rest_command.digest_told")
+    assert len(told) == 1 and told[0].data["kit"] == "k1", "heard, so retired"
+
+
+async def test_nothing_new_in_the_digest_is_the_old_way(house_at):
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
+                                                "binary_sensor.front_door": "off", **OUT, **DIGEST})
+    house.replies["rest_command.digest_kit"] = {"status": 200, "content": {"kit": None}}
+    house.replies["conversation.process"] = WORDS
+    await arrive(house)
+    assert not house.called("ai_task.generate_data")
+    assert house.said("the weekend looks dry")
+    assert not house.called("rest_command.digest_told"), "nothing from the digest to retire"
+
+
+async def test_a_kit_the_writer_didnt_write_is_left_for_next_time(house_at):
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
+                                                "binary_sensor.front_door": "off", **OUT, **DIGEST})
+    house.replies["rest_command.digest_kit"] = KIT        # the AI task answers nothing
+    house.replies["conversation.process"] = WORDS
+    await arrive(house)
+    assert house.called("ai_task.generate_data")
+    assert house.said("the weekend looks dry")
+    assert not house.called("rest_command.digest_told"), "what got said wasn't the kit"
+
+
+async def test_without_a_hub_address_the_digest_isnt_asked(house_at):
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
+                                                "binary_sensor.front_door": "off", **OUT,
+                                                "ai_task.jarvis_writer": "unknown"})
+    house.replies["conversation.process"] = WORDS
+    await arrive(house)
+    assert not house.called("rest_command.digest_kit")
+    assert house.said("the weekend looks dry")
+
+
 async def test_no_words_from_the_agent_is_still_a_welcome(house_at):
     house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
                                                 "binary_sensor.front_door": "off", **OUT})

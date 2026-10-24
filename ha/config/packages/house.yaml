@@ -19,6 +19,12 @@ input_text:
     name: "Things you're into"
     icon: mdi:star-outline
     max: 255
+  # the Hub's address (hub.address), for the digest behind the welcome home (packages/digest.yaml).
+  # Empty: the welcome looks its news up the old way
+  hub_address:
+    name: "The Hub's address"
+    icon: mdi:ip-network
+    max: 64
   # part of the name of a headset on the computer (packages/tell.yaml says it there when it's the
   # computer's output). Empty: never
   headset:

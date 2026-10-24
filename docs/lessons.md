@@ -59,6 +59,9 @@ something else first.
   that needed maintenance and a paused vacuum got announced at the door four times in one evening.
   It's a short briefing written on the way in now, good or neutral news only
   ([routines.md](routines.md#what-jarvis-says-when-you-get-in))
+- Then the briefing was the same every evening. Asking for the day's news means two web searches
+  that find the same market and the same headlines every time. The digest on the Hub keeps the
+  material instead, draws a different way of telling it, and retires whatever's been heard
 - Jarvis wouldn't leave a conversation alone. With guests over, two false wakes turned into a running
   commentary: an answer ending in a question opened the long follow-up window, which heard more side
   talk, and so on until it got muted. openWakeWord went back to its default 0.5, and Jarvis answers

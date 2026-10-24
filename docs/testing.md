@@ -92,12 +92,13 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 | `test_lights.py` | 21 | the gate, holds, by hand against by the house (a hand on a dimmer mid-fade too), the colour and brightness split, a no-dim kitchen left alone, a look never switching a task light on, the light curve through a day, nothing below 2700 K, Calm the hour before bed, blend steps too small to see, a lamp that restarted going straight back, a few more tries at a light that stayed on while you're out, an overhead standing in for a dead lamp, dark for a film |
 | `test_asleep.py` | 10 | the filter: it takes a while, has memory, wakes for a real sign of life, not for a phone finishing its charge or a computer charging on the desk, and the bedroom radar over the desk plug |
 | `test_blocks.py` | 5 | the control blocks alone: the Bayes step, hysteresis, the low-pass step response, PID with and without windup |
-| `test_presence.py` | 27 | leaving and arriving, with and without the phone, a guest left behind, a lamp switched off from the app on the way out, every light off on the way out and how soon, Away picked by hand (and then out of the door), the car, the doorbell then the door, a door that opens late, the GPS alone not being home, a dead door sensor, the room lit before the door opens, the vacuum started on the way out, the welcome home and the floor lamp's colour coming in |
+| `test_presence.py` | 31 | leaving and arriving, with and without the phone, a guest left behind, a lamp switched off from the app on the way out, every light off on the way out and how soon, Away picked by hand (and then out of the door), the car, the doorbell then the door, a door that opens late, the GPS alone not being home, a dead door sensor, the room lit before the door opens, the vacuum started on the way out, the welcome home (from the digest's kit and retired once heard, the old way with no kit, nothing written from it or no Hub address) and the floor lamp's colour coming in |
 | `test_doors.py` | 10 | the vacuum and shut doors, the bathroom, the bedroom door in the morning, on the way home |
 | `test_reminders.py` | 2 | reminders go off on time, in order |
+| `test_digest.py` | 13 | the digest on its own: nothing said twice, a kit nobody heard retiring nothing, a repo only ever what's new since last time, the same story from a fork, a forum post and a write-up a week later, the way of telling it never one of the last two, shelves taking turns, late being one thing, old news dropping out, feeds coming in clean, chores and help requests left out |
 | `test_smoke.py` | 1 | everything loads |
 
-85 in all, about six minutes on the Hub. The PID test is the closest thing here to hardware in the
+102 in all, about six minutes on the Hub. The PID test is the closest thing here to hardware in the
 loop: it closes the loop around a simulated room (first order, two-minute time constant) and checks
 it settles with no offset and doesn't wind up, so the block is known to work before anything real
 depends on it.

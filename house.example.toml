@@ -56,6 +56,12 @@ tts_language = "en_GB"
 # renamed conversation.jarvis_cloud and handed ha/context/about.md as its prompt. Empty: Home
 # Assistant's own agent only, which handles the built-in and custom sentences and nothing looser
 cloud_agent = ""
+# The AI task that writes the welcome home from the digest on the Hub (host/58-digest.sh), as Home
+# Assistant calls it after you add a provider's AI task (the same integration as the cloud agent
+# usually has one). It gets renamed ai_task.jarvis_writer. It never gets the house's tools, and
+# with its web search off in the provider's options the words come from the digest and nothing
+# else. Empty: the welcome looks up news.on_arrival through the cloud agent instead
+writer = ""
 # a small model on the Hub instead (host/80-ollama.sh). Slow and not very bright on 8 GB, honestly
 local_model = ""
 

@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-85-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-102-2ea44f?style=flat-square)
 
 </div>
 
@@ -48,6 +48,8 @@ is the most useful thing anyone could send.
   themselves and stop when you tell them to
 - Presence from the phone and the front door together, so a phone left somewhere doesn't make the
   house think it's empty, and a guest left behind doesn't get plunged into darkness
+- A welcome home that never says the same thing twice: a digest on the Hub reads the newsletters,
+  repos and forums you pick and hands Jarvis something new each time, told a different way
 - A wake-up that does a sunrise, then won't give up until you're up, with a backstop that shares
   nothing with it
 - Optional parts for a Fire TV, a robot vacuum, a doorbell, a Windows computer, Klipper and Bambu
@@ -120,6 +122,7 @@ host/               scripts that build the Debian host, run in order (tools/push
   40-kiosk.sh         the dashboard on the touchscreen with a touch keyboard, and its watchdog
   50-screen.sh        hub-screen: panel power and brightness, PIR, touch wake, over MQTT
   55-stats.sh         hub-stats: CPU, memory, temperatures and disk, per part
+  58-digest.sh        hub-digest: what the welcome home talks about, fenced to the VM
   60-audio.sh         PipeWire with WebRTC echo cancelling, hub_speaker and hub_mic as defaults
   70-voice.sh         Linux Voice Assistant, pinned, no chimes, Smart Turn and its models
   patches/            the satellite's changes: follow-up window, player, wake log, end of turn, pre-roll
@@ -131,7 +134,8 @@ host/               scripts that build the Debian host, run in order (tools/push
   80-ollama.sh, 81-ollama-fence.sh   an optional local model
   90-test-env.sh      the test bench: Home Assistant 2026.10.0 on its own Python 3.14
 hub/                code that runs on the Hub: the three services, the speech engines' Wyoming
-                    servers, Smart Turn for the satellite, and the house words for speech to text
+                    servers, Smart Turn for the satellite, the house words for speech to text, and
+                    the digest with its example sources (digest.example.toml)
 ha/
   config/             copied into /config: packages (one file per feature), custom sentences,
                       custom_templates (control.jinja, estimates.jinja, lighting.jinja)

@@ -40,10 +40,12 @@
 #     own when the house is Away: face matches can be wrong
 #   - Jarvis says welcome home, straight away if it was the Hub that saw you, otherwise the first
 #     time it does. If the window runs out with no sign at all, it happens anyway. The words are
-#     written on the way in (script.welcome_home_prepare): a line about what's going on at home,
-#     then the news you asked for (input_text.news, from house.toml). Nothing negative: problems
-#     stay on the dashboard and "anything need my attention?". Back again within three hours of the
-#     last proper welcome it's just "Welcome back"
+#     written on the way in (script.welcome_home_prepare): maybe a line about what's going on at
+#     home, then something nobody's said yet from the digest on the Hub (packages/digest.yaml),
+#     never the same way twice running, or without the digest the news you asked for
+#     (input_text.news, from house.toml). Nothing negative: problems stay on the dashboard and
+#     "anything need my attention?". Back again within three hours of the last proper welcome it's
+#     just "Welcome back"
 # The phone joining the Wi-Fi without crossing the zone (a stale location) counts too, when the
 # house is Away. "I'm leaving" by voice runs the leaving routine a minute later, and picking Away by
 # hand runs it straight away
@@ -92,9 +94,9 @@ template:
         state: "{{ trigger.event.data.seconds }}"
 
   # What Jarvis will say when you get in, written ahead of time by script.welcome_home_prepare:
-  # looking up the news takes the agent about twenty seconds, and the Hub sees you 8 to 30 seconds
-  # after the door opens. "ready" is words nobody's heard yet. full_at is the last welcome with the
-  # news in it
+  # writing it takes three to twenty seconds, and the Hub sees you 8 to 30 seconds after the door
+  # opens. "ready" is words nobody's heard yet. full_at is the last welcome with the news in it, and
+  # kit is the digest's kit the words came from, to retire once they're heard
   - trigger:
       - trigger: event
         event_type: welcome_home_words
@@ -109,6 +111,7 @@ template:
         state: "{{ 'ready' if trigger.id == 'ready' else 'spoken' }}"
         attributes:
           text: "{{ trigger.event.data.text if trigger.id == 'ready' else '' }}"
+          kit: "{{ trigger.event.data.kit | default('') if trigger.id == 'ready' else '' }}"
           written_at: >-
             {{ now().timestamp() | round(0) if trigger.id == 'ready'
                else (this.attributes.written_at | default(0)) }}
@@ -346,7 +349,9 @@ script:
           back: "{{ now().timestamp() - state_attr('sensor.welcome_home_words', 'full_at') | float(0) < 3 * 3600 }}"
       # the words are normally waiting. If they're still being written (the Wi-Fi was the first
       # sign, not the road), they get twenty-five seconds
-      - if: "{{ not back and not is_state('sensor.welcome_home_words', 'ready') and states.conversation.jarvis_cloud is not none }}"
+      - if: >-
+          {{ not back and not is_state('sensor.welcome_home_words', 'ready')
+             and (states.conversation.jarvis_cloud is not none or states.ai_task.jarvis_writer is not none) }}
         then:
           - if: "{{ is_state('script.welcome_home_prepare', 'off') }}"
             then:
@@ -370,17 +375,33 @@ script:
             {% elif fresh %}{{ state_attr('sensor.welcome_home_words', 'text') }}
             {% else %}Welcome home.{% endif %}
           preannounce: false
+      # heard, so the digest retires everything in the kit and none of it comes up again (words
+      # that went stale unheard leave theirs for next time)
+      - if: "{{ fresh and not back and (state_attr('sensor.welcome_home_words', 'kit') or '') != '' }}"
+        then:
+          - action: rest_command.digest_told
+            continue_on_error: true
+            data:
+              kit: "{{ state_attr('sensor.welcome_home_words', 'kit') }}"
+              words: "{{ state_attr('sensor.welcome_home_words', 'text') }}"
       - event: welcome_home_spoken
         event_data:
           full: "{{ fresh and not back }}"
 
-  # The welcome home, written by the cloud agent (the same Jarvis, with its web search) while you're
-  # on the way in. What's going on at home comes from the house; the news it looks up. A list of
-  # problems makes a terrible welcome ("the printer needs lubrication, the vacuum's paused", four
-  # times in one evening), which is what the dashboard and "anything need my attention?" are for
+  # The welcome home, written while you're on the way in. What's going on at home comes from the
+  # house (the notes below). What to talk about comes from the digest on the Hub (hub/hub_digest.py)
+  # when there is one: a kit of things nobody's said yet, with a way of telling it that wasn't one of
+  # the last two, and everything in it retired once you've heard it. Asking the cloud agent to look
+  # up "the day's news" instead comes out the same every evening, because its web searches find the
+  # same market and the same headlines every time. The kit is text off the internet, so the AI task
+  # (voice.writer in house.toml, ai_task.jarvis_writer) writes it up: no tools, nothing in the house
+  # it can touch. Without the digest or the writer, it's the old way, the cloud agent looking up
+  # input_text.news. A list of problems makes a terrible welcome ("the printer needs lubrication,
+  # the vacuum's paused", four times in one evening), which is what the dashboard and "anything
+  # need my attention?" are for
   welcome_home_prepare:
     alias: "Welcome home, the words"
-    description: "Jarvis writes the welcome home ahead of time: what's going on at home, then the news from input_text.news."
+    description: "Jarvis writes the welcome home ahead of time: what's going on at home, then something nobody's said yet from the digest, or the news from input_text.news without it."
     icon: mdi:message-text-clock-outline
     mode: single
     max_exceeded: silent
@@ -393,7 +414,7 @@ script:
              and not (is_state('sensor.welcome_home_words', 'ready')
                       and t - state_attr('sensor.welcome_home_words', 'written_at') | float(0) < 40 * 60)
              and t - state_attr('sensor.welcome_home_words', 'full_at') | float(0) >= 3 * 3600
-             and states.conversation.jarvis_cloud is not none }}
+             and (states.conversation.jarvis_cloud is not none or states.ai_task.jarvis_writer is not none) }}
       - if: "{{ states('calendar.work') not in ['unavailable', 'unknown'] }}"
         then:
           - action: calendar.get_events
@@ -458,19 +479,70 @@ script:
             warnings about the house, no maintenance, no reminders, nothing about sleep, health or how long the
             day was. Don't end on a question and don't offer anything.
             Notes: {{ notes | trim }}
-      - action: conversation.process
-        continue_on_error: true
-        data:
-          agent_id: conversation.jarvis_cloud
-          text: "{{ ask }}"
-        response_variable: said
-      - variables:
-          words: >-
-            {{ ((said if said is mapping else {}).get('response') or {}).get('speech', {}).get('plain', {}).get('speech', '') | trim }}
+          who: "{{ state_attr('person.resident', 'friendly_name') or 'The resident' }}"
+          kit: {}
+          words: ""
+      # the kit, from the digest on the Hub, when there's a Hub address and a writer for it
+      - if: "{{ states.ai_task.jarvis_writer is not none and states('input_text.hub_address') not in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: rest_command.digest_kit
+            continue_on_error: true
+            data:
+              late: "{{ 1 if late else 0 }}"
+              name: "{{ who }}"
+            response_variable: digest
+          - variables:
+              kit: >-
+                {% set c = (digest if digest is defined and digest is mapping else {}).get('content') %}
+                {{ c if c is mapping and c.get('kit') and c.get('brief') else {} }}
+          - if: "{{ kit | length > 0 }}"
+            then:
+              - action: ai_task.generate_data
+                continue_on_error: true
+                data:
+                  task_name: welcome home
+                  entity_id: ai_task.jarvis_writer
+                  instructions: >-
+                    You are Jarvis, the home's assistant, in the spirit of J.A.R.V.I.S. from Iron Man:
+                    composed, precise, loyal, with a dry wit used sparingly. {{ who }} is about to walk in
+                    the front door, at {{ now().strftime('%-I:%M %p on %A') }}. Write exactly what you'll
+                    say out loud as they come in, and nothing else, calling them {{ who }} if anything:
+                    {{ 'two or three short spoken sentences, it is late' if late else kit.get('length') }}.
+                    Talk about the material below, all of it, the way the brief says, and no other news.
+                    Say it the way a person would out loud: no lists, links or headlines read out word
+                    for word, numbers the way you'd say them, and who's behind each thing ("Doomberg
+                    reckons", "on r/klippers this week"). If one of the house notes is worth a line, say
+                    it, otherwise leave them out. Keep all of it good or neutral: nothing alarming, no
+                    doom, markets as ideas to chew on and never warnings or tips, nothing about problems
+                    or maintenance in the house, nothing about sleep, health or how long the day was.
+                    Don't end on a question and don't offer anything.
+                    House notes: {{ notes | trim }}
+
+                    {{ kit.get('brief') }}
+                response_variable: wrote
+              - variables:
+                  words: >-
+                    {% set w = (wrote if wrote is defined and wrote is mapping else {}).get('data') %}
+                    {{ w | trim if w is string else '' }}
+      # no kit, or nothing written from it: the cloud agent looks the news up, the old way
+      - if: "{{ words | length <= 20 and states.conversation.jarvis_cloud is not none }}"
+        then:
+          - variables:
+              kit: {}
+          - action: conversation.process
+            continue_on_error: true
+            data:
+              agent_id: conversation.jarvis_cloud
+              text: "{{ ask }}"
+            response_variable: said
+          - variables:
+              words: >-
+                {{ ((said if said is defined and said is mapping else {}).get('response') or {}).get('speech', {}).get('plain', {}).get('speech', '') | trim }}
       - condition: "{{ words | length > 20 and '(no reply)' not in words }}"
       - event: welcome_home_words
         event_data:
           text: "{{ words }}"
+          kit: "{{ kit.get('kit', '') }}"
 
 automation:
   - id: presence_leaving
