@@ -1,0 +1,54 @@
+# An example list: CleanYourTV's for a Hisense Fire TV (AFTCIBFBD1, codename coyote, Fire OS 8 on
+# Android 11), from github.com/Gathin23/cleanyourtv, examples/hisense-fire-tv-aftcibfbd1/debloat.txt,
+# MIT, Copyright (c) 2026 Gathin. Copy it to tv/debloat.txt, check theirs for your model, and comment
+# out anything you use. `python tools/tv.py apply` disables what's listed for user 0 (nothing is
+# uninstalled) and records what was there before in tv/before.txt, which `restore` puts back.
+#
+# Left off this list on purpose, since a house like this one uses them:
+#   - the Ambient Experience (com.amazon.tv.ftvambient): the house's "TV off" is ambient mode, and
+#     packages/tv.yaml reads it as a state
+#   - the apps in house.toml's fire_tv.apps
+#   - OTA updates, Live TV, Settings, Silk, the Appstore
+# And three groups people choose either way, so they're not here: Alexa (com.amazon.vizzini comes
+# back at every reboot on Fire OS 8 anyway), AirPlay (com.apple.airplay.amazon.airplay) and Miracast
+# (com.amazon.cast.sink). Add their lines if you don't use them.
+# com.amazon.ftvads.deeplinking and com.amazon.device.crashmanager are protected on this firmware.
+
+# Ads, shopping and content recognition
+com.amazon.shoptv.client               # Shop on Fire TV
+com.amazon.tv.acr                      # Automatic Content Recognition: what's on screen, HDMI included
+com.amazon.tv.democontent.provider     # retail demo content
+com.amazon.media.recommendations       # sponsored and recommendation rows
+com.amazon.sneakpeek                   # autoplaying previews on Home
+com.amazon.hybridadidservice           # advertising ID
+com.amazon.kso.blackbird               # the launcher's ad sync and bidding
+
+# Telemetry and metrics
+com.amazon.client.metrics.api
+com.amazon.wirelessmetrics.service     # Wi-Fi metrics upload
+com.amazon.perfcollection
+com.amazon.perfc
+com.amazon.dp.logger                   # device log upload
+com.amazon.device.telemetry.emitter
+
+# Tutorials
+com.amazon.storm.lightning.tutorial
+com.amazon.tmm.tutorial
+
+# Preloaded apps (switch off the ones you don't use)
+com.amazon.bueller.music               # Amazon Music
+com.amazon.bueller.photos              # Amazon Photos
+com.amazon.minitv.android.app          # miniTV
+com.amazon.naatyam                     # Naatyam
+com.amazon.gamehub                     # games hub
+com.amazon.hedwig                      # Fire TV Channels, the free ad-supported channels row
+com.amazon.tahoe                       # Amazon Kids
+
+# Home Assistant's ADB key never expires. Android forgets an approved key after 7 days without a
+# connection (adb_allowed_connection_time, in milliseconds, 0 is never), so a TV left unplugged for a
+# week-long trip would come back asking "Allow USB debugging?" with nobody there to say yes
+setting global adb_allowed_connection_time 0
+
+# AdGuard's resolver as the TV's private DNS: ad servers like mads.amazon-adsystem.com stop
+# resolving. AdGuard sees every name the TV looks up, which is the trade
+private-dns dns.adguard-dns.com

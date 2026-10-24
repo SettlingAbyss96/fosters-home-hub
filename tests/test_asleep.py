@@ -87,7 +87,7 @@ async def test_the_desk_counts_when_its_in_use_and_doesnt_chatter(house_at):
     for watts, at_desk in ((38, "off"), (68, "on"), (47, "on"), (44, "off"), (39, "off"), (52, "on")):
         house.set("sensor.desk_power", str(watts))
         await house.advance(seconds=5, step=1)
-        assert house.state("binary_sensor.at_the_desk") == at_desk, f"{watts} W ({house.attr('binary_sensor.at_the_desk', 'desk_watts')})"
+        assert house.state("binary_sensor.at_the_desk") == at_desk, f"{watts} W"
 
 
 async def test_a_computer_charging_on_the_desk_isnt_typing(house_at):
@@ -106,3 +106,16 @@ async def test_a_computer_charging_on_the_desk_isnt_typing(house_at):
     assert house.state("binary_sensor.at_the_desk") == "off"
     assert not house.is_on("light.bedroom_lamp"), "dozed off with the lights on, by 3:23"
     assert not house.is_on("light.living_room_lamp")
+
+
+async def test_the_radar_at_the_desk_beats_the_plug(house_at):
+    # once the bedroom node is up, someone sitting at the desk is the radar's to say, and the desk
+    # drawing power with nobody there isn't someone
+    house = await house_at(f"{TUESDAY} 21:00", {"sensor.computer_session_state": "unavailable", "sensor.desk_power": "70",
+                                                "binary_sensor.bedroom_sense_at_the_desk": "off"})
+    await house.advance(seconds=5)
+    assert house.state("binary_sensor.at_the_desk") == "off", "power, nobody there"
+    house.set("sensor.desk_power", "10")
+    house.set("binary_sensor.bedroom_sense_at_the_desk", "on")
+    await house.advance(seconds=5)
+    assert house.state("binary_sensor.at_the_desk") == "on", "reading at the desk, the computer shut"

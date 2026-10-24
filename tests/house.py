@@ -146,10 +146,12 @@ class BenchLight(LightEntity):
         self._attr_is_on = False
         self.async_write_ha_state()
 
-    def change(self, on: bool, brightness_pct: int | None, context: Context) -> None:
+    def change(self, on: bool, brightness_pct: int | None, context: Context, kelvin: int | None = None) -> None:
         self._attr_is_on = on
         if self._dims and on:
             self._attr_brightness = round(brightness_pct * 2.55) if brightness_pct else (self._attr_brightness or 255)
+        if kelvin is not None:
+            self._attr_color_mode, self._attr_color_temp_kelvin = ColorMode.COLOR_TEMP, kelvin
         self.async_set_context(context)
         self.async_write_ha_state()
 
@@ -298,9 +300,10 @@ class House:
         """A person at the wall (or the dashboard, with app=True): no automation behind it"""
         self.lights[entity].change(state == STATE_ON, brightness_pct, Context(user_id="resident") if app else Context())
 
-    def report(self, entity: str, state: str, brightness_pct: int | None = None) -> None:
-        """A light reporting back on its own, no context at all (a late Matter update, a Kasa poll)"""
-        self.lights[entity].change(state == STATE_ON, brightness_pct, Context())
+    def report(self, entity: str, state: str, brightness_pct: int | None = None, kelvin: int | None = None) -> None:
+        """A light reporting back on its own, no context at all (a late Matter update, a Kasa poll, a
+        lamp back from a restart at its own default colour)"""
+        self.lights[entity].change(state == STATE_ON, brightness_pct, Context(), kelvin)
 
     def is_on(self, entity: str) -> bool:
         return self.hass.states.is_state(entity, STATE_ON)

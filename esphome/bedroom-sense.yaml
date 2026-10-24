@@ -1,6 +1,11 @@
 # In bed or not, which the house can only guess at from wherever the Hub is, and the light and air
 # where you sleep. The radar on the wall at the foot of the bed, the light sensor at pillow height
 # facing the room
+#
+# The desk is in here too, so the radar also answers "at the desk" by distance: someone there with
+# the target between "Desk from" and "Desk to". Both start at 0, which means off, and get set once
+# it's on the wall by sitting at the desk and reading "Detection distance". Home Assistant uses it
+# instead of the desk plug's power when it's there (packages/computer.yaml)
 substitutions:
   name: bedroom-sense
   friendly_name: "Bedroom sense"
@@ -14,3 +19,41 @@ packages:
   base: !include common/base.yaml
   room: !include common/room.yaml
   light: !include common/eye-light.yaml
+
+number:
+  - platform: template
+    id: desk_from
+    name: "Desk from"
+    entity_category: config
+    unit_of_measurement: cm
+    min_value: 0
+    max_value: 600
+    step: 5
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+  - platform: template
+    id: desk_to
+    name: "Desk to"
+    entity_category: config
+    unit_of_measurement: cm
+    min_value: 0
+    max_value: 600
+    step: 5
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+
+binary_sensor:
+  - platform: template
+    name: "At the desk"
+    icon: mdi:desk
+    # a few seconds to count, half a minute to let go: sitting still at a desk still shows up as
+    # someone, but the distance wobbles as you lean back
+    lambda: |-
+      if (!id(radar_presence).state || id(desk_to).state <= id(desk_from).state) return false;
+      float d = id(radar_distance).state;
+      return d >= id(desk_from).state && d <= id(desk_to).state;
+    filters:
+      - delayed_on: 5s
+      - delayed_off: 30s

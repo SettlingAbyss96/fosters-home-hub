@@ -135,6 +135,20 @@ something else first.
   ([routines.md](routines.md#the-four-layers))
 - A colour lamp came home cold. Arriving before the clock said Evening, the welcome look turned it on
   with no colour, so it came back at the morning look's 4000 K. It borrows the mode's colour now
+- The GPS said home from just outside. The phone was in the zone but not on the Wi-Fi, nothing
+  opened the door, and the 15-minute fallback lit the empty flat until the door really opened, the
+  best part of an hour later. The fallback is only for a door sensor that isn't answering now, and a
+  door that opens late still counts ([routines.md](routines.md#leaving-and-arriving))
+- Away by hand skipped leaving. Away picked in the app on the way out left the wake-up's hold on the
+  bedroom lamp, and the phone leaving minutes later found the house already Away, so nothing asked
+  about the vacuum. Away by hand runs the leaving routine now
+- A colour lamp dropped off Matter. Dozens of commands timed out over two days, so it stayed on
+  through departures and missed a welcome, and twice it restarted itself at its own 4000 K and
+  blended back for 40 minutes. Away gives a light that's still on a few more tries, and a restart
+  goes straight back ([lighting.md](lighting.md#blending-not-switching))
+- The vacuum's pause sent it home on the way out. Started from its own app as the door closed, the
+  pause took it for the app's schedule and sent it back 10 seconds later. A start within three
+  minutes of the front door gets to clean
 - Calm jumped. At a fixed 9:30 PM it took the floor lamp to 40% amber in three seconds, whatever the
   bedtime, and the amber itself was a second dimming on top: below 2700 K a lot of colour lamps lose
   most of their light. Calm is the hour before the planned bedtime, on the curve, and the clock's mode

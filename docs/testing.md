@@ -89,15 +89,15 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 | File | Tests | What it pins down |
 |---|---|---|
 | `test_wake.py` | 9 | the wake-up from its real trigger, the backstop, a dead light, a broken plan, every way of saying you're up, the morning briefing written ahead and with no chores in it |
-| `test_lights.py` | 19 | the gate, holds, by hand against by the house (a hand on a dimmer mid-fade too), the colour and brightness split, a no-dim kitchen left alone, a look never switching a task light on, the light curve through a day, nothing below 2700 K, Calm the hour before bed, blend steps too small to see, an overhead standing in for a dead lamp, dark for a film |
-| `test_asleep.py` | 9 | the filter: it takes a while, has memory, wakes for a real sign of life, not for a phone finishing its charge or a computer charging on the desk |
+| `test_lights.py` | 21 | the gate, holds, by hand against by the house (a hand on a dimmer mid-fade too), the colour and brightness split, a no-dim kitchen left alone, a look never switching a task light on, the light curve through a day, nothing below 2700 K, Calm the hour before bed, blend steps too small to see, a lamp that restarted going straight back, a few more tries at a light that stayed on while you're out, an overhead standing in for a dead lamp, dark for a film |
+| `test_asleep.py` | 10 | the filter: it takes a while, has memory, wakes for a real sign of life, not for a phone finishing its charge or a computer charging on the desk, and the bedroom radar over the desk plug |
 | `test_blocks.py` | 5 | the control blocks alone: the Bayes step, hysteresis, the low-pass step response, PID with and without windup |
-| `test_presence.py` | 21 | leaving and arriving, with and without the phone, a guest left behind, a lamp switched off from the app on the way out, every light off on the way out and how soon, the car, the doorbell then the door, the room lit before the door opens, the welcome home and the floor lamp's colour coming in |
+| `test_presence.py` | 27 | leaving and arriving, with and without the phone, a guest left behind, a lamp switched off from the app on the way out, every light off on the way out and how soon, Away picked by hand (and then out of the door), the car, the doorbell then the door, a door that opens late, the GPS alone not being home, a dead door sensor, the room lit before the door opens, the vacuum started on the way out, the welcome home and the floor lamp's colour coming in |
 | `test_doors.py` | 10 | the vacuum and shut doors, the bathroom, the bedroom door in the morning, on the way home |
 | `test_reminders.py` | 2 | reminders go off on time, in order |
 | `test_smoke.py` | 1 | everything loads |
 
-76 in all, about five minutes on the Hub. The PID test is the closest thing here to hardware in the
+85 in all, about six minutes on the Hub. The PID test is the closest thing here to hardware in the
 loop: it closes the loop around a simulated room (first order, two-minute time constant) and checks
 it settles with no offset and doesn't wind up, so the block is known to work before anything real
 depends on it.

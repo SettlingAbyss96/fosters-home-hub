@@ -34,7 +34,7 @@ that's the first thing to drop if a room node ever needs more.
 |---|---|---|---|
 | `window-light` | XIAO C6, VEML7700 | $8 | how much daylight the windows let in |
 | `living-sense` | XIAO C6, LD2410C radar, SHT40, VEML7700 at eye level | $18 | someone on the couch, the evening light at the eye |
-| `bedroom-sense` | the same | $18 | in bed or not, the light and air where you sleep |
+| `bedroom-sense` | the same | $18 | in bed or not, someone at the desk, the light and air where you sleep |
 | `bathroom-sense` | XIAO C6, LD2410C, SHT40 | $14 | someone in there, a shower by the humidity |
 | `path-light` | XIAO C6, AM312 PIR, half a metre of WS2812B | $10 | a dim amber floor light from bed to bathroom at night |
 
@@ -90,7 +90,10 @@ the secrets file. Every update after that is `run`, over Wi-Fi.
 - The eye-level sensors close the other loop: the wind-down aims for about 30 lux at the eye, and
   with a reading the lamp can be trimmed to hit it instead of sitting at a fixed 35%
 - `bedroom-sense` gives the asleep filter its best evidence yet, still in bed versus up, and lets
-  the alarm end when you're out of bed instead of when the Hub sees you
+  the alarm end when you're out of bed instead of when the Hub sees you. With a desk in its view it
+  has a distance band for "at the desk" ("Desk from" and "Desk to", both 0 until you sit there and
+  read the distance off it), and that replaces the desk plug's power as the way the house knows
+  someone's at the computer
 - `bathroom-sense` turns "the bathroom light is on" into "someone's showering", and keeps the light
   on for someone standing still at the mirror
 - Every node is a Bluetooth proxy, so the phone and the ring can be placed room by room later

@@ -158,7 +158,8 @@ automation:
         data:
           datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
 
-  # Paused and it started anyway, with nobody here having asked: back to the dock
+  # Paused and it started anyway, with nobody here having asked: back to the dock. Unless you've just
+  # walked out of the front door, which is you starting it from the vacuum's own app on the way out
   - id: vacuum_paused_stays_home
     alias: "Vacuum paused: it goes back to the dock"
     triggers:
@@ -172,6 +173,9 @@ automation:
       - >-
         {% set asked = states('input_datetime.vacuum_asked_at') | as_datetime(none) %}
         {{ asked is none or (now() - as_local(asked)).total_seconds() > 3 * 60 }}
+      - >-
+        {% set door = states.binary_sensor.front_door %}
+        {{ door is none or door.state not in ['on', 'off'] or (now() - door.last_changed).total_seconds() > 3 * 60 }}
     actions:
       - action: vacuum.return_to_base
         continue_on_error: true

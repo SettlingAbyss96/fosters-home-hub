@@ -117,6 +117,12 @@ can't chatter. Replayed without the false typing, the same night says asleep a c
 earlier, and the filter's still a little slow with the lights on, which is what the ring's nights
 are for.
 
+The desk itself gets better from the bedroom radar node. Power is a guess at a person from whatever's
+plugged in, and the radar can see someone sitting there, so `bedroom-sense` has a desk band ("Desk
+from" and "Desk to", set once on the wall by sitting at the desk and reading the distance). Once
+it's up, "At the desk" is the radar saying so or the computer just touched, and the plug's power
+drops out of it ([esp32.md](esp32.md)).
+
 ## Reading the phone through Shortcuts
 
 The app's own sensors are fine for "where's the phone, roughly" and terrible for "right now". iOS

@@ -182,6 +182,13 @@ with 45-second fades. The catch is colour on some lamps: fading colour and brigh
 hung a Govee floor lamp's firmware, so colour jumps to each step, and the step itself has to be under
 what's visible.
 
+The one change that skips the blend is a lamp restarting. Some colour lamps restart now and then,
+often while their Matter connection is dropping, and come back at their own default colour with
+nothing in the house having asked (the Govee comes back at 4000 K). Blending from there means 40
+minutes of a cold lamp walking back to 2700. The timing is the tell, a jump to exactly that colour
+(`restart_kelvin` in `control.jinja`) with no command from the house inside its fade and a few
+seconds, so that one goes straight back and everything else still blends.
+
 The same rule fits more than lights. The TV's volume already steps by a quarter of where it is,
 which is Weber's law again, and the same NRC review found a drift of 1.5 °C over two or three hours
 mostly goes unnoticed, so a thermostat here would ramp, never jump.

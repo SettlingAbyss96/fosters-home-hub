@@ -95,6 +95,10 @@ in `house.toml` empty and nothing is lost but that part.
 | Sleep tracker | `sensor.oura_ring_*` | an Oura ring, through the community integration | `extras.install` |
 | Cloud agent | `conversation.jarvis_cloud` | any provider whose conversation agent has a prompt field | `voice.cloud_agent` |
 
+The TV has two more optional pieces in `tv/`: a debloat that switches off Amazon's ads, content
+recognition and telemetry, and a small keeper app that stops a Fire OS update from switching ADB
+debugging off and cutting the house off from the TV ([tv/README.md](../tv/README.md)).
+
 `[devices]` renames by prefix: give any one entity of the device, and every entity on that device
 that shares its name moves over. `vacuum.roborock_s8` becomes `vacuum.robot_vacuum`, and
 `sensor.roborock_s8_battery` becomes `sensor.robot_vacuum_battery`. It only renames when the new

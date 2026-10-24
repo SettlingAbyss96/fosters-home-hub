@@ -24,13 +24,18 @@
 #     a couple of kilometres out and getting closer): only the prep. The vacuum heads back if it's
 #     out, and a 15-minute window opens
 #   - The phone joins the home Wi-Fi: you're here, but maybe still parking or on the stairs. The
-#     lights wait for the door (timer.arrival_door, 10 minutes)
+#     lights wait for the door (timer.arrival_door, 10 minutes, or one minute when the door sensor
+#     isn't answering)
 #   - The door: the front door opening is the moment. A doorbell seeing movement, or recognising
 #     your face, means you're at the door: the house waits up to seven seconds for it to open, then
 #     goes ahead anyway. Either way the house goes back to what the clock says
 #     (sensor.natural_house_mode) and the lamps come on (the welcome look). The Hub seeing you first
-#     (came in another way) does it straight away. If nothing's seen at the door in 10 minutes, it
-#     happens anyway
+#     (came in another way) does it straight away. The door still counts after the waits run out,
+#     as long as the house is Away, an arrival started after it went Away, and the phone's home
+#   - When nothing's seen at the door, nothing happens, because a door sensor that works and never
+#     opened means you never came in. Going ahead once a wait ran out used to light an empty flat
+#     for the best part of an hour when the GPS said home from just outside. The one exception is a
+#     door sensor that isn't answering: then the phone on the home Wi-Fi for a minute is enough
 #   - your face counts at the door when the window's open even before the Wi-Fi joins. Never on its
 #     own when the house is Away: face matches can be wrong
 #   - Jarvis says welcome home, straight away if it was the Hub that saw you, otherwise the first
@@ -40,7 +45,8 @@
 #     stay on the dashboard and "anything need my attention?". Back again within three hours of the
 #     last proper welcome it's just "Welcome back"
 # The phone joining the Wi-Fi without crossing the zone (a stale location) counts too, when the
-# house is Away. "I'm leaving" by voice runs the leaving routine a minute later
+# house is Away. "I'm leaving" by voice runs the leaving routine a minute later, and picking Away by
+# hand runs it straight away
 input_boolean:
   guest_mode:
     name: "Guest mode"
@@ -529,6 +535,26 @@ automation:
       - action: script.leaving_home
         continue_on_error: true
 
+  # Away picked by hand (the dashboard, the app, Jarvis setting the mode) is leaving too, and gets the
+  # whole routine: holds let go, the vacuum asked about, the computer locked. Without this, Away from
+  # the app on the way to the car leaves the wake-up's hold on the bedroom lights, and the phone
+  # leaving a few minutes later finds the house already Away, so nothing asks about the vacuum. The
+  # routine sets Away itself, from inside its own run
+  - id: presence_away_by_hand
+    alias: "Away picked by hand is leaving"
+    triggers:
+      - trigger: state
+        entity_id: input_select.house_mode
+        to: Away
+    conditions:
+      - "{{ trigger.from_state is not none and trigger.from_state.state not in ['Away', 'unknown', 'unavailable'] }}"
+      - condition: state
+        entity_id: script.leaving_home
+        state: "off"
+    actions:
+      - action: script.leaving_home
+        continue_on_error: true
+
   # On the way home, a couple of kilometres out and getting closer (the Proximity integration,
   # sensor.home_resident_distance and _direction_of_travel, which tools/ha-apps.sh sets up): the house
   # gets ready before you're at the door, not as you walk through it. A robot vacuum in particular
@@ -606,14 +632,20 @@ automation:
         to: "on"
         id: door_opened
     conditions:
+      # late: a way in started after the house went Away and its waits ran out with nothing at the
+      # door, and the phone's still home (standing outside, then in). The door opening is still the
+      # moment then. Without a way in started it's you walking out after picking Away by hand
       - >-
         {% set window = is_state('timer.arrival_window', 'active') %}
         {% set waiting = is_state('timer.arrival_door', 'active') %}
         {% set away = is_state('input_select.house_mode', 'Away') %}
+        {% set away_since = states.input_select.house_mode.last_changed %}
+        {% set started = [states.timer.arrival_window.last_changed, states.timer.arrival_door.last_changed] | max > away_since %}
+        {% set late = away and started and (is_state('person.resident', 'home') or is_state('binary_sensor.phone_on_home_wifi', 'on')) %}
         {{ (trigger.id == 'wifi' and (window or away) and not waiting)
            or (trigger.id == 'seen' and (window or waiting))
            or (trigger.id == 'door' and (waiting or (window and trigger.entity_id == 'binary_sensor.face_resident')))
-           or (trigger.id == 'door_opened' and (waiting or window)) }}
+           or (trigger.id == 'door_opened' and (waiting or window or late)) }}
     actions:
       - choose:
           # the phone's home: wait for the door, and have the welcome written if the road didn't
@@ -623,6 +655,8 @@ automation:
               - action: timer.start
                 target:
                   entity_id: timer.arrival_door
+                data:
+                  duration: "{{ '00:10:00' if states('binary_sensor.front_door') in ['on', 'off'] else '00:01:00' }}"
               - action: script.turn_on
                 continue_on_error: true
                 target:
@@ -662,21 +696,30 @@ automation:
             data:
               seen: true
 
+  # The backup for a door sensor that isn't answering (a Zigbee hub or a bridge going down takes the
+  # doors with it), or a house without one: the phone on the home Wi-Fi is the sign then, so a
+  # minute of it is enough. With the door sensor working, a door that never opened means you never
+  # came in. With neither a door sensor nor home_wifi in house.toml the GPS is all there is, and the
+  # window running out is enough, the way it always was
   - id: presence_arrived_anyway
-    alias: "Home, no sign at the door or inside in time"
+    alias: "Home, the door sensor isn't answering"
     triggers:
       - trigger: event
         event_type: timer.finished
         event_data:
           entity_id: timer.arrival_window
+        id: zone
       - trigger: event
         event_type: timer.finished
         event_data:
           entity_id: timer.arrival_door
+        id: wifi
     conditions:
-      - condition: state
-        entity_id: person.resident
-        state: home
+      - "{{ states('binary_sensor.front_door') not in ['on', 'off'] }}"
+      - >-
+        {% set no_wifi = states('input_text.home_wifi') in ['', 'unknown', 'unavailable'] %}
+        {{ trigger.id == 'wifi' or is_state('binary_sensor.phone_on_home_wifi', 'on')
+           or (no_wifi and is_state('person.resident', 'home')) }}
     actions:
       - action: script.arriving_home
         continue_on_error: true

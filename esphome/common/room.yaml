@@ -18,6 +18,7 @@ ld2410:
 binary_sensor:
   - platform: ld2410
     has_target:
+      id: radar_presence
       name: "Presence"
     has_moving_target:
       name: "Moving"
@@ -31,6 +32,7 @@ sensor:
     still_distance:
       name: "Still distance"
     detection_distance:
+      id: radar_distance
       name: "Detection distance"
   - platform: sht4x
     address: 0x44

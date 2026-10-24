@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The TV keeper: ADB debugging back on if a Fire OS update switched it off. No screen, no network
+     permission, nothing leaves the TV. See src/home/hub/tvkeeper/Keeper.java -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="home.hub.tvkeeper"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="30" />
+
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application android:label="TV keeper" android:allowBackup="false">
+        <activity
+            android:name=".Main"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+        <receiver android:name=".Boot" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".Job"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+</manifest>

@@ -323,3 +323,98 @@ async def test_the_welcome_in_calm_is_a_warm_white(house_at):
     assert house.state("input_select.house_mode") == "Calm"
     assert house.attr("light.living_room_lamp", "color_mode") == "color_temp"
     assert house.attr("light.living_room_lamp", "color_temp_kelvin") == 2700
+
+
+async def test_picking_away_by_hand_is_leaving(house_at):
+    # Away from the app on the way to the car: the wake-up's hold kept the bedroom lamp on, and with the
+    # house already Away when the phone left, nothing asked about the vacuum. Now it's the whole routine
+    from homeassistant.core import Context
+    house = await house_at(f"{TUESDAY} 04:50", {"input_select.house_mode": "Night", "binary_sensor.front_door": "off",
+                                                "sensor.robot_vacuum_battery": "100"})
+    await house.advance(minutes=40)
+    assert house.is_on("light.bedroom_lamp")
+    house.hass.bus.async_fire("wake_up_confirmed", {})
+    await house.advance(minutes=60)                       # 6:30, the hold runs to 6:40
+    await door(house)
+    me = await house.hass.auth.async_create_user("Resident", group_ids=["system-admin"])
+    await house.hass.services.async_call("input_select", "select_option",
+                                         {"entity_id": "input_select.house_mode", "option": "Away"},
+                                         blocking=True, context=Context(user_id=me.id))
+    await house.advance(seconds=20)
+    assert not house.is_on("light.bedroom_lamp")
+    assert not house.is_on("light.bedroom_light")
+    assert len(house.phoned("Vacuum while you're out?")) == 1
+    house.set("person.resident", "not_home")
+    house.set("sensor.phone_ssid", "Not Connected")
+    await house.advance(minutes=6)
+    assert len(house.phoned("Left home")) == 1, "the phone going later doesn't run it twice"
+
+
+async def test_away_by_hand_then_out_of_the_door_stays_away(house_at):
+    # Away picked inside, then out: the door on the way out isn't a way in
+    house = await house_at(f"{TUESDAY} 07:00", {"input_select.house_mode": "Day", "binary_sensor.front_door": "off"})
+    await house.run("house_mode_set", mode="Away")
+    await house.advance(seconds=20)
+    await door(house)
+    await house.advance(minutes=1)
+    assert house.state("input_select.house_mode") == "Away"
+
+
+async def test_home_by_the_gps_alone_isnt_home(house_at):
+    # the GPS saying home from just outside, with no Wi-Fi and no door: the old fallback lit the empty
+    # flat after 15 minutes. Nothing now until the door
+    house = await house_at(f"{TUESDAY} 21:00", {"input_select.house_mode": "Away", "binary_sensor.front_door": "off", **OUT})
+    house.set("person.resident", "home")
+    await house.advance(minutes=20)
+    assert house.state("input_select.house_mode") == "Away"
+    assert not house.is_on("light.living_room_lamp")
+    await house.advance(minutes=47)
+    house.set("sensor.phone_ssid", HOME_WIFI)
+    house.hass.bus.async_fire("home_wifi_joined", {})
+    await house.advance(seconds=5)
+    await door(house)
+    assert house.state("input_select.house_mode") != "Away"
+    assert house.is_on("light.living_room_lamp")
+
+
+async def test_a_door_that_opens_after_the_wait_still_counts(house_at):
+    # on the Wi-Fi but outside for a while: nothing until the door, then the door is the moment
+    house = await house_at(f"{TUESDAY} 21:00", {"input_select.house_mode": "Away", "binary_sensor.front_door": "off", **OUT})
+    house.set("person.resident", "home")
+    house.set("sensor.phone_ssid", HOME_WIFI)
+    house.hass.bus.async_fire("home_wifi_joined", {})
+    await house.advance(minutes=16)
+    assert house.state("input_select.house_mode") == "Away", "a working door that never opened"
+    await door(house)
+    assert house.state("input_select.house_mode") != "Away"
+    assert house.is_on("light.bedroom_lamp")
+
+
+async def test_a_dead_door_sensor_falls_back_to_the_wifi(house_at):
+    # a door sensor that isn't answering: the phone on the Wi-Fi for a minute is the sign then
+    house = await house_at(f"{TUESDAY} 21:00", {"input_select.house_mode": "Away", "binary_sensor.front_door": "unavailable", **OUT})
+    house.set("person.resident", "home")
+    await house.advance(minutes=2)
+    house.set("sensor.phone_ssid", HOME_WIFI)
+    house.hass.bus.async_fire("home_wifi_joined", {})
+    await house.advance(seconds=30)
+    assert house.state("input_select.house_mode") == "Away"
+    await house.advance(seconds=60)
+    assert house.state("input_select.house_mode") != "Away"
+    assert house.is_on("light.living_room_lamp")
+
+
+async def test_the_vacuum_started_on_the_way_out_gets_to_clean(house_at):
+    # paused, and started from the vacuum's own app on the way out of the door: that's you. Any
+    # other time it's the app's schedule, and paused means paused
+    house = await house_at(f"{TUESDAY} 18:30", {"input_select.house_mode": "Evening", "binary_sensor.front_door": "off",
+                                                "input_boolean.auto_vacuum": "off"})
+    await door(house)
+    house.set("vacuum.robot_vacuum", "cleaning")
+    await house.advance(seconds=10)
+    assert not house.called("vacuum.return_to_base")
+    house.set("vacuum.robot_vacuum", "docked")
+    await house.advance(minutes=10)
+    house.set("vacuum.robot_vacuum", "cleaning")
+    await house.advance(seconds=10)
+    assert house.called("vacuum.return_to_base")

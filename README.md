@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-76-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-85-2ea44f?style=flat-square)
 
 </div>
 
@@ -127,6 +127,7 @@ host/               scripts that build the Debian host, run in order (tools/push
   74-kokoro.sh        kokoro-wyoming: Jarvis's voice, fenced to the VM
   76-parakeet.sh      parakeet-wyoming: Jarvis's ears, fenced to the VM
   78-esphome.sh       ESPHome, for building the ESP32 nodes on the Hub
+  79-android.sh       the JDK, Android's packaging tools and R8, for building the TV keeper
   80-ollama.sh, 81-ollama-fence.sh   an optional local model
   90-test-env.sh      the test bench: Home Assistant 2026.10.0 on its own Python 3.14
 hub/                code that runs on the Hub: the three services, the speech engines' Wyoming
@@ -149,15 +150,18 @@ tools/              run from your computer
   test.sh             the scenario tests on the bench
   ha-extras.sh        community pieces, pinned by version and sha256
   esphome.sh          the ESP32 nodes: check, build, flash, update, logs
+  tv.py               the Fire TV through Home Assistant's ADB: a debloat applied, checked, restored
+  tv-keeper.sh        builds the TV keeper app on the Hub
   privacy_check.py    looks for your house in your repo before you push it
 pc/                 HASS.Agent's sensors and commands for a Windows computer
+tv/                 the Fire TV: an example debloat list, and the keeper app that keeps ADB on
 probe/              the hardware probe and audio test behind docs/hardware.md
 docs/               the write-ups, and figures/ with the script that draws every chart from data.json
 ```
 
 ## Status
 
-Everything here runs on my Hub, and the 76 scenario tests pass on it. The parts I can't vouch for
+Everything here runs on my Hub, and the 85 scenario tests pass on it. The parts I can't vouch for
 yet are the ones that depend on your devices being like mine: the optional modules are tested with
 the hardware [devices.md](docs/devices.md) lists, and anything else is a reasonable guess with the
 names it expects written down. One person living alone is the design point; two residents would need

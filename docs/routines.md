@@ -75,6 +75,12 @@ house goes Away that minute. Every light goes off, the alarm's held lights inclu
 way off, and the vacuum gets a notification with buttons, unless it's mid-clean already, low, or
 cleaned in the last 20 hours. Guest mode stops all of it.
 
+Picking Away by hand, on the dashboard or in the app, runs the same routine. Without that, Away
+picked on the way to the car leaves the wake-up's hold on the bedroom lights, and when the phone
+leaves a few minutes later the house is already Away, so nothing asks about the vacuum. And a light
+that doesn't answer the Away look, one whose Matter connection has dropped, gets a few more tries at
+1, 5, 15 and 60 minutes, sent only if it still says it's on, and then it's left alone.
+
 Most of what's left in the timing is the phone's own sensors taking their time. Two phone
 automations take it down to about a minute, "when CarPlay connects" running "Car started" and "when
 I leave my network" running "Phone left the home Wi-Fi". Either one means you're out of the door,
@@ -87,9 +93,17 @@ only does the prep: the vacuum heads back, a 15-minute window opens, and the wel
 The Wi-Fi joining means you're here, not that you're through the door, so the lights wait for the
 door itself. It opening is the moment, and a doorbell seeing movement (or your face) gives it seven
 seconds to open before going ahead anyway. The mode goes back to what the clock says and the lamps
-come on (the welcome look). The Hub seeing you first does it straight away, and if nothing's seen
-at the door in 10 minutes it happens anyway. A face can't take the house out of Away by itself,
-because face matches are wrong now and then and a lookalike shouldn't get the welcome lights.
+come on (the welcome look). The Hub seeing you first does it straight away. A face can't take the
+house out of Away by itself, because face matches are wrong now and then and a lookalike shouldn't
+get the welcome lights.
+
+If nothing happens at the door, nothing happens to the lights, because a door sensor that works and
+never opened means you never came in. Going ahead once a wait ran out used to light an empty flat
+for the best part of an hour whenever the GPS said home from just outside. The fallback's only job
+now is a door sensor that isn't answering, or a house without one, and then a minute of the phone on
+the home Wi-Fi is enough. With neither a door sensor nor the home Wi-Fi in `house.toml`, the GPS is
+all there is and the window running out still counts. A door that opens after the waits have run
+out still counts too, as long as the house is Away and the phone's home.
 
 The welcome look borrows the mode's colour. Without that, a colour lamp comes back at whatever it
 had last, which on a workday is the morning's 4000 K, and getting home before the clock says Evening
@@ -257,8 +271,9 @@ Everything the house does by itself has its own switch, on the Routines page und
 vacuum that would cheerfully drive into all of them the minute I left. "Vacuum on its own" off means
 no vacuuming when you leave, and if it starts anyway (its own app's schedule, someone poking the
 button) it gets sent back to the dock and the phone offers "let it clean". Starting it from the
-dashboard or by voice still works, that's you asking. "Jarvis, don't vacuum until I say so" does the
-same.
+dashboard or by voice still works, that's you asking, and so does starting it in the vacuum's own
+app within three minutes of walking out of the front door. "Jarvis, don't vacuum until I say so"
+does the same as the switch.
 
 The others are the clock moving the modes, the welcome lights, bedtime nudges, the fell-asleep
 check, the briefing, the doorbell, someone's-in alerts, laundry, printers and the desk. Each switch

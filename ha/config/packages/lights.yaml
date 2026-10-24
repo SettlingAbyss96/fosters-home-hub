@@ -528,6 +528,77 @@ automation:
             {{ ['ambient', 'task', 'accent'] if now().timestamp() < state_attr('input_datetime.lights_blend_until', 'timestamp') | float(0)
                else ['ambient'] }}
 
+  # A colour lamp that restarted goes straight back. Some restart now and then, often while their
+  # Matter connection is dropping, and come back at their own default colour with nothing in the
+  # house having asked (a Govee floor lamp comes back at 4000 K). Blending from there is 40 minutes
+  # of a cold lamp. So the timing gives it away: a jump to that colour (restart_kelvin in
+  # control.jinja, 0 switches this off) with no command from the house inside its fade and a few
+  # seconds is a restart, and the lamp gets the look's light at once. Anything else still blends.
+  # Every light in house.toml is watched; only the ones with a colour temperature ever fire
+  - id: lamp_restarted
+    alias: "A lamp that restarted goes straight back"
+    mode: queued
+    triggers:
+      - trigger: state
+        entity_id: !include ../house/lights.yaml
+        attribute: color_temp_kelvin
+    conditions:
+      - "{{ is_state(trigger.entity_id, 'on') and states('input_text.lights_look') in ['morning', 'day', 'evening', 'calm'] }}"
+      - >-
+        {% from 'control.jinja' import param %}
+        {% set k = trigger.to_state.attributes.get('color_temp_kelvin') | int(0) %}
+        {% set was = trigger.from_state.attributes.get('color_temp_kelvin') | int(0) if trigger.from_state is not none else 0 %}
+        {{ param('restart_kelvin') | int > 0 and (k - param('restart_kelvin') | int) | abs <= 25 and (k - was) | abs > 200 }}
+      - >-
+        {% from 'control.jinja' import param %}
+        {% set c = (state_attr('sensor.light_arbiter', 'commands') or {}).get(trigger.entity_id) %}
+        {{ c is none or now().timestamp() - (c.at | float(0)) > (c.fade | float(0)) + param('command_settle_seconds') | float }}
+    actions:
+      - action: script.lights_look
+        response_variable: target
+        data:
+          look: "{{ states('input_text.lights_look') }}"
+          dry_run: true
+      - variables:
+          item: "{{ (target.plan | default([])) | selectattr('entity', 'eq', trigger.entity_id) | list | first | default(none) }}"
+      - if: "{{ item is not none and item.level | int(0) > 0 and item.kelvin is not none }}"
+        then:
+          - action: script.light_set
+            continue_on_error: true
+            data:
+              entity: "{{ trigger.entity_id }}"
+              level: "{{ item.level }}"
+              kelvin: "{{ item.kelvin }}"
+              fade: 2
+              source: restarted
+
+  # Away, and a light that didn't go off (one whose Matter connection had dropped can stay on through
+  # a whole afternoon out). A few more tries and then it's left alone, not a loop: 1, 5, 15 and 60
+  # minutes after the house went Away, each only to the lights still saying they're on, which is
+  # usually none of them, so usually nothing gets sent at all
+  - id: away_lights_try_again
+    alias: "Away: a light that stayed on gets a few more tries"
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: input_select.house_mode
+        to: Away
+    actions:
+      - repeat:
+          for_each: [1, 4, 10, 45]
+          sequence:
+            - delay:
+                minutes: "{{ repeat.item }}"
+            - if: "{{ not is_state('input_select.house_mode', 'Away') }}"
+              then:
+                - stop: "Not away any more"
+            - action: script.lights_look
+              continue_on_error: true
+              data:
+                look: away
+                only_on: true
+                priority: 3
+
   # the list is every light labelled light_no_dim, written into house/no_dim_lights.yaml by
   # tools/ha-apps.sh (a state trigger can't follow a label)
   - id: no_dim_lights_stay_full

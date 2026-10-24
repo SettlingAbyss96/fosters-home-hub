@@ -149,7 +149,9 @@ automation:
       # asking for a mode, by button or by voice, gets the whole look. The clock moving between the
       # day's own looks blends: one step now, and the tick keeps every layer stepping for 45 minutes
       - variables:
-          clock: "{{ is_state('input_text.house_mode_by', 'clock') }}"
+          # (a mode picked straight on the select, the dashboard or the app, is you whatever
+          # house_mode_by still says from the last change)
+          clock: "{{ is_state('input_text.house_mode_by', 'clock') and trigger.to_state.context.user_id is none }}"
           blend: >-
             {{ clock and trigger.from_state.state in ['Morning', 'Day', 'Evening', 'Calm']
                and trigger.to_state.state in ['Day', 'Evening', 'Calm'] }}

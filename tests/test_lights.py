@@ -1,6 +1,8 @@
 """Who gets the light (packages/arbiter.yaml): by hand beats the clock, asking beats by hand, the
 alarm beats everything, and a light reporting back isn't a hand at the switch."""
 
+import pytest
+
 TUESDAY = "2026-10-13"
 
 
@@ -275,3 +277,42 @@ async def test_the_bedroom_overhead_stands_in_for_a_dead_lamp(house_at):
     await house.advance(seconds=10)
     assert house.is_on("light.bedroom_light")
     assert 1 <= house.level("light.bedroom_light") <= 15
+
+
+async def test_a_lamp_that_restarted_goes_straight_back(house_at):
+    # a colour lamp back from a restart at its own 4000 K with nothing having asked: the timing gives
+    # it away, so it jumps back instead of blending for 40 minutes
+    house = await house_at(f"{TUESDAY} 20:30", {"input_select.house_mode": "Evening", "sensor.bedtime_plan": PLAN})
+    await house.run("lights_look", look="evening")
+    await house.advance(minutes=3)
+    assert house.attr("light.living_room_lamp", "color_temp_kelvin") == 2700
+    since = len(house.light_calls)
+    house.report("light.living_room_lamp", "on", 35, kelvin=4000)
+    await house.advance(seconds=10)
+    assert house.attr("light.living_room_lamp", "color_temp_kelvin") == 2700, "straight back, not 3 mired a minute"
+    fades = [kw.get("transition", 0) for e, on, kw in house.light_calls[since:] if e == "light.living_room_lamp" and "brightness" in kw]
+    assert fades and max(fades) <= 2
+
+
+@pytest.mark.expect_errors("didn't answer")
+async def test_away_tries_a_stuck_light_a_few_more_times_and_then_leaves_it(house_at):
+    # a lamp that's dropped off the network stays on through the Away look: a few more tries, only
+    # to what's still on, and then nothing
+    house = await house_at(f"{TUESDAY} 14:00", {"input_select.house_mode": "Day"})
+    await house.run("lights_look", look="day")
+    await house.advance(seconds=10)
+    house.dead.add("light.living_room_lamp")
+    await house.run("house_mode_set", mode="Away", by="routine")
+    await house.advance(seconds=20)
+    after_away = len(house.light_calls)
+    await house.advance(minutes=3)
+    assert house.is_on("light.living_room_lamp"), "not answering"
+    house.dead.discard("light.living_room_lamp")          # back on the network
+    await house.advance(minutes=3)
+    assert not house.is_on("light.living_room_lamp"), "the try at five minutes got it"
+    offs = lambda: [c for c in house.light_calls if c[0] == "light.living_room_lamp" and c[1] == "off"]
+    tries = len(offs())
+    await house.advance(minutes=70)
+    assert len(offs()) == tries, "nothing more once it's off"
+    others = [c for c in house.light_calls[after_away:] if c[0] != "light.living_room_lamp"]
+    assert not others, "the lights that went off the first time get nothing more"

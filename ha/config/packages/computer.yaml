@@ -18,6 +18,10 @@
 #     has dropped out can flip this thousands of times a day, and the asleep filter takes every flip
 #     as typing, so the house never decides you've gone to sleep. Once on, it stays on down to 5 W
 #     under the line, so a desk hovering at it can't chatter. No measuring plug: only the first rule
+#     Power is a guess at a person from what's plugged in. The bedroom radar node (esphome/
+#     bedroom-sense.yaml, docs/esp32.md) can see someone sitting at the desk, and once
+#     binary_sensor.bedroom_sense_at_the_desk exists it replaces the power: at the desk is the radar
+#     saying so, or the computer just touched
 #   - lock, sleep and screen off by voice, and goodnight and leaving lock it
 #   - media_player.computer and notify.computer come from the HASS.Agent integration
 #     (tools/ha-extras.sh), and script.computer_say has Jarvis talk out of the computer in his own
@@ -55,11 +59,11 @@ template:
           {% set line = states('input_number.desk_in_use_watts') | float(50) %}
           {% set busy = states('sensor.desk_power') | float(0) > (line - 5 if this.state == 'on' else line) %}
           {% set agent = states('sensor.computer_session_state') not in ['unavailable', 'unknown'] %}
-          {{ (unlocked and idle < 5 * 60)
-             or (busy and unlocked and is_state('sensor.computer_monitor_power_state', 'PowerOn') and idle < 30 * 60)
-             or (busy and not agent) }}
-        attributes:
-          desk_watts: "{{ states('sensor.desk_power') | float(0) | round(0) | int }}"
+          {% set radar = states('binary_sensor.bedroom_sense_at_the_desk') %}
+          {{ (radar == 'on' or (unlocked and idle < 5 * 60)) if radar in ['on', 'off']
+             else ((unlocked and idle < 5 * 60)
+                   or (busy and unlocked and is_state('sensor.computer_monitor_power_state', 'PowerOn') and idle < 30 * 60)
+                   or (busy and not agent)) }}
 
 script:
   computer_say:
