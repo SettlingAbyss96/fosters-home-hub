@@ -150,6 +150,97 @@ needs = ["printing"]
 weight = 0.6
 how = "Something from the item {name} could try on a printer this weekend: what it is and why it'd be fun. Not a chore, a toy."
 
+# -- the markets as numbers. Said only when something moved more than its own normal day, and
+# said again only when it's moved on from what you last heard (hub_digest.py, "salience"). weight is
+# how much a move in it matters to you. unit is how a day's change is measured: pct, or bp for a
+# yield. Closes from Yahoo's chart API, yields from the Treasury's daily yield curve
+[moves]
+deadband = 1.5
+lead = 2.5
+
+[[series]]
+id = "sp500"
+name = "the S&P 500"
+yahoo = "^GSPC"
+weight = 1.0
+
+[[series]]
+id = "ndx"
+name = "the Nasdaq 100"
+yahoo = "^NDX"
+weight = 0.8
+
+[[series]]
+id = "rut"
+name = "small caps, the Russell 2000"
+yahoo = "^RUT"
+weight = 0.6
+
+[[series]]
+id = "ust10"
+name = "the 10-year Treasury yield"
+treasury = "10 Yr"
+unit = "bp"
+weight = 1.0
+
+[[series]]
+id = "ust2"
+name = "the 2-year Treasury yield"
+treasury = "2 Yr"
+unit = "bp"
+weight = 0.7
+
+[[series]]
+id = "hyg"
+name = "high-yield bonds (HYG)"
+yahoo = "HYG"
+weight = 0.6
+
+[[series]]
+id = "vix"
+name = "the VIX"
+yahoo = "^VIX"
+weight = 0.5
+
+[[series]]
+id = "oil"
+name = "oil, West Texas crude"
+yahoo = "CL=F"
+weight = 0.6
+
+[[series]]
+id = "gold"
+name = "gold"
+yahoo = "GC=F"
+weight = 0.5
+
+[[series]]
+id = "dollar"
+name = "the dollar index"
+yahoo = "DX-Y.NYB"
+weight = 0.5
+
+[[series]]
+id = "btc"
+name = "Bitcoin"
+yahoo = "BTC-USD"
+weight = 0.3
+
+# headlines for why something moved: context for a move, never told on their own
+[[source]]
+name = "FT markets"
+shelf = "market"
+kind = "context"
+url = "https://www.ft.com/markets?format=rss"
+who = "the FT"
+
+[[source]]
+name = "CNBC markets"
+shelf = "market"
+kind = "context"
+url = "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20409666"
+who = "CNBC"
+
 # -- the market, from people who live in it
 
 [[source]]

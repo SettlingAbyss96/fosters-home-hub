@@ -18,9 +18,11 @@
 # maintenance or chores. Without the
 # digest or a writer it's the news you asked for in house.toml, looked up by the cloud agent. A
 # briefing that ends on the needs-attention list is a nag, so it doesn't. Last night's sleep is in
-# it only when it was a good night (a score of 70 or more) and the ring's night actually ended this
-# morning: the ring has to sync before Oura knows, and a briefing quoting the night before would be
-# worse than none. If the night lands after the briefing, the numbers come to the phone instead.
+# it, good night or bad, once the ring's night has actually ended this morning: the ring has to sync
+# before Oura knows, and a briefing quoting the night before would be worse than none. Against your
+# own month it says how far off it was only past a deadband (5 points, half an hour), and the week
+# against the month only when they've drifted 4 points apart, so an ordinary night is just its
+# numbers. If the night lands after the briefing, the numbers come to the phone instead.
 #
 # The words are written ahead (script.morning_briefing_prepare), when the sunrise starts or the
 # house sees you're up, and written again at the briefing when they've gone stale: older than 90
@@ -153,12 +155,24 @@ script:
             {% set end = states('sensor.oura_ring_bedtime_end') | as_datetime(none) %}
             {{ end is not none and as_local(end).date() == now().date()
                and state_attr('sensor.oura_ring_sleep_score', 'data_date') == now().date() | string }}
-          # only a good night gets a mention (Oura calls 70 to 84 good, 85 and up optimal)
+          # last night, good or bad, against your own month (packages/health.yaml), the comparison only
+          # past a deadband so an ordinary night is just its numbers
           sleep: >-
-            {% if fresh and states('sensor.oura_ring_sleep_score') | int(0) >= 70 %}
+            {% if fresh %}
+              {% set score = states('sensor.oura_ring_sleep_score') | int(0) %}
               {% set m = (states('sensor.oura_ring_total_sleep_duration') | float(0) * 60) | round(0) | int %}
               {% set r = states('sensor.oura_ring_readiness_score') if state_attr('sensor.oura_ring_readiness_score', 'data_date') == now().date() | string else none %}
-              You slept {{ m // 60 }} hours {{ m % 60 }}, sleep score {{ states('sensor.oura_ring_sleep_score') }}{{ ', readiness ' ~ r if r not in [none, 'unknown', 'unavailable'] else '' }}.
+              {% set month = state_attr('sensor.health_trends', 'sleep_score_30d') %}
+              {% set month_h = state_attr('sensor.health_trends', 'sleep_hours_30d') %}
+              {% set week = state_attr('sensor.health_trends', 'sleep_score_7d') %}
+              You slept {{ m // 60 }} hours {{ m % 60 }}, sleep score {{ score }}{{ ', readiness ' ~ r if r not in [none, 'unknown', 'unavailable'] else '' }}.
+              {% if month is number and (score - month) | abs >= 5 %}
+                {% set dh = m / 60 - (month_h | float(0)) %}
+                That's {{ (score - month) | abs | round(0) | int }} points {{ 'under' if score < month else 'over' }} your 30-day average of {{ month | round(0) | int }}{{ (', and ' ~ ((dh | abs * 60) | round(0) | int) ~ ' minutes ' ~ ('less' if dh < 0 else 'more') ~ ' sleep than usual') if month_h is number and dh | abs >= 0.5 else '' }}.
+              {% endif %}
+              {% if week is number and month is number and (week - month) | abs >= 4 %}
+                This week's average is {{ week | round(0) | int }}, against {{ month | round(0) | int }} for the month.
+              {% endif %}
             {% endif %}
           weather: >-
             {% set w = states('sensor.today_s_weather') %}
@@ -186,8 +200,13 @@ script:
             {% set t = now().timestamp() %}
             {% set marks = log | selectattr('key', 'eq', 'night') | map(attribute='at') | list %}
             {% set since = marks | last if marks and t - marks | last < 16 * 3600 else t - 10 * 3600 %}
-            {% set items = log | rejectattr('key', 'eq', 'night') | rejectattr('what', 'search', '^(Wake up|Still up)')
-                               | selectattr('last', 'gt', since) | list %}
+            {# a notification that's since been dealt with (the car unplugged) isn't a second reminder #}
+            {% set kept = namespace(items=[]) %}
+            {% for e in log if e.get('key') != 'night' and e.get('last', 0) > since and not e.get('resolved')
+                             and not (e.get('what', '') is search('^(Wake up|Still up)')) %}
+              {% set kept.items = kept.items + [e] %}
+            {% endfor %}
+            {% set items = kept.items %}
             {% for e in items %}{{ e.what | trim('. ') }} at {{ as_local(as_datetime(e.at)).strftime('%-I:%M') }}{{ (', ' ~ e.n ~ ' times, the last at ' ~ as_local(as_datetime(e.last)).strftime('%-I:%M')) if e.n > 1 else '' }}{{ '. ' if loop.last else '; ' }}{% endfor %}
           day: >-
             {{ ([sleep, weather, meetings, laundry] | map('trim') | reject('eq', '') | join(' ')) }}
@@ -331,8 +350,9 @@ script:
                     {{ now().strftime('%-I:%M %p on %A') }} and {{ who }} is getting up. Write exactly
                     what you'll say out loud as the morning briefing, and nothing else, calling them
                     {{ who }} if anything. Start with "Good morning." Then three things, in the order the
-                    brief asks for: the day ahead from its notes (the weather, the calendar, last night's
-                    sleep only if the notes have it) in a sentence or two; what came through overnight
+                    brief asks for: the day ahead from its notes (the weather, the calendar, and last
+                    night's sleep if the notes have it, honestly, good or bad, with the comparison if the
+                    notes give one and no advice) in a sentence or two; what came through overnight
                     from its notes, the phone's notifications included, in a sentence or two, calmly and
                     in plain words, leaving out anything that's plainly over and saying nothing if nothing
                     came through; and the material below, {{ kit.get('length') }}, the way the brief says.

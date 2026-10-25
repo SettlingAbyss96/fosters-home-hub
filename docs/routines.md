@@ -170,6 +170,56 @@ they're on the dashboard and in "anything need my attention?" when you want them
 something and the other's a to-do list, and a prompt that lumps them together as "nothing negative"
 ends up leading every down day with whatever went well and never saying why it fell.
 
+### When something gets said again
+
+Nothing gets said twice unless it has moved, and how far it has to move depends on how much it
+normally moves. It's event-triggered sampling, the send-on-delta idea from networked control: a
+sensor only transmits when its reading leaves a deadband around the last value it sent, so a steady
+signal costs nothing and a step gets through straight away. Here the transmission is Jarvis saying
+it, and every series and every story keeps what it was when you last heard it.
+
+For a market series, a day's change $`x`$ is measured against that series' own normal day $`\sigma`$,
+the median absolute deviation of its last 60 daily changes scaled by 1.4826 so it matches a standard
+deviation. The median keeps one crash in the window from making every later day look quiet. Three
+numbers come out of it:
+
+```math
+z_1 = \frac{x_{\mathrm{today}}}{\sigma}, \qquad z_5 = \frac{\sum x}{\sigma\sqrt{n_5}}, \qquad z_t = \frac{\Delta}{\sigma\sqrt{n}}
+```
+
+The first is today against a normal day. The second is the drift over the last five sessions that no
+single day shows, counting only the $`n_5`$ sessions since you last heard about it, so a drop that
+was already said doesn't keep coming back inside the sum. The third is $`\Delta`$, how far it has
+gone since you last heard about it, over the $`n`$ sessions since. Daily moves add up like a random
+walk, which is where the square roots come from. The salience is
+
+```math
+s = w \cdot \max\left(|z_1|,\ 0.8\,|z_5|,\ 0.9\,|z_t|\right)
+```
+
+with $`w`$ the series' weight in `hub/digest.toml`, 1.0 for the S&P 500 and the 10-year yield in
+the example, down to 0.3 for Bitcoin. Under 1.5 it isn't said. From 2.5 it leads, with the why from
+the FT's and CNBC's market headlines and the day's letters, or a plain "the reason isn't clear yet"
+when none of them explains it. With the S&P's normal day around 0.7%, it takes about a 1% day to get
+a mention and a 1.7% day to lead, and three 0.8% drops in a row come back as one drift even though
+none of them crossed on its own. Once it's been said, that day and that level are the new reference,
+so the morning after a big evening doesn't repeat it unless it kept going.
+
+Stories work the same way with other measures. A fork you heard about at 500 stars comes back when
+it has at least doubled and gained 150, two days on at the earliest, and its stars then become the
+reference. A story comes back as a follow-up when at least two more sources pick it up after you
+heard it, the "it became a bigger deal overnight" case. Coverage that already existed when it was
+said went with it, so only what arrived after counts.
+
+Sleep gets the same deadband at the house's end. With an Oura ring, last night is always in the
+morning briefing, good or bad, compared with your 30-day average only when it's 5 points or half an
+hour off, and the week with the month only when they've drifted 4 points apart. An ordinary night
+is just its numbers.
+
+Where it stops holding: the markets get one value a day, so a crash that recovers by the close
+never shows up, and the follow-ups only see what the sources in the digest see. A story one source
+runs and nobody else picks up never comes back, however big it is.
+
 ### The doors inside
 
 Bedroom and bathroom door sensors are mostly for knowing what can't be true. The vacuum can't
@@ -190,7 +240,7 @@ half the time.
 The briefing waits for someone to be up: the first time the Hub sees someone after the house was in
 Night, or after four hours of nobody in front of it, between 4 and 1, once a day. It's the welcome
 home's morning twin. The day ahead (the weather, the first meeting, and with an Oura ring last
-night's sleep after a good night of 70 or more, once the ring's night has ended this morning), then
+night's sleep good or bad, once the ring's night has ended this morning), then
 what came through overnight, then something nobody's said yet from the digest, from the same pool
 as the welcome, so the morning never repeats the evening before. Overnight is
 `packages/house_log.yaml`, which keeps every notification the house sends your phone, a repeat

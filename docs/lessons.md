@@ -67,6 +67,10 @@ something else first.
   reminders or the doorbell at 2 AM never made it in, and words written on a false wake got said
   hours later, and asking for it again got the short version. A log of the night, stale words
   written again, and a repeat in full ([routines.md](routines.md#mornings-and-bedtime))
+- Only a good night got a mention. Under a sleep score of 70 the morning briefing said nothing about
+  sleep at all, the same good-news-only rule in another place. Every night is in it now, compared with
+  the month only past a deadband, and the markets and stories follow the same idea: said once, and
+  again only when they've moved ([routines.md](routines.md#when-something-gets-said-again))
 - Then the briefing was the same every evening. Asking for the day's news means two web searches
   that find the same market and the same headlines every time. The digest on the Hub keeps the
   material instead, draws a different way of telling it, and retires whatever's been heard

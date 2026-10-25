@@ -136,8 +136,8 @@ DIGEST = {"input_text.hub_address": "192.0.2.10", "ai_task.jarvis_writer": "unkn
 CAR = {"title": "Car", "message": "The car's done charging at 80% and still plugged in.", "data": {"tag": "car_unplug"}}
 
 
-async def a_night(house):
-    """From 1:50: the doorbell at 2:14, the car's reminder three times from 3:00, then unplugged"""
+async def a_night(house, unplugged=False):
+    """From 1:50: the doorbell at 2:14, the car's reminder three times from 3:00, and maybe unplugged"""
     await house.advance(minutes=24)
     await house.hass.services.async_call("input_datetime", "set_datetime", {
         "entity_id": "input_datetime.doorbell_last_ring", "datetime": f"{TUESDAY} 02:14:00"}, blocking=True)
@@ -145,8 +145,9 @@ async def a_night(house):
     for _ in range(3):
         await house.hass.services.async_call("notify", "mobile_app_phone", CAR, blocking=True)
         await house.advance(minutes=10)
-    await house.hass.services.async_call("notify", "mobile_app_phone",
-                                         {"message": "clear_notification", "data": {"tag": "car_unplug"}}, blocking=True)
+    if unplugged:
+        await house.hass.services.async_call("notify", "mobile_app_phone",
+                                             {"message": "clear_notification", "data": {"tag": "car_unplug"}}, blocking=True)
 
 
 async def up(house):
@@ -216,3 +217,40 @@ async def test_asked_for_before_the_hub_sees_me_its_written_then(house_at):
     await house.advance(minutes=40)
     await up(house)
     assert not house.said("Grant's reckons"), "said is said: not again when the Hub sees me"
+
+
+async def test_a_reminder_already_dealt_with_isnt_said_again(house_at):
+    # the car got unplugged, which cleared its notification: the morning doesn't remind you twice
+    house = await house_at(f"{TUESDAY} 01:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    await a_night(house, unplugged=True)
+    await house.advance(minutes=117)
+    await up(house)
+    text = house.called("ai_task.generate_data")[-1].data["instructions"]
+    assert "The doorbell rang at 2:14" in text
+    assert "Car:" not in text
+
+
+def sleep_night(score, hours, month=72, month_h=6.9, week=None):
+    return {"sensor.oura_ring_bedtime_end": f"{TUESDAY}T09:10:00+00:00",
+            "sensor.oura_ring_sleep_score": (str(score), {"data_date": TUESDAY}),
+            "sensor.oura_ring_total_sleep_duration": str(hours),
+            "sensor.oura_ring_readiness_score": ("58", {"data_date": TUESDAY}),
+            "sensor.health_trends": ("x", {"sleep_score_30d": month, "sleep_hours_30d": month_h,
+                                           "sleep_score_7d": week if week is not None else month})}
+
+
+async def test_a_bad_night_is_said_plainly_against_my_month(house_at):
+    house = await house_at(f"{TUESDAY} 05:30", {"input_select.house_mode": "Morning", **sleep_night(55, 5.2, week=64)})
+    out = await house.hass.services.async_call("script", "morning_briefing_text", {}, blocking=True, return_response=True)
+    assert "You slept 5 hours 12, sleep score 55, readiness 58." in out["text"]
+    assert "17 points under your 30-day average of 72, and 102 minutes less sleep than usual" in out["text"]
+    assert "This week's average is 64, against 72 for the month." in out["text"]
+
+
+async def test_an_ordinary_night_is_just_its_numbers(house_at):
+    house = await house_at(f"{TUESDAY} 05:30", {"input_select.house_mode": "Morning", **sleep_night(70, 6.8)})
+    out = await house.hass.services.async_call("script", "morning_briefing_text", {}, blocking=True, return_response=True)
+    assert "sleep score 70" in out["text"]
+    assert "30-day average" not in out["text"] and "This week" not in out["text"], "inside the deadband"

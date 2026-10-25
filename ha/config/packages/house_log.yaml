@@ -4,8 +4,9 @@
 # restarting). A briefing whose idea of overnight is a printer finishing turns a night of reminders
 # or the doorbell at 2 AM into "Good morning. Dry and seventy-one."
 #
-# A notification that repeats within the hour (the car's every 10 minutes, the alarm's) is one line
-# with a count. The house going to Night leaves a marker, so overnight is everything after the last
+# A notification that repeats within the hour (a reminder every 10 minutes, the alarm's) is one line
+# with a count, and one that's been cleared by its tag is marked resolved, so the morning doesn't
+# remind you of something you've already dealt with. The house going to Night leaves a marker, so overnight is everything after the last
 # one. Kept for 36 hours. Times are Unix seconds, because ISO strings stop sorting right when the
 # clocks change
 template:
@@ -75,12 +76,20 @@ template:
             {% elif t == 'restart' %}{{ {'what': 'Home Assistant restarted', 'key': 'restart'} }}
             {% elif t == 'night' %}{{ {'what': 'Night', 'key': 'night'} }}
             {% else %}{{ {} }}{% endif %}
+          # a notification cleared by its tag: dealt with
+          resolves: >-
+            {% if trigger.id == 'phone' %}
+              {% set d = trigger.event.data.service_data if trigger.event.data.service_data is mapping else {} %}
+              {% set extra = d.get('data') if d.get('data') is mapping else {} %}
+              {{ 'phone:' ~ extra.get('tag') if d.get('message') == 'clear_notification' and extra.get('tag') else '' }}
+            {% else %}{{ '' }}{% endif %}
           entries: >-
             {% set t = now().timestamp() | round(0) %}
             {% set old = state_attr('sensor.house_log', 'entries') %}
             {% set old = old if old is list else [] %}
             {% set ns = namespace(out=[], hit=none) %}
-            {% for e in old if e is mapping and e.get('at', 0) > t - 36 * 3600 %}
+            {% for e0 in old if e0 is mapping and e0.get('at', 0) > t - 36 * 3600 %}
+              {% set e = dict(e0, resolved=t) if resolves and e0.get('key') == resolves else e0 %}
               {% if entry and e.key == entry.key and t - e.get('last', e.at) < 3600 %}
                 {% set ns.hit = e %}
               {% else %}

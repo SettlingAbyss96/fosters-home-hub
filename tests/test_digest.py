@@ -239,3 +239,125 @@ def test_the_morning_has_its_own_openers_and_its_own_recent_openings(tmp_path):
     d.tell(db, cfg, kit["kit"], "Good morning, sir. Clear and seventy. Grant's reckons it's two markets.", now=NOW + 3600)
     nxt = d.draw(db, cfg, occasion="morning", now=NOW + 86400, rng=rng)
     assert '"Good morning, sir. Clear and seventy."' in nxt["brief"], "past the greeting, to what came next"
+
+
+# -- salience: moves and follow-ups ------------------------------------------------------------
+from datetime import datetime, timedelta  # noqa: E402
+
+SP = {"id": "sp500", "name": "the S&P 500", "unit": "pct", "weight": 1.0, "every": 120}
+
+
+def market(tmp_path):
+    cfg = config({"name": "Grant's", "shelf": "market", "kind": "feed", "url": "x"},
+                 {"name": "Hackaday", "shelf": "wild", "kind": "feed", "url": "x"},
+                 {"name": "FT markets", "shelf": "market", "kind": "context", "url": "x"})
+    cfg["series"] = [SP]
+    db = d.connect(str(tmp_path / "digest.db"))
+    rng = random.Random(3)
+    words = "copper nickel yields credit refinery margins hotend nozzle macro probe gantry servo".split()
+    for name in ("Grant's", "Hackaday"):
+        d.ingest(db, cfg["sources"][name], [entry(" ".join(rng.sample(words, 4)), days_ago=0.5) for _ in range(6)], NOW)
+    # 80 quiet sessions up to October 22, about half a percent either way
+    level, days = 7000.0, []
+    for k in range(80):
+        level *= 1 + rng.uniform(-0.005, 0.005)
+        days.append(((datetime(2026, 10, 22) - timedelta(days=79 - k)).strftime("%Y-%m-%d"), level))
+    db.executemany("INSERT INTO points VALUES ('sp500', ?, ?)", days)
+    db.commit()
+    sigma = d.normal_day(d.changes([v for _, v in days], "pct")[-61:-1])
+    return cfg, db, sigma, level
+
+
+def session(db, day, level):
+    db.execute("INSERT OR REPLACE INTO points VALUES ('sp500', ?, ?)", (day, level))
+    db.commit()
+
+
+def test_a_quiet_market_isnt_said(tmp_path):
+    cfg, db, sigma, level = market(tmp_path)
+    session(db, "2026-10-23", level * (1 - 0.5 * sigma / 100))
+    kit = d.draw(db, cfg, now=NOW, rng=random.Random(1))
+    assert "markets" not in kit["first"], "half a normal day is noise"
+
+
+def test_a_big_day_leads_with_how_big_and_the_why(tmp_path):
+    cfg, db, sigma, level = market(tmp_path)
+    d.ingest(db, cfg["sources"]["FT markets"], [entry("Stocks slide as Treasury yields jump on rate worries", days_ago=0.2)], NOW)
+    session(db, "2026-10-23", level * (1 - 4 * sigma / 100))
+    kit = d.draw(db, cfg, now=NOW, rng=random.Random(1))
+    assert kit["first"] == ["markets"]
+    assert "lead with it" in kit["brief"] and "times a normal day's move" in kit["brief"]
+    assert "Stocks slide as Treasury yields jump" in kit["brief"], "the why comes with it"
+
+
+def test_a_move_is_said_once_and_comes_back_when_it_keeps_going(tmp_path):
+    cfg, db, sigma, level = market(tmp_path)
+    level *= 1 - 4 * sigma / 100
+    session(db, "2026-10-23", level)
+    kit = d.draw(db, cfg, now=NOW, rng=random.Random(1))
+    d.tell(db, cfg, kit["kit"], "Good evening.", now=NOW)
+    again = d.draw(db, cfg, now=NOW + 3600, rng=random.Random(2))
+    assert again is None or "markets" not in again["first"], "the same day again is a repeat"
+    # then three more sessions, each a little under the deadband on its own
+    for day in ("2026-10-26", "2026-10-27", "2026-10-28"):
+        level *= 1 - 1.2 * sigma / 100
+        session(db, day, level)
+    kit = d.draw(db, cfg, now=NOW + 5 * DAY, rng=random.Random(3))
+    assert "markets" in kit["first"], "no single day crossed the deadband, but the drift since did"
+    assert "since the resident last heard about it on Friday, October 23" in kit["brief"].replace("Foster", "the resident")
+
+
+def test_a_repo_that_kept_growing_comes_back_once(tmp_path):
+    cfg = config({"name": "Orca forks", "shelf": "printing", "kind": "forks", "repo": "OrcaSlicer/OrcaSlicer"})
+    cfg["series"] = []
+    db = d.connect(str(tmp_path / "digest.db"))
+    fork = {"guid": "repo:dk/waves", "link": "https://github.com/dk/Waves", "story": "dk/waves",
+            "title": "dk/Waves, a fork of OrcaSlicer: wave overhangs", "raw": "582 stars.", "when": NOW - 30 * DAY, "metric": 582.0}
+    d.ingest(db, cfg["sources"]["Orca forks"], [fork], NOW)
+    kit = d.draw(db, cfg, now=NOW, rng=random.Random(7))
+    d.tell(db, cfg, kit["kit"], "x", now=NOW)
+    assert db.execute("SELECT told_metric FROM items WHERE story = 'dk/waves'").fetchone()[0] == 582.0
+    d.ingest(db, cfg["sources"]["Orca forks"], [dict(fork, metric=1300.0)], NOW + DAY)
+    assert not d.followups(db, cfg, NOW + DAY, "x"), "a day on is too soon"
+    found = d.followups(db, cfg, NOW + 3 * DAY, "the resident")
+    assert found and found[0]["kind"] == "stars" and "at 582 stars" in found[0]["text"] and "1300" in found[0]["text"]
+    kit = d.draw(db, cfg, now=NOW + 3 * DAY, rng=random.Random(8))
+    assert "stars" in kit["first"]
+    d.tell(db, cfg, kit["kit"], "x", now=NOW + 3 * DAY)
+    d.ingest(db, cfg["sources"]["Orca forks"], [dict(fork, metric=1700.0)], NOW + 6 * DAY)
+    assert not d.followups(db, cfg, NOW + 6 * DAY, "x"), "1300 is the reference now, and 1700 isn't double"
+
+
+def test_a_story_two_more_sources_picked_up_comes_back(tmp_path):
+    cfg = config({"name": "A", "shelf": "printing", "kind": "feed", "url": "x"},
+                 {"name": "B", "shelf": "wild", "kind": "feed", "url": "x"},
+                 {"name": "C", "shelf": "robotics_ai", "kind": "feed", "url": "x"})
+    cfg["series"] = []
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["A"], [entry("Bambu recalls heatbed cables on H2D printers")], NOW)
+    kit = d.draw(db, cfg, now=NOW, rng=random.Random(1))
+    d.tell(db, cfg, kit["kit"], "x", now=NOW)
+    d.ingest(db, cfg["sources"]["B"], [entry("Bambu heatbed cables recall widens beyond H2D printers", days_ago=0)], NOW + 0.6 * DAY)
+    assert not d.followups(db, cfg, NOW + 0.7 * DAY, "x"), "one more source isn't a bigger deal yet"
+    d.ingest(db, cfg["sources"]["C"], [entry("Bambu heatbed cables recall now covers X1 and H2D printers", days_ago=0)], NOW + 0.7 * DAY)
+    found = d.followups(db, cfg, NOW + 0.8 * DAY, "the resident")
+    assert found and found[0]["kind"] == "coverage" and "2 more sources" in found[0]["text"]
+    kit = d.draw(db, cfg, now=NOW + 0.8 * DAY, rng=random.Random(2))
+    assert "coverage" in kit["first"] and "A follow-up" in kit["brief"]
+    d.tell(db, cfg, kit["kit"], "x", now=NOW + 0.8 * DAY)
+    assert not d.followups(db, cfg, NOW + 0.9 * DAY, "x"), "told, so that's the new reference"
+
+
+def test_late_its_only_the_strongest(tmp_path):
+    cfg, db, sigma, level = market(tmp_path)
+    session(db, "2026-10-23", level * (1 - 4 * sigma / 100))
+    kit = d.draw(db, cfg, late=True, now=NOW, rng=random.Random(1))
+    assert kit["first"] == ["markets"] and kit["items"] == 1
+
+
+def test_market_data_comes_in_clean():
+    yahoo = json.dumps({"chart": {"result": [{"meta": {"gmtoffset": -14400}, "timestamp": [1792675800, 1792762200],
+                                              "indicators": {"quote": [{"close": [7663.43, None]}]}}]}}).encode()
+    assert d.parse_yahoo(yahoo) == [("2026-10-22", 7663.43)], "a session with no close yet is left out"
+    treasury = "﻿Date,\"2 Yr\",\"10 Yr\"\n10/23/2026,3.61,4.42\n10/22/2026,3.58,4.38\n".encode()
+    assert d.parse_treasury(treasury, "10 Yr") == [("2026-10-23", 4.42), ("2026-10-22", 4.38)]
