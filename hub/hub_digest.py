@@ -435,7 +435,7 @@ def history(db, n=8):
     out = []
     for r in rows:
         slots = json.loads(r["slots"])
-        out.append({"format": r["format"], "mood": r["mood"], "opener": r["opener"], "words": r["words"] or "",
+        out.append({"format": r["format"], "mood": r["mood"], "opener": r["opener"], "words": r["words"] or "", "occasion": r["occasion"],
                     "told": r["told"], "shelves": [s["shelf"] for s in slots], "sources": [s["source"] for s in slots],
                     "labels": [s["label"] for s in slots]})
     return out
@@ -496,8 +496,13 @@ def avoid_repeat(options, recent, rng):
 
 
 def first_sentence(words):
-    m = re.match(r"(.+?[.!?])(\s|$)", (words or "").strip())
-    return (m.group(1) if m else words or "")[:90]
+    """How it opened: the first sentence, and the next one too when the first is only a greeting
+    ("Good morning, sir." is every morning, so it's what follows that has to change)"""
+    parts = re.findall(r".+?[.!?](?=\s|$)", (words or "").strip())
+    if not parts:
+        return (words or "")[:90]
+    opening = parts[0] if len(parts[0].split()) > 4 or len(parts) == 1 else f"{parts[0]} {parts[1].strip()}"
+    return opening.strip()[:140]
 
 
 def describe(n, c, name):
@@ -543,9 +548,9 @@ def draw(db, cfg, occasion="welcome", late=False, now=None, rng=None, keep=True,
         return None
     voice = cfg["voice"]
     mood = avoid_repeat(voice["moods"], [k["mood"] for k in past[:2]], rng)
-    openers = voice["late_openers"] if late else voice["openers"]
+    openers = voice["late_openers"] if late else (voice.get(f"{occasion}_openers") or voice["openers"])
     opener = avoid_repeat(openers, [k["opener"] for k in past[:2]], rng)
-    openings = [first_sentence(k["words"]) for k in past if k["words"]][:8]
+    openings = [first_sentence(k["words"]) for k in past if k["words"] and k["occasion"] == occasion][:8]
     told_lines = [lbl for k in past if now - k["told"] < 21 * DAY for lbl in k["labels"]][:30]
 
     # the format's name and the mood are for the writer, and the brief says so, or a "brisk" mood

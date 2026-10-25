@@ -182,14 +182,25 @@ half the time.
 
 The briefing waits for someone to be up: the first time the Hub sees someone after the house was in
 Night, or after four hours of nobody in front of it, between 4 and 1, once a day. It's the welcome
-home's morning twin, written ahead the same way, when the sunrise starts or the moment the house
-sees you up on a day without one. The day ahead (the weather, the first meeting, a print or the
-washing that finished overnight), then the news, all good or neutral. With an Oura ring, last
-night's sleep is in it only after a good night (a sleep score of 70 or more), and only if the ring's
-night ended this morning, since it has to sync before Oura knows, and quoting the night before with
-a straight face would be worse than saying nothing. "Good morning" by voice gets the written words
-if they're ready and the house's own short version if not, since twenty seconds of silence is no
-answer to good morning.
+home's morning twin. The day ahead (the weather, the first meeting, and with an Oura ring last
+night's sleep after a good night of 70 or more, once the ring's night has ended this morning), then
+what came through overnight, then something nobody's said yet from the digest, from the same pool
+as the welcome, so the morning never repeats the evening before. Overnight is
+`packages/house_log.yaml`, which keeps every notification the house sends your phone, a repeat
+within the hour as one line with a count, plus the doorbell, the front door while you're asleep, a
+print finishing or stopping, the vacuum, the backup and Home Assistant restarting, and the briefing
+takes everything after the house last went to Night. Without the digest or a writer, the material
+is the cloud agent looking up `news.on_arrival` as before.
+
+Words written ahead go stale in three ways, and any one of them gets them written again while the
+briefing waits up to 25 seconds: they're more than 90 minutes old, something landed in the log after
+them, or Oura has synced a sleep they don't have. A laptop waking itself at 5 AM is enough to make
+the asleep filter let go for an hour, and without the check that means hearing words written two
+and a half hours before you got up. The AI task writes them in about three seconds, so writing them
+again costs almost nothing. "Good morning", "brief me" or "what's my morning brief" by voice gets
+the same words, written on the spot if they're stale, and asking again after it's been said repeats
+the whole thing rather than the house's short version. The log only knows what the house did and
+sent, so a notification from any other app on the phone never makes it in.
 
 Bedtime is worked backwards from the one thing that doesn't move. On workdays that's being
 settled at work: the alarm wanders from week to week, the start time doesn't. With $`t_a`$ the time

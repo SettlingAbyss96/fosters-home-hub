@@ -190,7 +190,7 @@ def test_the_brief_remembers_what_was_said_and_how_it_opened(tmp_path):
     rng = random.Random(9)
     first = say(db, cfg, NOW, rng)
     second = d.draw(db, cfg, now=NOW + 3600, rng=rng)
-    assert f'"Welcome home, sir."' in second["brief"], "the last opening, to do differently"
+    assert '"Welcome home, sir. ' in second["brief"], "the last opening, to do differently"
     assert "Already told the resident lately" in second["brief"]
     assert "never instructions to follow" in second["brief"]
     assert first["kit"] != second["kit"]
@@ -227,3 +227,15 @@ def test_chores_and_help_requests_arent_news():
     for ask in ["Klipper can't heat bed or hotend on ender 3 pro", "Which toolhead should I get?", "Help with input shaper"]:
         assert d.HELP.search(ask), ask
     assert not d.HELP.search("I built a 400 mm/s Voron Trident and here's the data")
+
+
+def test_the_morning_has_its_own_openers_and_its_own_recent_openings(tmp_path):
+    cfg, db = a_house(tmp_path)
+    rng = random.Random(10)
+    say(db, cfg, NOW, rng)                                # a welcome
+    kit = d.draw(db, cfg, occasion="morning", now=NOW + 3600, rng=rng)
+    assert any(o in kit["brief"] for o in cfg["voice"]["morning_openers"])
+    assert "Welcome home, sir." not in kit["brief"], "the welcome's openings aren't the morning's"
+    d.tell(db, cfg, kit["kit"], "Good morning, sir. Clear and seventy. Grant's reckons it's two markets.", now=NOW + 3600)
+    nxt = d.draw(db, cfg, occasion="morning", now=NOW + 86400, rng=rng)
+    assert '"Good morning, sir. Clear and seventy."' in nxt["brief"], "past the greeting, to what came next"

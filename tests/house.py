@@ -44,7 +44,7 @@ TZ = "America/New_York"
 
 # what gets set up for real. Everything else the packages call is recorded
 DOMAINS = ["input_boolean", "input_datetime", "input_number", "input_select", "input_text", "timer",
-           "template", "script", "automation"]
+           "template", "script", "automation", "intent_script"]
 
 # The bench's made-up home: a colour floor lamp and a strip in the living room, a kitchen ceiling
 # whose bulbs can't dim, a bathroom light on the fan's switch, a bedroom with a dimmable overhead (the
@@ -364,3 +364,18 @@ class House:
     async def run(self, script: str, **data) -> None:
         await self.hass.services.async_call("script", script, data, blocking=True)
         await self.settle()
+
+    async def ask(self, intent_name: str, **slots) -> str:
+        """An intent the way a sentence reaches it ("what's my morning brief" is MorningBriefing),
+        and what Jarvis says back"""
+        from homeassistant.helpers import intent
+
+        task = self.hass.async_create_task(intent.async_handle(
+            self.hass, "bench", intent_name, {k: {"value": v} for k, v in slots.items()}))
+        for _ in range(60):                        # the intent's own waits run on the frozen clock
+            if task.done():
+                break
+            await self.advance(seconds=1, step=1)
+        response = await task
+        await self.settle()
+        return response.speech.get("plain", {}).get("speech", "")

@@ -1,8 +1,8 @@
 # The digest on the Hub (hub/hub_digest.py, installed by host/58-digest.sh): what Jarvis talks about
-# in the welcome home. It reads the sources in hub/digest.toml on its own schedule and hands over a
-# kit of things nobody's said yet (packages/presence.yaml, script.welcome_home_prepare). Once you've
-# heard it, the kit goes back (script.welcome_home) and everything in it is retired for good, so
-# nothing comes up twice.
+# in the welcome home and the morning briefing. It reads the sources in hub/digest.toml on its own
+# schedule and hands over a kit of things nobody's said yet (script.welcome_home_prepare,
+# script.morning_briefing_prepare). Once you've heard it, the kit goes back and everything in it is
+# retired for good, so nothing comes up twice, morning or evening.
 #
 # The Hub's address from house.toml (input_text.hub_address) rather than its name, for the reason
 # the speech engines use it: mDNS lookups fail now and then. Port 10230 only answers the Home
@@ -10,7 +10,7 @@
 rest_command:
   digest_kit:
     url: >-
-      http://{{ states('input_text.hub_address') }}:10230/kit?for=welcome&late={{ late | default(0) }}&name={{ name | default('') | urlencode }}
+      http://{{ states('input_text.hub_address') }}:10230/kit?for={{ occasion | default('welcome') }}&late={{ late | default(0) }}&name={{ name | default('') | urlencode }}
     method: get
     timeout: 8
   digest_told:

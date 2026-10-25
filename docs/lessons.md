@@ -59,6 +59,10 @@ something else first.
   that needed maintenance and a paused vacuum got announced at the door four times in one evening.
   It's a short briefing written on the way in now, good or neutral news only
   ([routines.md](routines.md#what-jarvis-says-when-you-get-in))
+- The morning briefing said nothing about the night. Its overnight was a printer finishing, so
+  reminders or the doorbell at 2 AM never made it in, and words written on a false wake got said
+  hours later, and asking for it again got the short version. A log of the night, stale words
+  written again, and a repeat in full ([routines.md](routines.md#mornings-and-bedtime))
 - Then the briefing was the same every evening. Asking for the day's news means two web searches
   that find the same market and the same headlines every time. The digest on the Hub keeps the
   material instead, draws a different way of telling it, and retires whatever's been heard

@@ -122,3 +122,97 @@ async def test_without_the_words_the_briefing_is_short_and_has_no_chores(house_a
     briefing = [m for m in spoken if m.startswith("Good morning.") and "It's 5:2" not in m]
     assert briefing, spoken
     assert not any(w in briefing[-1] for w in ("Paused", "lubrication", "update", "dozed"))
+
+
+# the digest on the Hub and the AI task, for the morning (packages/morning.yaml, digest.yaml)
+MORNING_KIT = {"status": 200, "content": {
+    "kit": "m1", "format": "one story", "length": "four or five short spoken sentences, about twenty-five seconds",
+    "items": 1, "shelves": ["market"],
+    "brief": ("How to tell it this time: one story.\n\n"
+              "[1] Almost Daily Grant's (October 12): \"All Together Now\". The S&P 500 looks like two markets.")}}
+MORNING_WORDS = {"data": ("Good morning. Clear and seventy, and nothing on the calendar. The doorbell rang once "
+                          "at 2:14, and the car finished charging. Grant's reckons the S&P is really two markets now.")}
+DIGEST = {"input_text.hub_address": "192.0.2.10", "ai_task.jarvis_writer": "unknown"}
+CAR = {"title": "Car", "message": "The car's done charging at 80% and still plugged in.", "data": {"tag": "car_unplug"}}
+
+
+async def a_night(house):
+    """From 1:50: the doorbell at 2:14, the car's reminder three times from 3:00, then unplugged"""
+    await house.advance(minutes=24)
+    await house.hass.services.async_call("input_datetime", "set_datetime", {
+        "entity_id": "input_datetime.doorbell_last_ring", "datetime": f"{TUESDAY} 02:14:00"}, blocking=True)
+    await house.advance(minutes=46)
+    for _ in range(3):
+        await house.hass.services.async_call("notify", "mobile_app_phone", CAR, blocking=True)
+        await house.advance(minutes=10)
+    await house.hass.services.async_call("notify", "mobile_app_phone",
+                                         {"message": "clear_notification", "data": {"tag": "car_unplug"}}, blocking=True)
+
+
+async def up(house):
+    house.set("binary_sensor.hub_500_motion", "on")
+    await house.advance(seconds=30)
+    house.set("binary_sensor.hub_500_motion", "off")
+    await house.settle()
+
+
+async def test_the_morning_has_the_night_in_it_and_something_new(house_at):
+    # a briefing whose overnight is only a printer finishing says nothing about a night like this
+    house = await house_at(f"{TUESDAY} 01:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    await a_night(house)
+    await house.advance(minutes=117)                  # 5:27, up
+    await up(house)
+    asks = house.called("ai_task.generate_data", entity_id="ai_task.jarvis_writer")
+    assert asks, "written from the digest's kit"
+    text = asks[-1].data["instructions"]
+    assert "The doorbell rang at 2:14" in text
+    assert "Car: The car's done charging at 80% and still plugged in at 3:00, 3 times, the last at 3:20" in text
+    assert "clear_notification" not in text and "Wake up:" not in text
+    assert "All Together Now" in text
+    assert not house.called("conversation.process"), "the kit's the news, no web search"
+    assert house.said("Grant's reckons the S&P is really two markets")
+    told = house.called("rest_command.digest_told")
+    assert len(told) == 1 and told[0].data["kit"] == "m1", "heard, so retired"
+
+
+async def test_words_older_than_the_night_are_written_again(house_at):
+    # words written at the sunrise, then a notification before you're up: they're written again
+    house = await house_at(f"{TUESDAY} 04:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    await house.advance(minutes=6)                    # 4:56, written at the sunrise
+    first = len(house.called("ai_task.generate_data"))
+    assert first == 1
+    await house.hass.services.async_call("notify", "mobile_app_phone", CAR, blocking=True)
+    await house.advance(minutes=30)                   # 5:26, up after something came through
+    await up(house)
+    assert len(house.called("ai_task.generate_data")) == first + 1, "written again, with the car in it"
+    assert "Car: The car's done" in house.called("ai_task.generate_data")[-1].data["instructions"]
+
+
+async def test_asking_again_is_todays_briefing_in_full(house_at):
+    # asked again after it's been said, it's the whole briefing, not the house's short version
+    house = await house_at(f"{TUESDAY} 04:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    await house.advance(minutes=37)
+    await up(house)
+    assert house.said("Grant's reckons")
+    assert await house.ask("MorningBriefing") == MORNING_WORDS["data"]
+    assert len(house.called("rest_command.digest_told")) == 1, "retired once, not again for a repeat"
+
+
+async def test_asked_for_before_the_hub_sees_me_its_written_then(house_at):
+    house = await house_at(f"{TUESDAY} 04:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    house.set("input_boolean.auto_briefing", "on")
+    await house.advance(minutes=2)                    # 4:52, before the sunrise writes anything
+    assert await house.ask("MorningBriefing") == MORNING_WORDS["data"]
+    assert house.state("input_select.house_mode") == "Morning"
+    house.forget()
+    await house.advance(minutes=40)
+    await up(house)
+    assert not house.said("Grant's reckons"), "said is said: not again when the Hub sees me"

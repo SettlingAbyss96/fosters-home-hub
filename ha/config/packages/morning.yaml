@@ -10,20 +10,25 @@
 #
 # Morning briefing: the first time the Hub sees someone after sleeping (the house in Night, or
 # nobody in front of the Hub for four hours), between 4 and 1, once a day, Jarvis says good
-# morning. It's the same kind of thing as the welcome home (packages/presence.yaml): the day ahead
-# (weather, the first meeting, a print or the washing finished overnight), then the news you asked
-# for in house.toml, all good or neutral. A briefing that ends on the needs-attention list is a
-# nag, so it doesn't. Last night's sleep is in it only when it was a good night (a score of 70 or
-# more) and the ring's night actually ended this morning: the ring has to sync before Oura knows,
-# and a briefing quoting the night before would be worse than none. If the night lands later in the
-# morning, the numbers come as a notification on the phone instead.
+# morning. It's the welcome home's morning twin (packages/presence.yaml): the day ahead (the
+# weather, the calendar, last night's sleep), what came through overnight (packages/house_log.yaml:
+# every notification the phone got, the doorbell, the front door, a print finishing or stopping,
+# the vacuum, the backup), then something nobody's said yet from the digest on the Hub, from the
+# same pool as the welcome so the two never repeat each other, all good or neutral. Without the
+# digest or a writer it's the news you asked for in house.toml, looked up by the cloud agent. A
+# briefing that ends on the needs-attention list is a nag, so it doesn't. Last night's sleep is in
+# it only when it was a good night (a score of 70 or more) and the ring's night actually ended this
+# morning: the ring has to sync before Oura knows, and a briefing quoting the night before would be
+# worse than none. If the night lands after the briefing, the numbers come to the phone instead.
 #
-# The news takes the cloud agent about twenty seconds to look up, so the words are written ahead
-# (script.morning_briefing_prepare): when the sunrise starts, or the moment the house sees you're up
-# on a day without an alarm, and the briefing waits up to 25 seconds for them if they're still
-# coming. "Good morning" or "brief me" by voice gets the words if they're ready and the house's own
-# short version if not, rather than twenty seconds of silence. Without a cloud agent it's always the
-# house's own version.
+# The words are written ahead (script.morning_briefing_prepare), when the sunrise starts or the
+# house sees you're up, and written again at the briefing when they've gone stale: older than 90
+# minutes, older than something in the overnight log, or without a sleep Oura has since synced. A
+# false wake (a laptop waking itself, the asleep filter letting go for an hour) otherwise gets you
+# words from hours before you got up. The briefing waits up to 25 seconds for them. "Good morning",
+# "brief me" or "what's my morning brief" by voice gets the same words, and once they've been said,
+# asking again repeats them in full rather than the house's short version. Without a cloud agent or
+# a writer it's always the house's own version.
 input_datetime:
   last_morning_briefing:
     name: "Last morning briefing"
@@ -38,7 +43,8 @@ input_boolean:
 
 template:
   # The briefing's words, written ahead by script.morning_briefing_prepare. "ready" is words nobody's
-  # heard yet
+  # heard yet. kit is the digest's kit they came from, said_text and said_at the last briefing heard,
+  # for "again"
   - trigger:
       - trigger: event
         event_type: morning_briefing_words
@@ -53,12 +59,37 @@ template:
         state: "{{ 'ready' if trigger.id == 'ready' else 'spoken' }}"
         attributes:
           text: "{{ trigger.event.data.text if trigger.id == 'ready' else '' }}"
+          kit: "{{ trigger.event.data.kit | default('') if trigger.id == 'ready' else '' }}"
           written_at: >-
             {{ now().timestamp() | round(0) if trigger.id == 'ready'
                else (this.attributes.written_at | default(0)) }}
           sleep_included: >-
             {{ trigger.event.data.sleep | default(false) | bool if trigger.id == 'ready'
                else (this.attributes.sleep_included | default(false)) }}
+          said_text: >-
+            {{ trigger.event.data.text | default('') if trigger.id == 'spoken'
+               else (this.attributes.said_text | default('')) }}
+          said_at: >-
+            {{ now().timestamp() | round(0) if trigger.id == 'spoken'
+               else (this.attributes.said_at | default(0)) }}
+
+  # Whether the waiting words are still good to say: from the last 90 minutes, newer than anything in
+  # the overnight log, and with last night's sleep if Oura has it by now
+  - binary_sensor:
+      - name: "Morning briefing words fresh"
+        unique_id: morning_briefing_words_fresh
+        icon: mdi:message-text-clock-outline
+        state: >-
+          {% set w = state_attr('sensor.morning_briefing_words', 'written_at') | float(0) %}
+          {% set log = state_attr('sensor.house_log', 'entries') %}
+          {% set latest = ((log if log is list else []) | rejectattr('key', 'eq', 'night') | map(attribute='last') | list + [0]) | max %}
+          {% set end = states('sensor.oura_ring_bedtime_end') | as_datetime(none) %}
+          {% set sleep_known = end is not none and as_local(end).date() == now().date()
+                               and state_attr('sensor.oura_ring_sleep_score', 'data_date') == now().date() | string %}
+          {{ is_state('sensor.morning_briefing_words', 'ready') and w > 0
+             and as_local(as_datetime(w)).date() == now().date() and now().timestamp() - w < 90 * 60
+             and w >= latest
+             and (not sleep_known or state_attr('sensor.morning_briefing_words', 'sleep_included') | bool(false)) }}
 
   - trigger:
       - trigger: state
@@ -144,19 +175,28 @@ script:
           laundry: >-
             {% set w = states('input_datetime.washer_done_at') | as_datetime(none) %}
             {% if w is not none and (now() - as_local(w)).total_seconds() < 10 * 3600 and as_local(w).hour < 6 or (w is not none and (now() - as_local(w)).total_seconds() < 10 * 3600 and as_local(w).hour >= 21) %}The washing finished at {{ as_local(w).strftime('%-I:%M') }}, it's waiting for you.{% endif %}
-          # the night's good news: a printer finishing. The doorbell in the night and dozing off with
-          # the lights on used to be here too; the doorbell has its own alert, and the other's a nag
+          # what came through overnight (packages/house_log.yaml): everything after the house last
+          # went to Night, or the last ten hours when there's no Night in the last sixteen, less the
+          # alarm's own nudges, which are this morning rather than news. Dozing off with the lights
+          # on used to be here too, and it's a nag, so it isn't logged
           overnight: >-
-            {% set since = now() - timedelta(hours=10) %}
-            {% set out = namespace(t=[]) %}
-            {% if is_state('sensor.bambu_print_status', 'finish') and states.sensor.bambu_print_status.last_changed > since %}{% set out.t = out.t + ['The Bambu finished its print overnight.'] %}{% endif %}
-            {% if is_state('sensor.klipper_current_print_state', 'complete') and states.sensor.klipper_current_print_state.last_changed > since %}{% set out.t = out.t + ['The Klipper printer finished its print overnight.'] %}{% endif %}
-            {{ out.t | join(' ') }}
+            {% set log = state_attr('sensor.house_log', 'entries') %}
+            {% set log = log if log is list else [] %}
+            {% set t = now().timestamp() %}
+            {% set marks = log | selectattr('key', 'eq', 'night') | map(attribute='at') | list %}
+            {% set since = marks | last if marks and t - marks | last < 16 * 3600 else t - 10 * 3600 %}
+            {% set items = log | rejectattr('key', 'eq', 'night') | rejectattr('what', 'search', '^(Wake up|Still up)')
+                               | selectattr('last', 'gt', since) | list %}
+            {% for e in items %}{{ e.what | trim('. ') }} at {{ as_local(as_datetime(e.at)).strftime('%-I:%M') }}{{ (', ' ~ e.n ~ ' times, the last at ' ~ as_local(as_datetime(e.last)).strftime('%-I:%M')) if e.n > 1 else '' }}{{ '. ' if loop.last else '; ' }}{% endfor %}
+          day: >-
+            {{ ([sleep, weather, meetings, laundry] | map('trim') | reject('eq', '') | join(' ')) }}
           notes: >-
-            {{ ([sleep, weather, meetings, overnight, laundry] | map('trim') | reject('eq', '') | join(' ')) }}
+            {{ ([day, ('Overnight: ' ~ overnight | trim) if overnight | trim else ''] | map('trim') | reject('eq', '') | join(' ')) }}
           result:
             text: "{{ ('Good morning. ' ~ notes) | trim }}"
             notes: "{{ notes }}"
+            day: "{{ day }}"
+            overnight: "{{ overnight | trim }}"
             sleep_included: "{{ fresh }}"
       - stop: "Done"
         response_variable: result
@@ -167,25 +207,31 @@ script:
     icon: mdi:weather-sunset-up
     mode: single
     sequence:
-      # the words are normally waiting from the sunrise. If they're still being written, they get
+      # stale words (binary_sensor.morning_briefing_words_fresh) get written again, and they get
       # twenty-five seconds
-      - if: "{{ not is_state('sensor.morning_briefing_words', 'ready') and states.conversation.jarvis_cloud is not none }}"
+      - if: >-
+          {{ not is_state('binary_sensor.morning_briefing_words_fresh', 'on')
+             and (states.conversation.jarvis_cloud is not none or states.ai_task.jarvis_writer is not none) }}
         then:
-          - if: "{{ is_state('script.morning_briefing_prepare', 'off') }}"
-            then:
-              - action: script.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: script.morning_briefing_prepare
-          - wait_template: "{{ is_state('sensor.morning_briefing_words', 'ready') }}"
+          - variables:
+              before: "{{ state_attr('sensor.morning_briefing_words', 'written_at') | float(0) }}"
+          - action: script.turn_on
+            continue_on_error: true
+            target:
+              entity_id: script.morning_briefing_prepare
+            data:
+              variables:
+                force: true
+          - wait_template: "{{ state_attr('sensor.morning_briefing_words', 'written_at') | float(0) > before }}"
             timeout: 25
-      # the house's own short version, for when there are no words
+      # the house's own short version, for when there are no words. Today's older words beat it, if
+      # writing them again didn't work
       - action: script.morning_briefing_text
         response_variable: house
       - variables:
           fresh: >-
             {% set w = state_attr('sensor.morning_briefing_words', 'written_at') | float(0) %}
-            {{ is_state('sensor.morning_briefing_words', 'ready') and now().timestamp() - w < 5 * 3600
+            {{ is_state('sensor.morning_briefing_words', 'ready') and w > 0
                and as_local(as_datetime(w)).date() == now().date() }}
           message: "{{ state_attr('sensor.morning_briefing_words', 'text') if fresh else house.text }}"
           sleep_included: "{{ state_attr('sensor.morning_briefing_words', 'sleep_included') if fresh else house.sleep_included }}"
@@ -197,6 +243,9 @@ script:
           message: "{{ message }}"
           preannounce: false
       - event: morning_briefing_spoken
+        event_data:
+          text: "{{ message }}"
+          kit: "{{ (state_attr('sensor.morning_briefing_words', 'kit') or '') if fresh else '' }}"
       - action: input_datetime.set_datetime
         target:
           entity_id: input_datetime.last_morning_briefing
@@ -206,25 +255,38 @@ script:
         target:
           entity_id: input_boolean.briefing_missing_sleep
 
-  # The briefing's words, by the cloud agent (Jarvis, with its web search), from the house's notes
+  # The briefing's words. What to talk about comes from the digest on the Hub, like the welcome home
+  # (packages/digest.yaml), written up by the AI task (voice.writer in house.toml), which has no tools.
+  # The day ahead and the night come from the house. Without the digest or the writer, or nothing
+  # written from them, it's the cloud agent looking up input_text.news
   morning_briefing_prepare:
     alias: "Morning briefing, the words"
-    description: "Jarvis writes the morning briefing ahead of time: the day ahead, then the news from input_text.news."
+    description: "Jarvis writes the morning briefing ahead of time: the day ahead, what came through overnight, then something nobody's said yet from the digest, or the news from input_text.news without it."
     icon: mdi:message-text-clock-outline
     mode: single
     max_exceeded: silent
+    fields:
+      force:
+        description: "Write them again even if there are words from the last 90 minutes"
+        selector:
+          boolean:
     sequence:
-      # once a morning: not when today's words are already waiting, or the briefing's been said
+      # once a morning, until it's been said: not while there are words from the last 90 minutes,
+      # unless the briefing asks for them again (force)
       - condition: >-
           {% set w = state_attr('sensor.morning_briefing_words', 'written_at') | float(0) %}
           {% set said = states('input_datetime.last_morning_briefing') | as_datetime(none) %}
           {{ is_state('input_boolean.auto_briefing', 'on')
-             and not (is_state('sensor.morning_briefing_words', 'ready') and as_local(as_datetime(w)).date() == now().date())
              and (said is none or as_local(said).date() < now().date())
-             and states.conversation.jarvis_cloud is not none }}
+             and (force | default(false) | bool
+                  or not (is_state('sensor.morning_briefing_words', 'ready') and now().timestamp() - w < 90 * 60))
+             and (states.conversation.jarvis_cloud is not none or states.ai_task.jarvis_writer is not none) }}
       - action: script.morning_briefing_text
         response_variable: house
       - variables:
+          who: "{{ state_attr('person.resident', 'friendly_name') or 'The resident' }}"
+          kit: {}
+          words: ""
           ask: >-
             {% set name = state_attr('person.resident', 'friendly_name') or 'The resident' %}
             {% set news = states('input_text.news') %}
@@ -233,27 +295,80 @@ script:
             {% set likes = likes if likes not in ['', 'unknown', 'unavailable'] else '' %}
             It's {{ now().strftime('%-I:%M %p on %A') }} and {{ name }} is getting up. Write exactly what you'll say
             out loud as the morning briefing: four or five short spoken sentences, about twenty seconds. Start with
-            "Good morning." Then the day ahead from the notes below, in a sentence or two.
+            "Good morning." Then the day ahead and anything that came through overnight, from the notes below, in a
+            sentence or two, calmly.
             {% if news %}Then look up {{ news }}{{ ', and if there is room one item from something else they are into (' ~ likes ~ ')' if likes else '' }},
             each in one sentence in your own words. It is {{ 'the weekend, so anything that only happens on weekdays means its last session' if now().weekday() >= 5 else 'a weekday' }}.{% endif %}
             Keep all of it good or neutral: on a bad day for anything you report, a few calm words at most, or
             something going well instead, and never why it went badly. Nothing alarming, no problems or warnings
             about the house, no maintenance, no reminders. Mention last night's sleep only if the notes do. Don't
             end on a question and don't offer anything. Notes: {{ (house.notes | trim) or 'Nothing in particular.' }}
-      - action: conversation.process
-        continue_on_error: true
-        data:
-          agent_id: conversation.jarvis_cloud
-          text: "{{ ask }}"
-        response_variable: said
-      - variables:
-          words: >-
-            {{ ((said if said is mapping else {}).get('response') or {}).get('speech', {}).get('plain', {}).get('speech', '') | trim }}
+      # the kit, from the digest on the Hub, when there's a Hub address and a writer for it
+      - if: "{{ states.ai_task.jarvis_writer is not none and states('input_text.hub_address') not in ['', 'unknown', 'unavailable'] }}"
+        then:
+          - action: rest_command.digest_kit
+            continue_on_error: true
+            data:
+              occasion: morning
+              late: 0
+              name: "{{ who }}"
+            response_variable: digest
+          - variables:
+              kit: >-
+                {% set c = (digest if digest is defined and digest is mapping else {}).get('content') %}
+                {{ c if c is mapping and c.get('kit') and c.get('brief') else {} }}
+          - if: "{{ kit | length > 0 }}"
+            then:
+              - action: ai_task.generate_data
+                continue_on_error: true
+                data:
+                  task_name: morning briefing
+                  entity_id: ai_task.jarvis_writer
+                  instructions: >-
+                    You are Jarvis, the home's assistant, in the spirit of J.A.R.V.I.S. from Iron Man:
+                    composed, precise, loyal, with a dry wit used sparingly. It's
+                    {{ now().strftime('%-I:%M %p on %A') }} and {{ who }} is getting up. Write exactly
+                    what you'll say out loud as the morning briefing, and nothing else, calling them
+                    {{ who }} if anything. Start with "Good morning." Then three things, in the order the
+                    brief asks for: the day ahead from its notes (the weather, the calendar, last night's
+                    sleep only if the notes have it) in a sentence or two; what came through overnight
+                    from its notes, the phone's notifications included, in a sentence or two, calmly and
+                    in plain words, leaving out anything that's plainly over and saying nothing if nothing
+                    came through; and the material below, {{ kit.get('length') }}, the way the brief says.
+                    Say it the way a person would out loud: no lists, links or headlines read out word for
+                    word, numbers the way you'd say them, and who's behind each thing. Keep all of it good
+                    or neutral: nothing alarming, no doom, markets as ideas to chew on and never warnings
+                    or tips, no maintenance and no reminders of chores. Don't end on a question and don't
+                    offer anything.
+                    The day ahead: {{ house.day | trim or 'Nothing in particular.' }}
+                    Overnight: {{ house.overnight | trim or 'Nothing came through.' }}
+
+                    {{ kit.get('brief') }}
+                response_variable: wrote
+              - variables:
+                  words: >-
+                    {% set w = (wrote if wrote is defined and wrote is mapping else {}).get('data') %}
+                    {{ w | trim if w is string else '' }}
+      # no kit, or nothing written from it: the cloud agent looks the news up, the old way
+      - if: "{{ words | length <= 20 and states.conversation.jarvis_cloud is not none }}"
+        then:
+          - variables:
+              kit: {}
+          - action: conversation.process
+            continue_on_error: true
+            data:
+              agent_id: conversation.jarvis_cloud
+              text: "{{ ask }}"
+            response_variable: said
+          - variables:
+              words: >-
+                {{ ((said if said is defined and said is mapping else {}).get('response') or {}).get('speech', {}).get('plain', {}).get('speech', '') | trim }}
       - condition: "{{ words | length > 20 and '(no reply)' not in words }}"
       - event: morning_briefing_words
         event_data:
           text: "{{ words }}"
           sleep: "{{ house.sleep_included }}"
+          kit: "{{ kit.get('kit', '') }}"
 
 automation:
   # the words, ahead of time: when the sunrise starts, or on a day without one, the moment the house
@@ -311,6 +426,21 @@ automation:
       - action: script.morning_briefing
         continue_on_error: true
 
+  # heard, so the digest retires everything in the kit (the same pool as the welcome home's)
+  - id: morning_briefing_told
+    alias: "Morning briefing heard, the digest retires it"
+    triggers:
+      - trigger: event
+        event_type: morning_briefing_spoken
+    conditions:
+      - "{{ (trigger.event.data.kit | default('')) != '' }}"
+    actions:
+      - action: rest_command.digest_told
+        continue_on_error: true
+        data:
+          kit: "{{ trigger.event.data.kit }}"
+          words: "{{ trigger.event.data.text | default('') }}"
+
   - id: morning_sleep_arrives_later
     alias: "Last night's sleep, when Oura has it"
     triggers:
@@ -340,7 +470,7 @@ automation:
 
 intent_script:
   MorningBriefing:
-    description: "The morning briefing: the day ahead and a little news."
+    description: "The morning briefing: the day ahead, what came through overnight and a little news. Asked again, today's briefing again."
     action:
       # saying good morning at the Hub means you're up: the wake-up alarm stops, Night ends
       - event: wake_up_confirmed
@@ -350,25 +480,52 @@ intent_script:
             continue_on_error: true
             data:
               mode: Morning
-      # the written words if they're waiting, otherwise the house's own short version straight away
-      # (twenty seconds of silence is no answer to "good morning")
+      # already said today: the same briefing again, in full, rather than the house's short version
+      - variables:
+          said_today: >-
+            {% set at = state_attr('sensor.morning_briefing_words', 'said_at') | float(0) %}
+            {{ at > 0 and as_local(as_datetime(at)).date() == now().date()
+               and (state_attr('sensor.morning_briefing_words', 'said_text') or '') | length > 20 }}
+      # not yet: the words if they're fresh, otherwise written now. The AI task takes about three
+      # seconds, and after twelve it's the house's own short version, since a long silence is no
+      # answer to "good morning"
+      - if: >-
+          {{ not said_today and not is_state('binary_sensor.morning_briefing_words_fresh', 'on')
+             and (states.conversation.jarvis_cloud is not none or states.ai_task.jarvis_writer is not none) }}
+        then:
+          - variables:
+              before: "{{ state_attr('sensor.morning_briefing_words', 'written_at') | float(0) }}"
+          - action: script.turn_on
+            continue_on_error: true
+            target:
+              entity_id: script.morning_briefing_prepare
+            data:
+              variables:
+                force: true
+          - wait_template: "{{ state_attr('sensor.morning_briefing_words', 'written_at') | float(0) > before }}"
+            timeout: 12
       - action: script.morning_briefing_text
         response_variable: house
       - variables:
           ready: >-
-            {{ is_state('sensor.morning_briefing_words', 'ready')
-               and as_local(as_datetime(state_attr('sensor.morning_briefing_words', 'written_at') | float(0))).date() == now().date() }}
+            {% set w = state_attr('sensor.morning_briefing_words', 'written_at') | float(0) %}
+            {{ is_state('sensor.morning_briefing_words', 'ready') and w > 0 and as_local(as_datetime(w)).date() == now().date() }}
           result:
-            text: "{{ state_attr('sensor.morning_briefing_words', 'text') if ready else house.text }}"
-      - if: "{{ ready }}"
+            text: >-
+              {{ state_attr('sensor.morning_briefing_words', 'said_text') if said_today
+                 else (state_attr('sensor.morning_briefing_words', 'text') if ready else house.text) }}
+      # said is said: the Hub doesn't give it again when it next sees me
+      - if: "{{ not said_today }}"
         then:
           - event: morning_briefing_spoken
-      # said is said: the Hub doesn't give it again when it next sees me
-      - action: input_datetime.set_datetime
-        target:
-          entity_id: input_datetime.last_morning_briefing
-        data:
-          datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+            event_data:
+              text: "{{ result.text }}"
+              kit: "{{ (state_attr('sensor.morning_briefing_words', 'kit') or '') if ready else '' }}"
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.last_morning_briefing
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
       - stop: "Done"
         response_variable: result
     speech:

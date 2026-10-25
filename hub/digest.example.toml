@@ -34,6 +34,13 @@ openers = [
   "Keep the welcome to two or three words, then straight in.",
   "Open with the house notes if one's worth saying, otherwise a plain welcome home, then the material.",
 ]
+# the morning briefing always starts "Good morning.", so its openers are about the order
+morning_openers = [
+  "After good morning, the day ahead, then what came through overnight, then the material.",
+  "After good morning, the material first, then the day ahead and anything from overnight.",
+  "After good morning, what came through overnight first if anything did, then the day ahead, then the material.",
+  "After good morning, a line on the day ahead, then straight into the material, and overnight at the end.",
+]
 late_openers = [
   "A quiet welcome home, it's late, then the one thing.",
   "Start quietly on the one thing, and welcome {name} home at the end.",

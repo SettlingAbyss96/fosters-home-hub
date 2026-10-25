@@ -65,6 +65,10 @@ intents:
       - sentences:
           - "good morning [jarvis|sir]"
           - "(brief me|morning briefing|give me the briefing)"
+          - "what's [in] my morning (brief|briefing|overview|update)"
+          - "[give me|tell me|read me] my morning (brief|briefing|overview|update) [again]"
+          - "(repeat|say) [the|my] [morning] (brief|briefing) [again]"
+          - "what did i miss [overnight|last night]"
           - "what (does|do) (my day|today) look like"
           - "what's (my day|today) look like"
   KeepMeAwake:
