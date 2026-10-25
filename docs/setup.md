@@ -86,7 +86,9 @@ won't (then deploy with `SKIP_TESTS=1`). `host/78-esphome.sh` is only for the ES
 ([esp32.md](esp32.md)), and `host/80-ollama.sh` only for a local model. `host/58-digest.sh` is the
 digest the welcome home talks from ([routines.md](routines.md#what-jarvis-says-when-you-get-in)),
 optional, and it wants an AI task to write with (step 7). It installs `hub/digest.toml` if you've
-made one from `hub/digest.example.toml`, and the example if not.
+made one from `hub/digest.example.toml`, and the example if not. `host/59-journal.sh` is the journal
+that asks how it went after the welcome home ([journal.md](journal.md)), optional too, and the same
+way round for `hub/journal.toml` and `hub/journal.example.toml`.
 
 ## 5. Home Assistant
 

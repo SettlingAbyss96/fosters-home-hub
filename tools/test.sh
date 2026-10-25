@@ -9,6 +9,6 @@ cd "$(dirname "$0")/.."
 target=${HUB:-$(python tools/house.py get hub.ssh hub@ha-hub.local)}
 # a run orphaned by a dropped connection would otherwise still be going
 ssh "$target" 'pkill -f "[h]a-test/venv/bin/python -m pytest" || true'
-tar -c ha/config tests tools/setup_ha.py tools/house.py hub/hub_digest.py hub/digest.example.toml | ssh "$target" 'rm -rf ~/ha-test/work && mkdir -p ~/ha-test/work && tar -x -C ~/ha-test/work'
+tar -c ha/config tests tools/setup_ha.py tools/house.py hub/hub_digest.py hub/digest.example.toml hub/hub_journal.py hub/journal.example.toml | ssh "$target" 'rm -rf ~/ha-test/work && mkdir -p ~/ha-test/work && tar -x -C ~/ha-test/work'
 args=$(printf '%q ' "$@")
 ssh "$target" "cd ~/ha-test/work/tests && ~/ha-test/venv/bin/python -m pytest -q -p no:cacheprovider --timeout 180 $args"

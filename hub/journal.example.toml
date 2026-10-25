@@ -1,0 +1,163 @@
+# What Jarvis asks once you're home (hub/hub_journal.py, docs/journal.md). Copy this to journal.toml
+# to make it yours; journal.toml is in .gitignore, and host/59-journal.sh installs it if it's there
+# and this file if it isn't. Every kind of place with a section here gets asked about; anything else
+# (the pharmacy, the bank, a petrol station, somewhere with no name on the map) never does.
+#
+#   min_minutes  shorter than this there isn't much to ask about
+#   again_days   somewhere you've been before gets asked about again after this many days. Leave it
+#                out and only the first visit gets a question. Work is once a day, whatever it says
+#   weight       a little extra when two places want the question (new places come first anyway)
+#   first        the first time you're there
+#   again        every time after that
+#   also         the second place in a question, after the first ("How was work? And {name}?")
+#
+# {name} is the place's name from the map. Never anything about how long you were there: Jarvis
+# doesn't comment on work hours, and two hours in a cafe is nobody's business
+
+# the zone in Home Assistant that's work (Settings > Areas, zones)
+work_zone = "Work"
+
+[kinds.work]
+min_minutes = 30
+again = [
+  "How was work?",
+  "How did today go at work?",
+  "Anything from work today worth writing down?",
+  "How was the day at work? Anything stand out?",
+  "Good day at work?",
+  "How did work treat you today?",
+  "Anything happen at work today you'd like to remember?",
+  "How did it go at work today? The good and the bad.",
+]
+also = ["And how was work?", "And work, how did it go?", "And how did work go?"]
+
+[kinds.cafe]
+min_minutes = 15
+again_days = 14
+weight = 1.2
+first = [
+  "{name} was a first. What was the place like?",
+  "How did you find {name}? Somewhere you'd go back to?",
+  "First time at {name}. How was the ambiance?",
+  "What did you make of {name}? The coffee, the feel of the place?",
+]
+again = [
+  "How was {name} today? Busy, or quiet enough to think?",
+  "How was the atmosphere at {name} this time?",
+  "Was {name} up to its usual standard?",
+  "How was {name} this time?",
+]
+also = ["And {name}, how was the ambiance?", "And how was {name}?", "And {name}, what was it like?"]
+
+[kinds.restaurant]
+min_minutes = 15
+again_days = 14
+weight = 1.2
+first = [
+  "How was {name}? What did you have?",
+  "First time at {name}. Was the food worth it?",
+  "What did you make of {name}? Would you go back?",
+]
+again = [
+  "How was {name} this time? Order anything new?",
+  "Was {name} as good as usual?",
+  "How was the food at {name}?",
+]
+also = ["And {name}, how was the food?", "And how was {name}?"]
+
+[kinds.bar]
+min_minutes = 20
+again_days = 14
+first = [
+  "How was {name}? What's the place like?",
+  "First time at {name}. Good spot?",
+  "What did you make of {name}?",
+]
+again = [
+  "How was {name} this time?",
+  "Good atmosphere at {name}?",
+]
+also = ["And {name}, how was it?", "And how was {name}?"]
+
+[kinds.shop]
+min_minutes = 8
+again_days = 30
+weight = 0.6
+first = [
+  "Find what you were after at {name}?",
+  "First time at {name}. Anything good there?",
+  "How was {name}? Worth another trip?",
+]
+again = [
+  "Find what you needed at {name}?",
+  "Anything worth noting from {name}?",
+]
+also = ["And {name}, find what you were after?", "And how was {name}?"]
+
+# the weekly shop: the first time is interesting, every Saturday after that isn't
+[kinds.grocery]
+min_minutes = 8
+weight = 0.4
+first = [
+  "First time at {name}. How does it compare?",
+  "How was {name}? Worth switching to?",
+]
+also = ["And {name}, how does it compare?"]
+
+[kinds.gym]
+min_minutes = 20
+again_days = 7
+first = [
+  "How was {name}? Good place to train?",
+  "First session at {name}. How was it?",
+]
+again = [
+  "How was the workout?",
+  "Good session at {name}?",
+  "How did training go?",
+]
+also = ["And the workout, how was it?", "And how was {name}?"]
+
+# a film, a museum, a concert: every one is different, so every one gets asked about
+[kinds.culture]
+min_minutes = 30
+again_days = 0
+weight = 1.5
+first = [
+  "How was {name}? Worth it?",
+  "What did you make of {name}?",
+  "How was {name}? Anything that stayed with you?",
+]
+again = [
+  "How was {name} this time?",
+  "What did you see at {name}? Any good?",
+  "How was {name}? Worth it?",
+]
+also = ["And {name}, how was it?", "And what did you make of {name}?"]
+
+[kinds.outdoors]
+min_minutes = 20
+again_days = 14
+first = [
+  "How was {name}?",
+  "First time at {name}. Nice out there?",
+]
+again = [
+  "Nice out at {name}?",
+  "How was {name} today?",
+]
+also = ["And {name}, how was it out there?", "And how was {name}?"]
+
+# somewhere Apple's maps call an area of interest: a market, a campus, a trail, a park
+[kinds.area]
+min_minutes = 20
+again_days = 14
+first = [
+  "How was {name}?",
+  "What did you make of {name}?",
+]
+again = [
+  "How was {name} this time?",
+  "Anything good at {name} today?",
+]
+also = ["And {name}, how was it?", "And how was {name}?"]

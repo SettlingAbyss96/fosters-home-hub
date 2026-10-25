@@ -49,6 +49,7 @@ Assistant's own debug recordings, which this repo doesn't. What does go out:
 | Searches the agent decides to run | the provider's search | news, anything you ask about the world |
 | Your home's location | the weather service (met.no by default) | every forecast |
 | The phone's location | your Home Assistant, through Home Assistant Cloud or whatever you use to reach it from outside | as the phone reports |
+| A box around home, its four corners and nothing else | OpenStreetMap's Overpass API, for the journal's map of places ([journal.md](journal.md)) | once a month, if the journal's on |
 | Busy or free, nothing else | nowhere: it's your calendar's free/busy feed coming in | every few minutes |
 | Sleep and activity | Oura's API, your own account | if you use the ring |
 
@@ -59,9 +60,12 @@ it's worth writing it the way you'd brief someone you trust but don't know well.
 
 ## What's fenced on the network
 
-- The speech engines' ports (Kokoro 10210, Parakeet 10310, and Ollama's 11434 if it's on) answer
-  only the Home Assistant VM, by its MAC address, and the Hub itself. Everyone else gets a TCP reset.
-  nftables, one small table each, in the host scripts
+- The speech engines' ports (Kokoro 10210, Parakeet 10310, and Ollama's 11434 if it's on), the
+  digest's 10230 and the journal's 10231 answer only the Home Assistant VM, by its MAC address, and
+  the Hub itself. Everyone else gets a TCP reset. nftables, one small table each, in the host scripts
+- Where you've been stays on the Hub. The journal matches positions to places against its own copy
+  of the map, writes its questions from templates, and keeps the answers in its database and in
+  `/config/journal`, so no position, place name or answer goes to the cloud agent or anyone else
 - The kiosk's Chromium debugging port is bound to 127.0.0.1, so only the Hub can drive it
 - The ESP32 nodes talk to Home Assistant over ESPHome's encrypted API, and update only with their
   password

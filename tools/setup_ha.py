@@ -78,6 +78,7 @@ DEFAULTS = [
     ("input_boolean.auto_laundry", "input_boolean/turn_on", {}),
     ("input_boolean.auto_printers", "input_boolean/turn_on", {}),
     ("input_boolean.auto_desk", "input_boolean/turn_on", {}),
+    ("input_boolean.auto_journal", "input_boolean/turn_on", {}),
 ]
 
 # the labels the packages read (packages/lights.yaml, packages/vacuum.yaml)
@@ -639,6 +640,14 @@ def step_config():
       grep -q "^homeassistant:" /config/configuration.yaml || {
         printf "\\n# Packages: one file per feature, from the fosters-home-hub repo\\nhomeassistant:\\n  packages: !include_dir_named packages\\n" >>/config/configuration.yaml
         changed=1; }
+      # the journal writes there (packages/journal.yaml)
+      mkdir -p /config/journal
+      grep -q "allowlist_external_dirs" /config/configuration.yaml || {
+        sed -i "s|^  packages: !include_dir_named packages$|&\\n  allowlist_external_dirs:\\n    - /config/journal|" /config/configuration.yaml
+        changed=1; }
+      grep -q "^    - /config/journal$" /config/configuration.yaml || {
+        sed -i "s|^  allowlist_external_dirs:$|&\\n    - /config/journal|" /config/configuration.yaml
+        changed=1; }
       echo $changed""", buf.getvalue())
     if out is None:
         sys.exit(f"couldn't reach root@{HA_HOST} over SSH (is the Terminal & SSH app running with this computer's key?)")
@@ -657,6 +666,23 @@ def step_config():
             time.sleep(5)
     else:
         say("config unchanged")
+
+
+def step_journal_log():
+    """The File notifier the journal writes through, as notify.journal_log: one line per answer in
+    /config/journal/journal.md, which goes with the backups (packages/journal.yaml)"""
+    path = "/config/journal/journal.md"
+
+    def entry():
+        return next((e for e in ws({"type": "config_entries/get", "domain": "file"}) or [] if path in e.get("title", "")), None)
+
+    if entry() is None:
+        r = flow("file", {"next_step_id": "notify"}, {"file_path": path, "timestamp": False})
+        say("journal notifier:", (r or {}).get("type"), (r or {}).get("errors") or "")
+    e = entry()
+    ent = next((x for x in registry() if e and x.get("config_entry_id") == e["entry_id"] and x["entity_id"].startswith("notify.")), None)
+    if ent:
+        rename(ent["entity_id"], "notify.journal_log")
 
 
 def step_vacuum():
@@ -847,7 +873,7 @@ def step_exposure():
             "script.computer_lock", "script.computer_say", "button.computer_lock", "button.computer_sleep",
             "button.computer_screen_off", "media_player.computer", "sensor.desk_power"]
            + [f"input_boolean.auto_{x}" for x in ("vacuum", "clock_modes", "welcome", "bedtime_nudge", "asleep", "briefing",
-                                                   "security", "doorbell", "laundry", "printers", "desk")]
+                                                   "security", "doorbell", "laundry", "printers", "desk", "journal")]
            + [e for e in states() if e.startswith("sensor.oura_ring_") and any(
                k in e for k in ("sleep_score", "total_sleep", "deep_sleep", "rem_sleep", "readiness", "average_sleep_hrv",
                                 "lowest_sleep_heart_rate", "steps", "activity_score", "bedtime_start", "bedtime_end"))])
@@ -926,7 +952,7 @@ def step_fingerprint():
 
 STEPS = [("apps", step_apps), ("discovered", step_discovered), ("local_model", step_local_model),
          ("system_monitor", step_system_monitor), ("tv", step_tv), ("speech", step_speech), ("rooms", step_rooms),
-         ("labels", step_labels), ("renames", step_renames), ("lights", step_lights), ("config", step_config),
+         ("labels", step_labels), ("renames", step_renames), ("lights", step_lights), ("config", step_config), ("journal_log", step_journal_log),
          ("cloud_agent", step_cloud_agent), ("writer", step_writer), ("pipelines", step_pipelines), ("vacuum", step_vacuum),
          ("doorbell", step_doorbell), ("printers", step_printers), ("backups", step_backups),
          ("presence", step_presence), ("defaults", step_defaults), ("tv_names", step_tv_names),

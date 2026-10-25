@@ -4,6 +4,7 @@ house.toml
 ha/context/about.local.md
 hub/parakeet-words.local.txt
 hub/digest.toml
+hub/journal.toml
 
 # the TV's own list and the state it had before (tools/tv.py), and the keeper as built on the Hub
 tv/debloat.txt

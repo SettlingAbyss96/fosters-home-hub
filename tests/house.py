@@ -176,8 +176,10 @@ class House:
         self.lights: dict[str, BenchLight] = {}
         self.events: list = []
         self.dead: set[str] = set()
-        # what a faked service answers, by "domain.service": the cloud agent's words, say
-        self.replies: dict[str, dict] = {}
+        # what a faked service answers, by "domain.service": the cloud agent's words, say. A list is
+        # one answer per call, a function works the answer out (or takes its time), an exception
+        # is raised
+        self.replies: dict = {}
 
     # -- building ---------------------------------------------------------------------------------
     @classmethod
@@ -278,7 +280,14 @@ class House:
         @callback
         def record(call: ServiceCall):
             self.calls.append(call)
-            return self.replies.get(f"{call.domain}.{call.service}", {})
+            reply = self.replies.get(f"{call.domain}.{call.service}", {})
+            if isinstance(reply, list):            # one per call, in order: a conversation
+                reply = reply.pop(0) if reply else {}
+            if callable(reply):                    # one that takes its time, or fails
+                reply = reply(call)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
 
         text = "\n".join(p.read_text(encoding="utf-8") for p in (CONFIG / "packages").glob("*.yaml"))
         wanted = set(re.findall(r"action: ([a-z_]+)\.([a-z_0-9]+)\s*$", text, re.M))

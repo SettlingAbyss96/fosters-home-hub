@@ -1,8 +1,13 @@
 # What happened, kept for the morning briefing (packages/morning.yaml): every notification the
 # house sends your phone, and the things worth knowing that happen while you're asleep (the
-# doorbell, the front door, a print finishing or stopping, the vacuum, the backup, Home Assistant
-# restarting). A briefing whose idea of overnight is a printer finishing turns a night of reminders
-# or the doorbell at 2 AM into "Good morning. Dry and seventy-one."
+# doorbell, the front door, a print finishing or stopping, the vacuum). A briefing whose idea of
+# overnight is a printer finishing turns a night of reminders or the doorbell at 2 AM into "Good
+# morning. Dry and seventy-one."
+#
+# The house's own machinery only gets a line when it isn't working: a restart when something's still
+# offline ten minutes after it, the backup when it failed. A day of deploys restarts Home Assistant
+# over and over, and a restart that everything came back from is nothing to know. Anything else can
+# add a line with a house_log_add event ({what, key}).
 #
 # A notification that repeats within the hour (a reminder every 10 minutes, the alarm's) is one line
 # with a count, and one that's been cleared by its tag is marked resolved, so the morning doesn't
@@ -39,14 +44,9 @@ template:
         not_from: [unknown, unavailable]
         not_to: [unknown, unavailable]
         id: vacuum
-      - trigger: state
-        entity_id: sensor.backup_last_successful_automatic_backup
-        not_from: [unknown, unavailable]
-        not_to: [unknown, unavailable]
-        id: backup
-      - trigger: homeassistant
-        event: start
-        id: restart
+      - trigger: event
+        event_type: house_log_add
+        id: added
       - trigger: state
         entity_id: input_select.house_mode
         to: Night
@@ -72,8 +72,8 @@ template:
             {% elif t == 'bambu' %}{{ {'what': 'The Bambu finished its print' if trigger.to_state.state == 'finish' else "The Bambu's print stopped", 'key': 'bambu'} }}
             {% elif t == 'klipper' %}{{ {'what': 'The Klipper printer finished its print' if trigger.to_state.state == 'complete' else "The Klipper printer's print stopped", 'key': 'klipper'} }}
             {% elif t == 'vacuum' %}{{ {'what': 'The vacuum cleaned', 'key': 'vacuum'} }}
-            {% elif t == 'backup' %}{{ {'what': "Home Assistant's backup ran", 'key': 'backup'} }}
-            {% elif t == 'restart' %}{{ {'what': 'Home Assistant restarted', 'key': 'restart'} }}
+            {% elif t == 'added' %}{{ {'what': trigger.event.data.what | string, 'key': trigger.event.data.key | default('added') | string}
+                                      if trigger.event.data.what | default('') else {} }}
             {% elif t == 'night' %}{{ {'what': 'Night', 'key': 'night'} }}
             {% else %}{{ {} }}{% endif %}
           # a notification cleared by its tag: dealt with
@@ -109,3 +109,40 @@ template:
         state: "{{ entries | count }}"
         attributes:
           entries: "{{ entries }}"
+
+automation:
+  # A restart only matters when something didn't come back from it: what the attention line has as
+  # offline (packages/glance.yaml) ten minutes on
+  - id: house_log_restart_check
+    alias: "Something didn't come back after a restart"
+    triggers:
+      - trigger: homeassistant
+        event: start
+    actions:
+      - delay: "00:10:00"
+      - variables:
+          offline: >-
+            {% set parts = states('sensor.needs_attention').split(' · ') | select('match', 'Offline: ') | list %}
+            {{ parts[0][9:] if parts else '' }}
+      - condition: "{{ offline != '' }}"
+      - event: house_log_add
+        event_data:
+          what: "Still offline ten minutes after Home Assistant restarted: {{ offline }}"
+          key: restart
+
+  # and the backup only when it failed: the last attempt is newer than the last success, half an
+  # hour on (a good one lands about 15 seconds after its attempt)
+  - id: house_log_backup_failed
+    alias: "The backup failed"
+    triggers:
+      - trigger: template
+        value_template: >-
+          {% set a = states('sensor.backup_last_attempted_automatic_backup') | as_datetime(none) %}
+          {% set ok = states('sensor.backup_last_successful_automatic_backup') | as_datetime(none) %}
+          {{ a is not none and (ok is none or a > ok + timedelta(minutes=1)) }}
+        for: "00:30:00"
+    actions:
+      - event: house_log_add
+        event_data:
+          what: "Home Assistant's backup failed"
+          key: backup

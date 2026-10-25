@@ -504,7 +504,9 @@ def candidates(db, cfg, now):
     by_source = {}
     for r in db.execute("SELECT * FROM items WHERE told IS NULL").fetchall():
         src = cfg["sources"].get(r["source"])
-        if src is None or src["kind"] in ("context", "recalls"):   # the why, and the priorities
+        if src is None or src["kind"] == "context":                # the why
+            continue
+        if src["kind"] == "recalls" and src.get("lead", True):     # the priorities
             continue
         days = fresh_days(cfg, src)
         if days and now - (r["published"] or r["seen"]) > days * DAY:
@@ -739,9 +741,10 @@ def priorities(db, cfg, now, name, late):
     the strongest follow-up. Late, only the strongest of them"""
     m = cfg["moves"]
     out = []
-    # a safety recall on your car: said once, ahead of everything, deadband or not
+    # a safety recall on your car: said once, ahead of everything, deadband or not. With lead = false
+    # it takes its turn on its shelf instead, as a severe item
     for name_, src in cfg["sources"].items():
-        if src["kind"] != "recalls":
+        if src["kind"] != "recalls" or not src.get("lead", True):
             continue
         days = fresh_days(cfg, src)
         for r in db.execute("SELECT * FROM items WHERE source = ? AND told IS NULL AND COALESCE(published, seen) > ? "
@@ -1002,6 +1005,10 @@ def describe_item(n, c, name):
         return f"[{n}] Among the week's top posts on {who}: \"{i['title']}\". {i['text']}"
     if src["kind"] == "podcast":
         return f"[{n}] An episode of {who} ({day(i['published'])}): \"{i['title']}\". {i['text']}"
+    if src["kind"] == "recalls":
+        return (f"[{n}] A safety recall that covers {name}'s car, {who}, reported "
+                f"{datetime.fromtimestamp(i['published'] or i['seen']):%B %Y}: {i['title']}. {i['text']} "
+                "Say what it's about and what the fix is, plainly, once.")
     return f"[{n}] {who} ({day(i['published'])}): \"{i['title']}\". {i['text']}"
 
 

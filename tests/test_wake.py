@@ -232,6 +232,44 @@ async def test_a_reminder_already_dealt_with_isnt_said_again(house_at):
     assert "Car:" not in text
 
 
+def logged(house):
+    """What's in the house log, without its Night markers"""
+    return [e["what"] for e in house.attr("sensor.house_log", "entries") or [] if e["key"] != "night"]
+
+
+async def test_a_restart_is_only_news_when_something_didnt_come_back(house_at):
+    # a day of deploys restarts Home Assistant over and over, and everything comes back. A log that
+    # kept every one would read them out in the morning
+    house = await house_at(f"{TUESDAY} 01:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    restarted = {"entity_id": "automation.something_didn_t_come_back_after_a_restart"}
+    await house.hass.services.async_call("automation", "trigger", restarted)
+    await house.advance(minutes=15)
+    assert not logged(house), "all back: nothing to say"
+    house.set("vacuum.robot_vacuum", "unavailable", friendly_name="Robot vacuum")
+    await house.hass.services.async_call("automation", "trigger", restarted)
+    await house.advance(minutes=200)                  # 5:25, up
+    await up(house)
+    text = house.called("ai_task.generate_data")[-1].data["instructions"]
+    assert "Still offline ten minutes after Home Assistant restarted: Robot vacuum" in text
+    assert text.count("restarted") == 1
+
+
+async def test_the_backup_is_only_news_when_it_failed(house_at):
+    house = await house_at(f"{TUESDAY} 01:50", {"input_select.house_mode": "Night",
+                                                "sensor.backup_last_attempted_automatic_backup": "2026-10-12T05:17:04+00:00",
+                                                "sensor.backup_last_successful_automatic_backup": "2026-10-12T05:17:17+00:00"})
+    house.set("sensor.backup_last_attempted_automatic_backup", "2026-10-13T05:50:04+00:00")
+    await house.advance(seconds=15)
+    house.set("sensor.backup_last_successful_automatic_backup", "2026-10-13T05:50:19+00:00")
+    await house.advance(minutes=45)
+    assert not logged(house), "a backup that worked is no news"
+    house.set("sensor.backup_last_attempted_automatic_backup", "2026-10-13T06:40:04+00:00")
+    await house.advance(minutes=45)
+    assert logged(house) == ["Home Assistant's backup failed"]
+
+
 def sleep_night(score, hours, month=72, month_h=6.9, week=None):
     return {"sensor.oura_ring_bedtime_end": f"{TUESDAY}T09:10:00+00:00",
             "sensor.oura_ring_sleep_score": (str(score), {"data_date": TUESDAY}),

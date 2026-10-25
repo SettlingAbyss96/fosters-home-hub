@@ -74,6 +74,17 @@ something else first.
 - Then the briefing was the same every evening. Asking for the day's news means two web searches
   that find the same market and the same headlines every time. The digest on the Hub keeps the
   material instead, draws a different way of telling it, and retires whatever's been heard
+- The overnight log kept every restart. A day of deploys restarts Home Assistant over and over, and
+  a restart that everything came back from is nothing to know. A restart only gets a line now when
+  something's still offline ten minutes on, and the backup only when it failed
+  ([caring.md](caring.md#owning-it-isnt-caring-about-it))
+- Proximity scored a daily driver like a hobby. The car's name weighed as much as the printer's, so
+  everyday news about a car you only drive outscored a sport you love, which has no proximity at
+  all. Using something and caring about it are separate terms in the model now
+  ([caring.md](caring.md#owning-it-isnt-caring-about-it))
+- Not answering Jarvis is an error. `assist_satellite.ask_question` raises when nobody says anything,
+  so the house's error alert would send "something broke" every evening nobody felt like talking.
+  The alert lets "No answer from" go ([journal.md](journal.md#what-gets-asked))
 - Jarvis wouldn't leave a conversation alone. With guests over, two false wakes turned into a running
   commentary: an answer ending in a question opened the long follow-up window, which heard more side
   talk, and so on until it got muted. openWakeWord went back to its default 0.5, and Jarvis answers

@@ -170,6 +170,11 @@ they're on the dashboard and in "anything need my attention?" when you want them
 something and the other's a to-do list, and a prompt that lumps them together as "nothing negative"
 ends up leading every down day with whatever went well and never saying why it fell.
 
+Once it's said, Jarvis asks how it went if the trip had somewhere worth asking about in it, work
+once a day, a cafe or a restaurant you hadn't been to before, a familiar one after a couple of
+weeks, and listens for the answer, which goes in the journal. How it knows where you were, and what
+it leaves alone, is in [journal.md](journal.md).
+
 ### When something gets said again
 
 Nothing gets said twice unless it has moved, and how far it has to move depends on how much it
@@ -251,8 +256,10 @@ what came through overnight, then something nobody's said yet from the digest, f
 as the welcome, so the morning never repeats the evening before. Overnight is
 `packages/house_log.yaml`, which keeps every notification the house sends your phone, a repeat
 within the hour as one line with a count, plus the doorbell, the front door while you're asleep, a
-print finishing or stopping, the vacuum, the backup and Home Assistant restarting, and the briefing
-takes everything after the house last went to Night. Without the digest or a writer, the material
+print finishing or stopping and the vacuum, and the briefing takes everything after the house last
+went to Night. The house's own machinery only gets a line when it's broken, a restart that left
+something offline ten minutes on or a backup that failed, since a restart everything came back from
+is nothing to know ([caring.md](caring.md#owning-it-isnt-caring-about-it)). Without the digest or a writer, the material
 is the cloud agent looking up `news.on_arrival` as before.
 
 Words written ahead go stale in three ways, and any one of them gets them written again while the
@@ -373,7 +380,8 @@ app within three minutes of walking out of the front door. "Jarvis, don't vacuum
 does the same as the switch.
 
 The others are the clock moving the modes, the welcome lights, bedtime nudges, the fell-asleep
-check, the briefing, the doorbell, someone's-in alerts, laundry, printers and the desk. Each switch
+check, the briefing, the doorbell, someone's-in alerts, laundry, printers, the desk and Jarvis
+asking how it went. Each switch
 is one condition at the top of its automations, nothing cleverer. Anything that's off shows in the
 attention line on the Home screen for as long as it's off, because the failure I actually expect
 from this is turning something off in March and wondering in May why it stopped.
@@ -420,5 +428,5 @@ The odds of all of them breaking on the same morning are low.
 - The bedroom radar node ([esp32.md](esp32.md)), so "still in bed" is a fact instead of a guess from
   wherever the Hub is
 - Music in the morning, once there's something to play it on
-- A commute check before the morning's last call to leave, and a work zone so arriving at work can
-  mean something
+- A commute check before the morning's last call to leave. The journal's Work zone could tell the
+  morning something too, once arriving at work means more than a question in the evening

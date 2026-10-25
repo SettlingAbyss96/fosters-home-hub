@@ -1,0 +1,317 @@
+# How did it go? The journal on the Hub (hub/hub_journal.py, installed by host/59-journal.sh, the
+# math in docs/journal.md) gets every position the phone reports (the automation at the bottom) and
+# works out where you stayed and what kind of place it was. Once the welcome home's been said, Jarvis
+# asks about the trip: work once a day (a zone called Work in Home Assistant), anywhere new,
+# somewhere familiar only after a while, and never a doctor's, a petrol station or anywhere with no
+# name on the map, which is mostly other people's houses. It listens for the answer
+# (assist_satellite.ask_question, which stops at speech to text, so what you say goes nowhere near
+# the cloud agent), asks once or twice whether there's anything else, and keeps it twice: in the
+# Hub's database, and as a line in /config/journal/journal.md (notify.journal_log, added by
+# tools/setup_ha.py), which goes with the backups.
+#
+# "Not now" is an answer too, and so is saying nothing: that trip doesn't come round again. Not with
+# guests in (guest mode), not at night, not while Jarvis is muted. "Jarvis, note ..." adds a line any
+# time, "ask me about my day" asks now, and "what's in my journal today" reads today's back.
+# "Jarvis asks how it went" (packages/controls.yaml) switches the asking off
+rest_command:
+  journal_point:
+    url: "http://{{ states('input_text.hub_address') }}:10231/point"
+    method: post
+    content_type: "application/json"
+    payload: "{{ point | to_json }}"
+    timeout: 5
+  journal_ask:
+    url: "http://{{ states('input_text.hub_address') }}:10231/ask"
+    method: get
+    timeout: 10
+  journal_answer:
+    url: "http://{{ states('input_text.hub_address') }}:10231/answer"
+    method: post
+    content_type: "application/json"
+    payload: '{{ {"ask": ask | int(0), "answer": answer, "heard": heard | bool} | to_json }}'
+    timeout: 8
+  journal_note:
+    url: "http://{{ states('input_text.hub_address') }}:10231/note"
+    method: post
+    content_type: "application/json"
+    payload: '{{ {"text": text} | to_json }}'
+    timeout: 8
+  journal_today:
+    url: "http://{{ states('input_text.hub_address') }}:10231/today"
+    method: get
+    timeout: 8
+
+script:
+  journal_ask:
+    alias: "How did it go?"
+    description: "Jarvis asks how the trip went (work, a new cafe, a restaurant), listens, and keeps the answer in the journal."
+    icon: mdi:notebook-edit-outline
+    mode: single
+    max_exceeded: silent
+    fields:
+      asked:
+        description: "Asked for by voice (\"ask me about my day\"), so say so when there's nothing to ask"
+        selector:
+          boolean:
+      wait:
+        description: "Seconds to wait first, for Jarvis to finish saying something else"
+        selector:
+          number: {min: 0, max: 30}
+    sequence:
+      - delay: "{{ wait | default(0) | int(0) }}"
+      - variables:
+          by_voice: "{{ asked | default(false) | bool }}"
+      - condition: >-
+          {{ by_voice or (is_state('input_boolean.auto_journal', 'on')
+                          and is_state('input_boolean.guest_mode', 'off')
+                          and is_state('input_boolean.jarvis_muted', 'off')
+                          and not is_state('input_select.house_mode', 'Night')) }}
+      - action: rest_command.journal_ask
+        continue_on_error: true
+        response_variable: got
+      - variables:
+          q: >-
+            {% set c = (got if got is defined and got is mapping else {}).get('content') %}
+            {{ c if c is mapping and c.get('question') else {} }}
+          started: "{{ now().timestamp() }}"
+          words: ""
+          added: ""
+      - if: "{{ not q }}"
+        then:
+          - if: "{{ by_voice }}"
+            then:
+              - action: assist_satellite.announce
+                continue_on_error: true
+                target:
+                  entity_id: assist_satellite.hub_500_voice_assist_satellite
+                data:
+                  message: "Nothing I'd ask about today. Say note, and whatever you'd like kept."
+                  preannounce: false
+          - stop: "Nothing to ask"
+      - action: assist_satellite.ask_question
+        continue_on_error: true
+        data:
+          entity_id: assist_satellite.hub_500_voice_assist_satellite
+          question: "{{ q.question }}"
+          preannounce: false
+          answers:
+            - id: skip
+              sentences:
+                - "not now"
+                - "skip [it|that]"
+                - "never mind"
+                - "no thanks"
+                - "[i'd] rather not [say]"
+                - "pass"
+                - "later"
+                - "nothing"
+        response_variable: heard
+      # no answer at all raises, and so does a satellite that's busy or gone. Only the first takes
+      # the few seconds of saying the question and listening, and only that one counts as asked
+      - variables:
+          listened: "{{ heard is defined and heard is mapping }}"
+          skipped: "{{ heard is defined and heard is mapping and heard.id == 'skip' }}"
+          words: "{{ heard.sentence | default('') | trim if heard is defined and heard is mapping and heard.id != 'skip' else '' }}"
+          spoken: "{{ heard is defined or now().timestamp() - started > 4 }}"
+      # a sentence ends the turn (docs/voice.md), so a journal answer often comes in two
+      - if: "{{ words != '' }}"
+        then:
+          - action: assist_satellite.ask_question
+            continue_on_error: true
+            data:
+              entity_id: assist_satellite.hub_500_voice_assist_satellite
+              question: "{{ ['Anything else?', 'Anything more?', 'Anything else worth keeping?'] | random }}"
+              preannounce: false
+              answers:
+                - id: done
+                  sentences:
+                    - "no"
+                    - "nope"
+                    - "[no] that's (it|all|everything)"
+                    - "nothing [else]"
+                    - "all good"
+                    - "i'm good"
+                    - "no thanks"
+                    - "that'll do"
+            response_variable: more
+          - variables:
+              added: "{{ more.sentence | default('') | trim if more is defined and more is mapping and more.id != 'done' else '' }}"
+              words: "{{ (words ~ ' ' ~ added) | trim }}"
+          - if: "{{ added != '' }}"
+            then:
+              - action: assist_satellite.ask_question
+                continue_on_error: true
+                data:
+                  entity_id: assist_satellite.hub_500_voice_assist_satellite
+                  question: "Anything else?"
+                  preannounce: false
+                  answers:
+                    - id: done
+                      sentences:
+                        - "no"
+                        - "nope"
+                        - "[no] that's (it|all|everything)"
+                        - "nothing [else]"
+                        - "all good"
+                        - "i'm good"
+                        - "no thanks"
+                        - "that'll do"
+                response_variable: last
+              - variables:
+                  words: >-
+                    {% set a = last.sentence | default('') | trim if last is defined and last is mapping and last.id != 'done' else '' %}
+                    {{ (words ~ ' ' ~ a) | trim }}
+      - action: rest_command.journal_answer
+        continue_on_error: true
+        data:
+          ask: "{{ q.ask }}"
+          answer: "{{ words }}"
+          heard: "{{ spoken }}"
+      - choose:
+          - conditions: "{{ words != '' }}"
+            sequence:
+              - action: notify.send_message
+                continue_on_error: true
+                target:
+                  entity_id: notify.journal_log
+                data:
+                  message: >-
+                    - **{{ now().strftime('%a %b %-d, %-I:%M %p') }}**, {{ q.places | map(attribute='name') | join(' and ') }}.
+                    _{{ q.question }}_ {{ words }}
+              - event: journal_entry
+                event_data:
+                  when: "{{ now().strftime('%a %b %-d, %-I:%M %p') }}"
+                  places: "{{ q.places | map(attribute='name') | join(' and ') }}"
+                  answer: "{{ words }}"
+              - action: assist_satellite.announce
+                continue_on_error: true
+                target:
+                  entity_id: assist_satellite.hub_500_voice_assist_satellite
+                data:
+                  message: "{{ ['Noted.', 'Written down.', 'In the journal.', 'Duly noted.'] | random }}"
+                  preannounce: false
+          - conditions: "{{ skipped }}"
+            sequence:
+              - action: assist_satellite.announce
+                continue_on_error: true
+                target:
+                  entity_id: assist_satellite.hub_500_voice_assist_satellite
+                data:
+                  message: "Of course."
+                  preannounce: false
+
+  journal_note:
+    alias: "A line for the journal"
+    description: "Keeps a line in the journal, with no place attached."
+    icon: mdi:notebook-plus-outline
+    mode: queued
+    fields:
+      text:
+        description: "What to keep"
+        selector:
+          text:
+    sequence:
+      - condition: "{{ text | default('') | trim != '' }}"
+      - action: rest_command.journal_note
+        continue_on_error: true
+        data:
+          text: "{{ text | trim }}"
+      - action: notify.send_message
+        continue_on_error: true
+        target:
+          entity_id: notify.journal_log
+        data:
+          message: "- **{{ now().strftime('%a %b %-d, %-I:%M %p') }}**. {{ text | trim }}"
+      - event: journal_entry
+        event_data:
+          when: "{{ now().strftime('%a %b %-d, %-I:%M %p') }}"
+          places: ""
+          answer: "{{ text | trim }}"
+
+# The last twenty entries, for the Journal card on the Routines page
+template:
+  - trigger:
+      - trigger: event
+        event_type: journal_entry
+    action:
+      - variables:
+          entries: >-
+            {% set old = state_attr('sensor.journal', 'entries') %}
+            {% set e = trigger.event.data %}
+            {{ ((old if old is list else []) + [{'when': e.when, 'places': e.places, 'answer': e.answer}])[-20:] }}
+    sensor:
+      - name: "Journal"
+        unique_id: journal
+        icon: mdi:notebook-outline
+        state: "{{ entries | count }}"
+        attributes:
+          entries: "{{ entries }}"
+
+# Sentences: custom_sentences/en/journal.yaml
+intent_script:
+  JournalNote:
+    description: "Something to keep in the journal."
+    action:
+      - action: script.journal_note
+        data:
+          text: "{{ note }}"
+    speech:
+      text: "{{ ['Noted.', 'Written down.', 'In the journal.'] | random }}"
+  JournalAskMe:
+    description: "Ask about the day now."
+    action:
+      # after this answer's been said: asking cancels whatever the satellite is doing
+      - action: script.turn_on
+        target:
+          entity_id: script.journal_ask
+        data:
+          variables:
+            asked: true
+            wait: 4
+    speech:
+      text: "Of course."
+  JournalToday:
+    description: "Reads back what's in the journal today."
+    action:
+      - action: rest_command.journal_today
+        continue_on_error: true
+        response_variable: got
+      - variables:
+          result:
+            text: >-
+              {% set c = (got if got is defined and got is mapping else {}).get('content') %}
+              {% if c is not mapping %}I can't reach the journal right now.
+              {% elif c.get('n', 0) == 0 %}Nothing in the journal today yet.
+              {% else %}{{ c.get('text') }}{% endif %}
+      - stop: "Done"
+        response_variable: result
+    speech:
+      text: "{{ action_response.text if action_response is defined else 'Nothing in the journal today yet.' }}"
+
+automation:
+  # Every new position the phone reports, to the journal on the Hub, with the area of interest
+  # Apple's or Google's maps put it in (a market, a park, a campus) when the companion app says
+  - id: journal_positions
+    alias: "Every position to the journal"
+    mode: queued
+    max: 50
+    triggers:
+      - trigger: state
+        entity_id: person.resident
+    conditions:
+      # only real moves, not attribute noise
+      - condition: template
+        value_template: >-
+          {{ trigger.to_state is not none and trigger.to_state.attributes.latitude is defined and
+             (trigger.from_state is none
+              or trigger.to_state.state != trigger.from_state.state
+              or trigger.to_state.attributes.latitude != trigger.from_state.attributes.get('latitude')
+              or trigger.to_state.attributes.longitude != trigger.from_state.attributes.get('longitude')) }}
+    actions:
+      - action: rest_command.journal_point
+        continue_on_error: true
+        data:
+          point: >-
+            {% set a = trigger.to_state.attributes %}
+            {{ {'t': now().timestamp() | round(1), 'lat': a.latitude, 'lon': a.longitude, 'acc': a.gps_accuracy | default(0),
+                'zone': trigger.to_state.state, 'aoi': state_attr('sensor.phone_geocoded_location', 'Areas Of Interest')} }}

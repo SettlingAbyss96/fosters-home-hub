@@ -46,7 +46,8 @@
 #     (input_text.news, from house.toml). The news is told straight, bad days and their reasons
 #     included. What stays out is the house's upkeep, maintenance and chores, which are on the
 #     dashboard and in "anything need my attention?". Back again within three hours of the last
-#     proper welcome it's just "Welcome back"
+#     proper welcome it's just "Welcome back". Then Jarvis asks how it went, if the trip had
+#     somewhere worth asking about in it (packages/journal.yaml)
 # The phone joining the Wi-Fi without crossing the zone (a stale location) counts too, when the
 # house is Away. "I'm leaving" by voice runs the leaving routine a minute later, and picking Away by
 # hand runs it straight away
@@ -388,6 +389,15 @@ script:
       - event: welcome_home_spoken
         event_data:
           full: "{{ fresh and not back }}"
+      # then how it went, if there's anything to ask about (packages/journal.yaml). On its own, so
+      # the arrival doesn't wait on a conversation
+      - action: script.turn_on
+        continue_on_error: true
+        target:
+          entity_id: script.journal_ask
+        data:
+          variables:
+            wait: 1
 
   # The welcome home, written while you're on the way in. What's going on at home comes from the
   # house (the notes below). What to talk about comes from the digest on the Hub (hub/hub_digest.py)

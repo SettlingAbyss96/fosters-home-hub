@@ -12,7 +12,8 @@
 #     sunrise. Off, the house stays in whatever mode it's in until you change it
 #   - Lights on when I get home: the welcome look. The house still leaves Away when you're back
 #   - Bedtime nudges, the morning briefing, the fell-asleep check, laundry reminders, printer
-#     alerts, the doorbell announcing, someone's-in alerts and the desk-left-on reminder: just those.
+#     alerts, the doorbell announcing, someone's-in alerts, the desk-left-on reminder and Jarvis
+#     asking how it went (packages/journal.yaml): just those. "Ask me about my day" still works.
 #     A washer that's stopped with a problem still says so, that's never a reminder
 #   - The wake-up isn't here. It has its own settings (workdays, weekends, "don't wake me
 #     tomorrow"), and one more switch that can quietly turn off the alarm is the last thing it needs
@@ -61,6 +62,9 @@ input_boolean:
   auto_desk:
     name: "Desk-left-on reminder"
     icon: mdi:desk
+  auto_journal:
+    name: "Jarvis asks how it went"
+    icon: mdi:notebook-edit-outline
 
 input_datetime:
   # the last time Home Assistant itself asked the vacuum to do something: me on the dashboard, by
@@ -104,7 +108,7 @@ template:
                             'auto_bedtime_nudge': 'bedtime nudges', 'auto_asleep': 'asleep check',
                             'auto_briefing': 'briefing', 'auto_security': "someone's-in alerts",
                             'auto_doorbell': 'doorbell', 'auto_laundry': 'laundry', 'auto_printers': 'printer alerts',
-                            'auto_desk': 'desk reminder'} %}
+                            'auto_desk': 'desk reminder', 'auto_journal': 'journal questions'} %}
             {% set ns = namespace(out=[]) %}
             {% for s in states.input_boolean if s.object_id.startswith('auto_') and s.state == 'off' %}
               {% set ns.out = ns.out + [short.get(s.object_id, s.name)] %}
@@ -218,6 +222,9 @@ automation:
       # (never about itself, or one failure in here would keep setting it off)
       - "{{ trigger.event.data.name is search('^homeassistant[.]components[.](automation|script|template|intent_script)')
            and not trigger.event.data.name.endswith('house_error_alert') }}"
+      # nobody answering Jarvis's question is an error to Home Assistant, not the house breaking
+      # (packages/journal.yaml)
+      - "{{ 'No answer from' not in (trigger.event.data.message | default([]) | join(' ')) }}"
       - >-
         {% set at = states('input_datetime.house_error_at') | as_datetime(none) %}
         {{ trigger.event.data.name != states('input_text.house_error_from')

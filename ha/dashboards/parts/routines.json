@@ -313,6 +313,18 @@
       "action": "toggle"
      },
      "color": "green"
+    },
+    {
+     "type": "tile",
+     "entity": "input_boolean.auto_journal",
+     "name": "Jarvis asks how it went",
+     "grid_options": {
+      "columns": 6
+     },
+     "tap_action": {
+      "action": "toggle"
+     },
+     "color": "green"
     }
    ]
   },
@@ -529,6 +541,23 @@
      "grid_options": {
       "columns": "full"
      }
+    }
+   ]
+  },
+  {
+   "type": "grid",
+   "cards": [
+    {
+     "type": "heading",
+     "heading": "Journal",
+     "icon": "mdi:notebook-outline"
+    },
+    {
+     "type": "markdown",
+     "grid_options": {
+      "columns": "full"
+     },
+     "content": "{% set es = (state_attr('sensor.journal', 'entries') or [])[-8:] | reverse | list %}{% for e in es %}**{{ e.when }}**{{ ', ' ~ e.places if e.places }}\n{{ e.answer }}\n\n{% else %}Nothing yet. Jarvis asks after the welcome home, and \"note\" adds a line any time.{% endfor %}"
     }
    ]
   }

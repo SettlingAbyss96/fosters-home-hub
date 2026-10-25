@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-129-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-156-2ea44f?style=flat-square)
 
 </div>
 
@@ -102,6 +102,7 @@ Levels as in my handbook: 1 is no math, 4 is in the weeds.
 | Every signal the house has and how far to trust it | [docs/sensing.md](docs/sensing.md) | 2 to 3 |
 | Modes, looks, leaving and arriving, the wake-up | [docs/routines.md](docs/routines.md) | 2 to 3 |
 | Do you care? The math of what's worth saying: surprise, attention, habituation and the care model | [docs/caring.md](docs/caring.md) | 3 to 4 |
+| How did it go? Where you stayed, what kind of place it was, and the journal Jarvis keeps | [docs/journal.md](docs/journal.md) | 2 to 3 |
 | Lights by layer, the curve they follow through the day, and how to add one | [docs/lighting.md](docs/lighting.md) | 3 |
 | ESP32 sensor nodes to build, and why they beat buying | [docs/esp32.md](docs/esp32.md) | 2 |
 | The scenario tests and the bench they run on | [docs/testing.md](docs/testing.md) | 2 to 3 |
@@ -124,6 +125,7 @@ host/               scripts that build the Debian host, run in order (tools/push
   50-screen.sh        hub-screen: panel power and brightness, PIR, touch wake, over MQTT
   55-stats.sh         hub-stats: CPU, memory, temperatures and disk, per part
   58-digest.sh        hub-digest: what the welcome home talks about, fenced to the VM
+  59-journal.sh       hub-journal: where you stayed, the question after the welcome home, the answers
   60-audio.sh         PipeWire with WebRTC echo cancelling, hub_speaker and hub_mic as defaults
   70-voice.sh         Linux Voice Assistant, pinned, no chimes, Smart Turn and its models
   patches/            the satellite's changes: follow-up window, player, wake log, end of turn, pre-roll
@@ -135,8 +137,9 @@ host/               scripts that build the Debian host, run in order (tools/push
   80-ollama.sh, 81-ollama-fence.sh   an optional local model
   90-test-env.sh      the test bench: Home Assistant 2026.10.0 on its own Python 3.14
 hub/                code that runs on the Hub: the three services, the speech engines' Wyoming
-                    servers, Smart Turn for the satellite, the house words for speech to text, and
-                    the digest with its example sources (digest.example.toml)
+                    servers, Smart Turn for the satellite, the house words for speech to text, the
+                    digest with its example sources (digest.example.toml), and the journal with its
+                    example questions (journal.example.toml)
 ha/
   config/             copied into /config: packages (one file per feature), custom sentences,
                       custom_templates (control.jinja, estimates.jinja, lighting.jinja)

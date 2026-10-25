@@ -173,6 +173,33 @@ told you yet gets a social boost from every other source already carrying it. A 
 its stars have doubled and gained at least 150, two days on at the earliest, so a fork told at 500
 stars comes back once it passes 1,000.
 
+## Owning it isn't caring about it
+
+Proximity measures the wrong thing for a car you only drive. Giving the car's name the same weight
+as your printer's, on the theory that news about your own things is worth more, gets half of it
+right, because Howard's value of information says a recall on it really can change what you do this
+week. But a daily driver has almost nothing written about it that changes anything, while a sport
+you follow changes nothing you do and can be the thing you'd most like to hear about, so ownership
+is a poor stand-in for interest.
+
+[Sharot and Sunstein](https://ideas.repec.org/a/nat/nathum/v4y2020i1d10.1038_s41562-019-0793-1.html)
+split the value people put on information three ways: what it does for their actions, what it does
+to how they feel, and what it does for how they think about the things they care about. Those are
+separate terms, and a briefing that folds them into one gets cars backwards. In the model, proximity
+is the first and only the first, a module your printer runs or the car you drive, and it's worth
+keeping small for anything you only use. The third is the shelf weights and the learned interest,
+and that's where enthusiasm lives. A car that's just how you get about can have its recalls take
+their turn on the cars shelf (`lead = false`) and a low weight on its name, while cars as a subject
+and Formula One get the shelf weight, with the engineering on a shelf of its own.
+
+The house's own machinery fails the same test from the other side. An overnight log that keeps every
+restart turns a day of deploys into "Home Assistant restarted" with a count, ready for the morning,
+and a restart that everything came back from changes nothing you'd do and tells you nothing you
+wanted to know. From the controls side that's reporting the actuator when the operator wanted the
+error. A loop that rejected a disturbance has no error left, and nobody needs to hear that the valve
+moved. So a restart only gets a line when something's still offline 10 minutes after it, and the
+backup only when 30 minutes go by with its last attempt newer than its last success.
+
 ## The care model
 
 From the controls side this is a state estimator feeding a selector, and the state is how much you'd
@@ -208,7 +235,7 @@ state of it, set where they feel right and written down in `[care]` so they can 
 Within a shelf the digest picks with probability proportional to $`e^\eta`$, a softmax, so the top
 item usually wins without always winning. Shelves are drawn the same way from their weights, the
 learned shelf interest and habituation. A few things skip the line entirely. A new safety recall on
-your car comes first and is said once. A market move past the deadband goes in ahead of the format's
+your car comes first and is said once, unless its source is set not to lead. A market move past the deadband goes in ahead of the format's
 items and leads from 2.5. A follow-up takes a slot of its own. Those are interrupts, the way an
 alarm input overrides a filter.
 
@@ -269,13 +296,20 @@ modules are marked, OrcaSlicer and Bambu Studio releases come as "what changed s
 heard", and a fork like the wave-overhang one gets a follow-up only once it has properly taken off.
 
 The car has the sharpest rule. NHTSA's recall API takes a make, a model and a year, and the example
-has a recalls source to fill in with yours. A new recall is said once, ahead of everything, and one
-over a year and a half old is history. Electrek and InsideEVs fill the rest of the shelf, and your
-car's name belongs in the proximity words.
+has a recalls source to fill in with yours. A new recall is said once, ahead of everything or, with
+lead = false, in its turn on the shelf, where severity alone gives it about 7.4 times the odds of an
+otherwise identical item, and one over a year and a half old is history. Electrek and InsideEVs fill
+the rest of the shelf.
+
+Formula One comes in two halves in the example. The news side is Autosport, RaceFans, The Race with
+its MotoGP and IndyCar filtered out, and the drivers in their own words on Beyond the Grid. The
+engineering sits on its own shelf with Racecar Engineering, The Race's Tech Show and Chain Bear,
+because a good explainer on a floor upgrade keeps for three weeks and race news is stale in four
+days.
 
 The house is the one shelf with a perfect proximity score, because it's all yours. The overnight log
-counts repeats, drops anything you've already dealt with, and last night's sleep is compared with
-your month only past a deadband.
+counts repeats, drops anything you've already dealt with and leaves the machinery out unless it's
+broken, and last night's sleep is compared with your month only past a deadband.
 
 The open question is how fast interest really drifts. $`q = 0.01`$ a day is a guess, and the data to
 check it is a few months of "more like that" away.

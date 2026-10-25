@@ -95,13 +95,19 @@ fresh_days = 10
 weight = 1.0
 fresh_days = 14
 
+# cars as a subject, and Formula One with its engineering on a shelf of its own, since a tech
+# explainer keeps for weeks and race news keeps for days
 [shelves.cars]
-weight = 0.8
+weight = 1.0
 fresh_days = 10
 
 [shelves.f1]
-weight = 0.4
-fresh_days = 3
+weight = 1.0
+fresh_days = 4
+
+[shelves.f1_tech]
+weight = 0.6
+fresh_days = 21
 
 # -- formats. `needs` is what every item has to be (a shelf, a kind, a tag, "changes" for a repo's
 # commits or releases, "github" for forks and new repos). `mix` false lets two items share a shelf
@@ -836,7 +842,9 @@ weight = 0.5
 
 # -- cars, and electric cars generally. NHTSA's recalls for your car are a priority: said once, ahead
 # of everything, when a new one is filed, and one over a year and a half old is history. Fill in your
-# car's make, model and year as NHTSA spells them, and put its name in [mine.words]
+# car's make, model and year as NHTSA spells them, and put its name in [mine.words]. If the car is
+# just how you get about, lead = false has a recall take its turn on the shelf as a severe item
+# instead, and a low weight on its name in [mine.words] keeps everyday news about it down
 #
 # [[source]]
 # name = "Car recalls"
@@ -847,6 +855,7 @@ weight = 0.5
 # year = 2021
 # who = "the 2021 RAV4"
 # fresh_days = 540
+# lead = false
 
 [[source]]
 name = "Electrek"
@@ -864,7 +873,8 @@ url = "https://insideevs.com/rss/articles/all/"
 who = "InsideEVs"
 weight = 0.6
 
-# -- Formula One, now and then
+# -- Formula One: the news, what the drivers say (Beyond the Grid is them talking for an hour), and
+# The Race with its MotoGP and IndyCar left out
 
 [[source]]
 name = "Autosport F1"
@@ -874,10 +884,51 @@ url = "https://www.autosport.com/rss/f1/news/"
 who = "Autosport"
 
 [[source]]
-name = "Racecar Engineering"
+name = "The Race"
 shelf = "f1"
+kind = "feed"
+url = "https://www.the-race.com/feed/"
+who = "The Race"
+skip = "\\b(MotoGP|Moto2|Moto3|IndyCar|NASCAR|WEC|Le Mans|IMSA|Formula E|WRC|Supercars|BTCC|DTM|WorldSBK)\\b"
+
+[[source]]
+name = "RaceFans"
+shelf = "f1"
+kind = "feed"
+url = "https://www.racefans.net/feed/"
+who = "RaceFans"
+
+[[source]]
+name = "Beyond the Grid"
+shelf = "f1"
+kind = "podcast"
+url = "https://audioboom.com/channels/4964339.rss"
+who = "F1's Beyond the Grid podcast"
+fresh_days = 21
+
+# -- and how the cars work, on its own shelf
+
+[[source]]
+name = "Racecar Engineering"
+shelf = "f1_tech"
 kind = "feed"
 url = "https://www.racecar-engineering.com/feed/"
 who = "Racecar Engineering"
-fresh_days = 14
+fresh_days = 21
 weight = 0.8
+
+[[source]]
+name = "The Race F1 Tech Show"
+shelf = "f1_tech"
+kind = "podcast"
+url = "https://feeds.acast.com/public/shows/6819af44f30c20bff7763093"
+who = "The Race's F1 Tech Show"
+fresh_days = 21
+
+[[source]]
+name = "Chain Bear"
+shelf = "f1_tech"
+kind = "podcast"
+url = "https://feeds.megaphone.fm/chain-bear"
+who = "Chain Bear"
+fresh_days = 30

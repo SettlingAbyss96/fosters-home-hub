@@ -463,6 +463,27 @@ def test_a_safety_recall_on_my_car_comes_first_and_once(tmp_path):
     assert "recall" not in d.draw(db, cfg, now=NOW + 3600, rng=random.Random(2))["first"]
 
 
+def test_a_recall_on_a_daily_driver_takes_its_turn(tmp_path):
+    # a car that's only how you get about: with lead = false its recall is a severe item on the cars
+    # shelf, not the first thing said
+    cfg = config({"name": "Hackaday", "shelf": "wild", "kind": "feed", "url": "x"},
+                 {"name": "Recalls", "shelf": "cars", "kind": "recalls", "make": "audi", "model": "e-tron", "year": 2019,
+                  "who": "the 2019 e-tron", "fresh_days": 540, "lead": False})
+    cfg["series"] = []
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["Hackaday"], [entry(f"{w} story") for w in ("lathe", "anvil", "kiln")], NOW)
+    found = [{"NHTSACampaignNumber": "25V900000", "ReportReceivedDate": "19/12/2025", "Component": "BACK OVER PREVENTION: CAMERA",
+              "Summary": "The rearview camera image may not display.", "Remedy": "Dealers will update the software."},
+             {"NHTSACampaignNumber": "19V434000", "ReportReceivedDate": "10/06/2019", "Component": "TRACTION BATTERY",
+              "Summary": "Moisture can enter the battery."}]
+    d.ingest(db, cfg["sources"]["Recalls"], [d.recall_entry(r) for r in found], NOW)
+    assert d.priorities(db, cfg, NOW, "Sam", False) == []
+    recall = [c for c in d.candidates(db, cfg, NOW) if c.src["name"] == "Recalls"]
+    assert len(recall) == 1 and recall[0].sev == 1.0, "the new one, as a severe item; the old one is history"
+    text = d.describe(1, recall[0], "Sam")
+    assert "safety recall" in text and "update the software" in text
+
+
 def test_a_slow_slide_is_caught_by_the_cusum(tmp_path):
     cfg, db, sigma, level = market(tmp_path)
     cfg["series"] = [dict(SP, downside=1.0)]

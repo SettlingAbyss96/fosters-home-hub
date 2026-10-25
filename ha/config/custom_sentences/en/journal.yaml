@@ -1,0 +1,27 @@
+# The journal (packages/journal.yaml): a line any time, being asked about the day now, and today's
+# read back. The answers to Jarvis's own question after the welcome home don't come through here,
+# assist_satellite.ask_question takes them straight from speech to text
+language: "en"
+intents:
+  JournalNote:
+    data:
+      - sentences:
+          - "(note|journal) [that] {note}"
+          - "(make|add) a note [that] {note}"
+          - "(add|put) [this] (to|in) my journal {note}"
+          - "for the journal {note}"
+  JournalAskMe:
+    data:
+      - sentences:
+          - "ask me about my day"
+          - "ask me how (it|today|my day) went"
+          - "(let's|let us) do the journal"
+  JournalToday:
+    data:
+      - sentences:
+          - "(what's|whats|what is) in [my|the] journal [today]"
+          - "read [me] [back] my journal [for today]"
+          - "what did i (say|write|note) today"
+lists:
+  note:
+    wildcard: true

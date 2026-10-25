@@ -41,6 +41,8 @@ These come with the Hub and Home Assistant itself, nothing to set up:
 | `notify.mobile_app_phone` | the same name. It can't be renamed after the phone signs in, so name the phone first |
 | `sensor.home_resident_distance`, `sensor.home_resident_direction_of_travel` | the Proximity integration, which the deploy adds |
 | `input_text.home_wifi` | `resident.home_wifi`, your network's name |
+| `sensor.phone_geocoded_location` | the companion app's geocoded location sensor, if you turn it on: its areas of interest name a market or a park for the journal ([journal.md](journal.md)) |
+| `zone.work` | a zone you make called Work, big enough for the whole site, so the journal asks about work once a day |
 
 Tested with an iPhone. Android's app has the same sensors under the same names, and the packages
 compare the battery state without caring about case, since iOS says "Charging" and Android says
