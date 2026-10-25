@@ -43,9 +43,10 @@
 #     written on the way in (script.welcome_home_prepare): maybe a line about what's going on at
 #     home, then something nobody's said yet from the digest on the Hub (packages/digest.yaml),
 #     never the same way twice running, or without the digest the news you asked for
-#     (input_text.news, from house.toml). Nothing negative: problems stay on the dashboard and
-#     "anything need my attention?". Back again within three hours of the last proper welcome it's
-#     just "Welcome back"
+#     (input_text.news, from house.toml). The news is told straight, bad days and their reasons
+#     included. What stays out is the house's upkeep, maintenance and chores, which are on the
+#     dashboard and in "anything need my attention?". Back again within three hours of the last
+#     proper welcome it's just "Welcome back"
 # The phone joining the Wi-Fi without crossing the zone (a stale location) counts too, when the
 # house is Away. "I'm leaving" by voice runs the leaving routine a minute later, and picking Away by
 # hand runs it straight away
@@ -338,7 +339,7 @@ script:
 
   welcome_home:
     alias: "Welcome home"
-    description: "Jarvis says welcome home on the Hub: what's going on, then a little news. Nothing negative."
+    description: "Jarvis says welcome home on the Hub: what's going on, then a little news, told straight. No maintenance or chores."
     icon: mdi:hand-wave
     mode: single
     sequence:
@@ -434,7 +435,7 @@ script:
           type: daily
         response_variable: forecast
       - variables:
-          # good or neutral things only, and nothing about how long you've been out
+          # what's going on, never maintenance or chores, and nothing about how long you've been out
           notes: >-
             {% set out = namespace(n=[]) %}
             {% set mode = states.input_select.house_mode %}
@@ -474,10 +475,10 @@ script:
             else 'four or five short spoken sentences, about twenty seconds' }}. Open with a short welcome home. Then one line on
             what's going on at home or coming up, picked from the notes below, if any of it is worth saying.
             {% if news %}Then look up {{ ('the one most interesting thing today in this: ' ~ news) if late else news }}{{ ', and if there is room one item from something else they are into (' ~ likes ~ ')' if likes and not late else '' }}, each in one sentence in your own words.{% endif %}
-            Keep all of it good or neutral: on a bad day for anything you report, a few calm words at most, or
-            something that went well instead, and never why it went badly. Nothing alarming, no problems or
-            warnings about the house, no maintenance, no reminders, nothing about sleep, health or how long the
-            day was. Don't end on a question and don't offer anything.
+            For anything you report, say how it went and why, a bad day included: stocks sliding on
+            interest rate worries is worth knowing. Calm and plain, no hype and no doom-mongering. Nothing about the
+            house's maintenance or chores, no reminders, nothing about sleep, health or how long the day was. Don't end on a question
+            and don't offer anything.
             Notes: {{ notes | trim }}
           who: "{{ state_attr('person.resident', 'friendly_name') or 'The resident' }}"
           kit: {}
@@ -512,10 +513,13 @@ script:
                     Say it the way a person would out loud: no lists, links or headlines read out word
                     for word, numbers the way you'd say them, and who's behind each thing ("Doomberg
                     reckons", "on r/klippers this week"). If one of the house notes is worth a line, say
-                    it, otherwise leave them out. Keep all of it good or neutral: nothing alarming, no
-                    doom, markets as ideas to chew on and never warnings or tips, nothing about problems
-                    or maintenance in the house, nothing about sleep, health or how long the day was.
-                    Don't end on a question and don't offer anything.
+                    it, otherwise leave them out. Tell the news straight, bad as well as good: if stocks slid on interest rate
+                    worries, say they slid and why, because that's what they'll want to know, and say
+                    who argues what, leaving the decisions to them. Calm and plain, no hype and no
+                    doom-mongering. What stays out is the house's upkeep: no maintenance reminders or
+                    chores (the printers, the vacuum), which they already know about and have in hand, and nothing
+                    about sleep, health or how long the day was. Don't end on a question and don't offer
+                    anything.
                     House notes: {{ notes | trim }}
 
                     {{ kit.get('brief') }}

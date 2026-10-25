@@ -121,7 +121,7 @@ items = 1
 late = true
 needs = ["market"]
 weight = 1.0
-how = "One market writer's argument, in their framing and credited by name. It's an idea to chew on, never a tip or a warning."
+how = "One market writer's argument, in their framing and credited by name, warning signs and all: what they see, why, and what it would mean."
 
 [[format]]
 name = "the long read"

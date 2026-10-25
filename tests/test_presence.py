@@ -254,7 +254,8 @@ async def test_the_welcome_is_written_on_the_way_and_is_only_good_news(house_at)
     await arrive(house)
     asks = house.called("conversation.process", agent_id="conversation.jarvis_cloud")
     assert len(asks) == 1, "written once, on the way in"
-    assert "top story" in asks[0].data["text"] and "Nothing alarming" in asks[0].data["text"]
+    assert "top story" in asks[0].data["text"] and "a bad day included" in asks[0].data["text"]
+    assert "maintenance" in asks[0].data["text"]
     assert house.said("the weekend looks dry")
     assert not house.said("lubrication") and not house.said("Paused")
 
@@ -299,7 +300,8 @@ async def test_the_welcome_is_something_new_from_the_digest_and_its_retired_once
     asks = house.called("ai_task.generate_data", entity_id="ai_task.jarvis_writer")
     assert len(asks) == 1, "written once, on the way in"
     assert "probe: retry on a bad sample" in asks[0].data["instructions"]
-    assert "nothing alarming" in asks[0].data["instructions"]
+    assert "bad as well as good" in asks[0].data["instructions"], "the news told straight"
+    assert "no maintenance reminders" in asks[0].data["instructions"], "the upkeep left out"
     assert not house.called("conversation.process"), "the kit is the news, no web search"
     assert house.said("Kalico's probe now takes a second look")
     told = house.called("rest_command.digest_told")

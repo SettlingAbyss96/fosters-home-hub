@@ -129,7 +129,7 @@ A welcome home that reads out `sensor.needs_attention` is a list of chores at th
 in an evening if you come and go four times, and none of it is ever urgent. Problems belong on the
 dashboard and in "anything need my attention?", where you go looking for them.
 
-So it's a short briefing, all good or neutral, with maybe a line about what's going on at home (a
+So it's a short briefing, with maybe a line about what's going on at home (a
 print finished, the vacuum ran, tomorrow's first meeting, the weather, which is tomorrow's from
 3 PM) and then something from outside. Asking the cloud agent for "the day's top story and how the
 markets did" works, and it's the same briefing every evening, because two web searches find the same
@@ -162,6 +162,13 @@ greeting waits up to 25 seconds for the words and then says a plain welcome home
 nothing. Back within three hours of the last full one it's "Welcome back" and that's it, and after
 10 PM it's one thing in two or three sentences. It never mentions how long you've been out. Without
 a cloud agent or a writer, it's just "Welcome home".
+
+Bad news stays in. Stocks sliding on interest rate worries is worth hearing at the door, and why,
+because it's the kind of thing you'd position yourself around. What stays out is the house's upkeep,
+a printer's maintenance and the vacuum's chores, which you already know about and have in hand, and
+they're on the dashboard and in "anything need my attention?" when you want them. One teaches you
+something and the other's a to-do list, and a prompt that lumps them together as "nothing negative"
+ends up leading every down day with whatever went well and never saying why it fell.
 
 ### The doors inside
 

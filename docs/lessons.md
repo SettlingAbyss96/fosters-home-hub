@@ -57,8 +57,12 @@ something else first.
   history showed it flipping. One setting, one place
 - The welcome home was a list of chores. It read out `sensor.needs_attention` every time, so a print
   that needed maintenance and a paused vacuum got announced at the door four times in one evening.
-  It's a short briefing written on the way in now, good or neutral news only
+  It's a short briefing written on the way in now, and the house's upkeep stays on the dashboard
   ([routines.md](routines.md#what-jarvis-says-when-you-get-in))
+- "Not negative" turned into no bad news. The chores at the door were the problem, and a prompt that
+  said good or neutral only led a down market with whatever went well and never said why it fell.
+  The news is told straight now, bad days and their reasons included, and only maintenance and
+  chores stay out
 - The morning briefing said nothing about the night. Its overnight was a printer finishing, so
   reminders or the doorbell at 2 AM never made it in, and words written on a false wake got said
   hours later, and asking for it again got the short version. A log of the night, stale words
