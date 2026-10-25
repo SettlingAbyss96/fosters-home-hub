@@ -135,6 +135,13 @@ something else first.
   inputs, there's no Google Cast or Android TV Remote protocol on Fire OS, and Alexa means a cloud
   trip for what ADB does on the LAN. Screenshots over ADB come back empty under the DRM apps, so the
   dashboard's picture hides itself there
+- The private DNS can take the whole TV down after a restart. A TV that comes back with its clock
+  months out can't check the certificate of its DNS over TLS resolver, so nothing resolves, and the
+  clock can't sync without looking up a time server. Every app says there's no connection while plain
+  pings work. The keeper parks the private DNS on opportunistic while the clock is earlier than the
+  keeper was built, and puts it back once the clock is right ([tv/README.md](../tv/README.md#the-keeper))
+- Off isn't always Asleep. Gone off on its own sleep timer, a TV can sit in a screen-off doze
+  (`mWakefulness=Dozing`), which read as On and left "off" waiting forever
 
 ## Lights and plugs
 

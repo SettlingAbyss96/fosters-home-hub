@@ -12,6 +12,14 @@ public final class Settings {
             throw new RuntimeException("stub");
         }
 
+        public static String getString(ContentResolver cr, String name) {
+            throw new RuntimeException("stub");
+        }
+
+        public static boolean putString(ContentResolver cr, String name, String value) {
+            throw new RuntimeException("stub");
+        }
+
         public static long getLong(ContentResolver cr, String name, long def) {
             throw new RuntimeException("stub");
         }

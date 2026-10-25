@@ -154,6 +154,15 @@ def check():
     if dns and dns_now() != ("hostname", dns):
         drift.append("private-dns")
         print(f"  private DNS: {' '.join(dns_now())}, should be hostname {dns}")
+    # and whether it works: a clock that's out (after a restart) breaks DNS over TLS, and with it
+    # every app on the TV. The keeper parks the private DNS until the clock syncs (keeper/Keeper.java)
+    skew = abs(int(run("date +%s") or 0) - time.time())
+    if skew > 3600:
+        drift.append("clock")
+        print(f"  the clock is {skew / 86400:.1f} days out")
+    if "broken" in run("dumpsys connectivity | grep -o 'Private DNS is broken' | head -1"):
+        drift.append("dns")
+        print("  private DNS is broken, so nothing resolves (a wrong clock does this)")
     print("  everything as listed" if not drift else f"  {len(drift)} drifted, `python tools/tv.py apply` puts it right")
     return 1 if drift else 0
 

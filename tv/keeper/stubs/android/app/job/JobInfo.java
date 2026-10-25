@@ -16,6 +16,10 @@ public class JobInfo {
             throw new RuntimeException("stub");
         }
 
+        public Builder setMinimumLatency(long minLatencyMillis) {
+            throw new RuntimeException("stub");
+        }
+
         public JobInfo build() {
             throw new RuntimeException("stub");
         }

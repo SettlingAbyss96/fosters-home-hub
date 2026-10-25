@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The TV keeper: ADB debugging back on if a Fire OS update switched it off. No screen, no network
-     permission, nothing leaves the TV. See src/home/hub/tvkeeper/Keeper.java -->
+<!-- The TV keeper: ADB debugging back on if a Fire OS update switched it off, and the private DNS
+     out of the way while the clock is wrong after a restart. No screen, no network permission,
+     nothing leaves the TV. See src/home/hub/tvkeeper/Keeper.java -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="home.hub.tvkeeper"
-    android:versionCode="1"
-    android:versionName="1.0">
+    android:versionCode="2"
+    android:versionName="1.1">
 
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="30" />
 

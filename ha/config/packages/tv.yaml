@@ -177,7 +177,9 @@ intent_script:
 script:
   # Power with a check: does it, then waits until the TV itself says it got there (Awake, Dreaming
   # or Asleep in dumpsys power), and returns {done}. on = awake, ambient = the slow pictures, off =
-  # all the way off. From fully off to ambient goes through awake, the only way the TV allows
+  # all the way off. From fully off to ambient goes through awake, the only way the TV allows. Off
+  # can also be Dozing: a TV that went off on its own sleep timer can sit in a screen-off doze
+  # instead of Asleep, and waiting for Asleep there would never end
   tv_power:
     alias: "TV power"
     icon: mdi:power
@@ -193,6 +195,8 @@ script:
     sequence:
       - variables:
           want: "{{ {'on': 'Awake', 'ambient': 'Dreaming', 'off': 'Asleep'}.get(power | default('') | lower, '') }}"
+          # what counts as being there
+          there: "{{ ['Asleep', 'Dozing'] if want == 'Asleep' else [want] }}"
       - if: "{{ want == '' }}"
         then:
           - variables:
@@ -205,7 +209,9 @@ script:
           entity_id: media_player.fire_tv
         data:
           command: "dumpsys power | grep mWakefulness="
-      - if: "{{ want == 'Dreaming' and 'Asleep' in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+      - if: >-
+          {% set r = state_attr('media_player.fire_tv', 'adb_response') or '' %}
+          {{ want == 'Dreaming' and ('Asleep' in r or 'Dozing' in r) }}
         then:
           - action: media_player.turn_on
             continue_on_error: true
@@ -222,7 +228,7 @@ script:
                     command: "dumpsys power | grep mWakefulness="
               until: "{{ 'Awake' in (state_attr('media_player.fire_tv', 'adb_response') or '') or repeat.index >= 12 }}"
           - delay: "00:00:02"
-      - if: "{{ want not in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+      - if: "{{ there | select('in', state_attr('media_player.fire_tv', 'adb_response') or '') | list | count == 0 }}"
         then:
           - choose:
               - conditions: "{{ want == 'Awake' }}"
@@ -253,10 +259,10 @@ script:
                     entity_id: media_player.fire_tv
                   data:
                     command: "dumpsys power | grep mWakefulness="
-              until: "{{ want in (state_attr('media_player.fire_tv', 'adb_response') or '') or repeat.index >= 12 }}"
+              until: "{{ there | select('in', state_attr('media_player.fire_tv', 'adb_response') or '') | list | count > 0 or repeat.index >= 12 }}"
       - variables:
           result:
-            done: "{{ want in (state_attr('media_player.fire_tv', 'adb_response') or '') }}"
+            done: "{{ there | select('in', state_attr('media_player.fire_tv', 'adb_response') or '') | list | count > 0 }}"
       # Back only once sensor.tv_status (and so media_player.tv) agrees. The cloud agent reads the
       # state straight after, and a stale one had it trying again
       - event: tv_changed
@@ -516,7 +522,8 @@ template:
               {% set section = r.split('package=' ~ focus)[1].split('package=')[0] if focus and ('package=' ~ focus) in r else '' %}
               {% set desc = section.split('description=')[1].split('\n')[0].split(', ') if 'description=' in section else [] %}
               {% set playback = 'playing' if 'player_state:started' in r else ('paused' if 'player_state:paused' in r else '') %}
-              {% if wake == 'Asleep' %}{% set state, app = 'Off', '' %}
+              {# Dozing is off too: the screen-off doze a TV can sit in after its own sleep timer #}
+              {% if wake in ['Asleep', 'Dozing'] %}{% set state, app = 'Off', '' %}
               {% elif wake == 'Dreaming' or 'ftvambient' in focus %}{% set state, app = 'Ambient mode', '' %}
               {% elif focus in names %}{% set app = names[focus] %}{% set state = app ~ (', ' ~ playback if playback and app != 'Home screen' else '') %}
               {% elif focus %}{% set app = focus.split('.')[-1] | capitalize %}{% set state = app %}

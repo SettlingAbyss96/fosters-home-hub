@@ -35,6 +35,18 @@ runs on the TV at boot and every 15 minutes, and puts back two settings if anyth
 expires (Android forgets one after 7 days without a connection, which a week away with the TV
 unplugged would hit). It only ever puts back what was already there.
 
+It also keeps the private DNS from taking the TV offline. A TV can come back from a restart with
+its clock months out, and DNS over TLS can't check a resolver's certificate against a clock like
+that, so nothing resolves, and the clock can't sync because finding the time server takes DNS too.
+Every app says there's no connection while a ping to 1.1.1.1 goes straight through. So whenever the
+clock is earlier than the day the keeper was built, it parks the private DNS on opportunistic (the
+router's DNS), switches automatic time off and on, which should send Android to its time server
+again, and looks again two minutes later. Once the clock is right, the private DNS goes back to its
+hostname. It only puts back a private DNS it parked itself, so a change made on purpose stays.
+`BUILT_AT` in `keeper/build.sh` dates a build a month ahead, which is how to see it park the DNS on
+a TV whose clock is fine, and `python tools/tv.py check` says when the clock is out or the private
+DNS is broken.
+
 It writes those with WRITE_SECURE_SETTINGS, which only ADB can grant. The Hub builds it
 (`host/79-android.sh` for the tools: Debian's JDK and Android packages plus Google's R8, pinned),
 from the source in `keeper/src` compiled against stand-ins for the dozen Android classes it touches,
