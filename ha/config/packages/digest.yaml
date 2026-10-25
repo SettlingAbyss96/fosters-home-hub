@@ -19,3 +19,30 @@ rest_command:
     content_type: "application/json"
     payload: '{{ {"kit": kit, "words": words} | to_json }}'
     timeout: 8
+  # what you thought of the last thing it said: +1 liked, -1 not (custom_sentences/en/digest.yaml)
+  digest_feedback:
+    url: "http://{{ states('input_text.hub_address') }}:10230/feedback"
+    method: post
+    content_type: "application/json"
+    payload: '{{ {"y": y} | to_json }}'
+    timeout: 8
+
+intent_script:
+  DigestMore:
+    description: "The listener liked what Jarvis just told them: more like that."
+    action:
+      - action: rest_command.digest_feedback
+        continue_on_error: true
+        data:
+          y: 1
+    speech:
+      text: "Noted. More like that."
+  DigestLess:
+    description: "The listener wasn't interested in what Jarvis just told them: less like that."
+    action:
+      - action: rest_command.digest_feedback
+        continue_on_error: true
+        data:
+          y: -1
+    speech:
+      text: "Noted. Less of that."

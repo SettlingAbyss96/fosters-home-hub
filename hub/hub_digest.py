@@ -55,13 +55,18 @@ NS = {"a": "http://www.w3.org/2005/Atom", "c": "http://purl.org/rss/1.0/modules/
       "itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd"}
 # how often each kind is fetched, in minutes, unless the source says otherwise
 EVERY = {"feed": 60, "forum": 240, "podcast": 360, "commits": 180, "releases": 360, "forks": 1440, "search": 1440,
-         "context": 60}
+         "context": 60, "recalls": 1440}
 # when something's worth saying again (see "salience" below), unless digest.toml's [moves] says
-# otherwise: the deadband and the lead threshold are in normal days (z), the weights take a little
-# off a five-day drift and a drift since last told against a single day's jump, and a follow-up
-# needs stars at least doubled and up by 150 two days on, or a story two more sources overnight
-MOVES = {"deadband": 1.5, "lead": 2.5, "window": 60, "five_weight": 0.8, "since_weight": 0.9,
+# otherwise: the deadband and the lead threshold are in normal days (z), the weight takes a little
+# off a drift since last told against a single day's jump, and a follow-up needs stars at least
+# doubled and up by 150 two days on, or a story two more sources overnight
+MOVES = {"deadband": 1.5, "lead": 2.5, "window": 60, "since_weight": 0.9,
          "stars_ratio": 2.0, "stars_min": 150, "sources_min": 2, "followup_after_days": 2, "coverage_after_hours": 12}
+# the care model (see "caring" below), unless digest.toml's [care] says otherwise: the b's in
+# log-odds per unit, habituation's time constant in days, the interest filter's starting variance,
+# drift a day and measurement noise, and the CUSUM's k and h in normal days
+CARE = {"proximity": 1.5, "social": 0.5, "severity": 2.0, "habituation": 0.7, "habit_days": 1.5,
+        "p0": 0.15, "q": 0.01, "r": 1.0, "cusum_k": 0.5, "cusum_h": 4.0}
 # kinds where the source is a stream and telling it moves a cursor
 CURSOR = {"commits", "releases"}
 # every repo's housekeeping, which nobody wants read out
@@ -93,6 +98,10 @@ def load_config(path):
     for s in cfg.get("source", []):
         add_source(cfg, s)
     cfg["moves"] = {**MOVES, **cfg.get("moves", {})}
+    cfg["care"] = {**CARE, **cfg.get("care", {})}
+    mine = cfg.get("mine", {})
+    cfg["mine"] = {"printer": mine.get("printer", "the printer"), "words": dict(mine.get("words", {})),
+                   "modules": {m.lower() for m in mine.get("modules", [])}}
     cfg["series"] = [{"weight": 1.0, "unit": "pct", "every": 120, **s} for s in cfg.get("series", [])]
     return cfg
 
@@ -136,6 +145,7 @@ def connect(path):
         CREATE TABLE IF NOT EXISTS fetches (source TEXT PRIMARY KEY, at REAL, ok INTEGER, note TEXT);
         CREATE TABLE IF NOT EXISTS points (series TEXT, day TEXT, value REAL, PRIMARY KEY (series, day));
         CREATE TABLE IF NOT EXISTS series_told (series TEXT, day TEXT, value REAL, at REAL);
+        CREATE TABLE IF NOT EXISTS interest (key TEXT PRIMARY KEY, mu REAL, p REAL, at REAL);
     """)
     # metric is a number that can grow after the telling (a repo's stars), told_metric what it was
     # when it was said
@@ -311,7 +321,15 @@ def fetch(web, src, now):
             entries = [e for e in entries[: src.get("top", 12)] if not HELP.search(e["title"])]
         if src.get("skip"):
             entries = [e for e in entries if not re.search(src["skip"], e["title"], re.I)]
+        for e in entries:                              # Hacker News says how many points
+            m = re.search(r"Points:\s*(\d+)", e["raw"] or "")
+            if m:
+                e["metric"] = float(m.group(1))
         return title, entries
+    if kind == "recalls":
+        q = urllib.parse.urlencode({"make": src["make"], "model": src["model"], "modelYear": src["year"]})
+        found = json.loads(web.get(f"https://api.nhtsa.gov/recalls/recallsByVehicle?{q}", accept="application/json"))
+        return "", [recall_entry(r) for r in found.get("results", []) if r.get("NHTSACampaignNumber")]
     if kind == "forks":
         out = []
         for f in web.github(f"/repos/{src['repo']}/forks", {"sort": "stargazers", "per_page": 20}):
@@ -360,6 +378,16 @@ def fetch_series(web, s, now):
             rows += parse_treasury(web.get(url, accept="text/csv"), s["treasury"])
         return sorted(set(rows))
     raise ValueError(f"{s['id']}: no yahoo or treasury")
+
+
+def recall_entry(r):
+    """A recall from NHTSA, whose dates are day/month/year"""
+    d, m, y = (r.get("ReportReceivedDate") or "01/01/1970").split("/")
+    num = r["NHTSACampaignNumber"]
+    what = (r.get("Component") or "").split(":")[0].strip().capitalize()
+    return {"guid": "nhtsa:" + num, "link": f"https://www.nhtsa.gov/recalls?nhtsaId={num}", "story": "nhtsa:" + num,
+            "title": f"Recall {num}, {what.lower()}", "when": datetime(int(y), int(m), int(d), tzinfo=timezone.utc).timestamp(),
+            "raw": " ".join(r.get(k) or "" for k in ("Summary", "Consequence", "Remedy"))}
 
 
 def item_id(entry):
@@ -476,7 +504,7 @@ def candidates(db, cfg, now):
     by_source = {}
     for r in db.execute("SELECT * FROM items WHERE told IS NULL").fetchall():
         src = cfg["sources"].get(r["source"])
-        if src is None or src["kind"] == "context":          # context is for the why, never told
+        if src is None or src["kind"] in ("context", "recalls"):   # the why, and the priorities
             continue
         days = fresh_days(cfg, src)
         if days and now - (r["published"] or r["seen"]) > days * DAY:
@@ -496,16 +524,19 @@ def candidates(db, cfg, now):
             out.append(Cand(src, items[: src.get("bundle", 12)]))
         else:
             out.extend(Cand(src, [i]) for i in items)
+    # how many other sources have the same story in the last two days, then the care features
+    recent = [c for c in out if not c.src["cursor"] and now - c.newest < 2 * DAY]
+    # how usual each of the [mine] words is for each source, once it has enough items to say
+    said = {}
+    for c in out:
+        said.setdefault(c.src["name"], []).append(mentions(cfg, c))
+    usual = {name: ({w: sum(w in m for m in ms) / len(ms) for w in set().union(*ms)} if len(ms) >= 4 else {})
+             for name, ms in said.items()}
+    for c in out:
+        c.coverage = len({o.src["name"] for o in recent if o is not c and o.src["name"] != c.src["name"] and c.same_story(o)}) if c in recent else 0
+        c.prox, c.hit = proximity(cfg, c, usual[c.src["name"]])
+        c.soc, c.sev = social(c, now), severity(c)
     return out
-
-
-def score(cfg, c, now):
-    days = fresh_days(cfg, c.src)
-    age = max(0.0, now - c.newest) / DAY
-    s = c.src["weight"] * (0.5 ** (age / (days / 2)) if days else 0.6)
-    if c.src["cursor"]:
-        s *= min(1.6, 0.8 + 0.1 * len(c.items))
-    return s
 
 
 def history(db, n=8):
@@ -531,11 +562,11 @@ def history(db, n=8):
 # last 60 sessions, scaled to a standard deviation, so one crash in the window doesn't make every
 # later day look quiet):
 #   z1 = x_today / sigma                       today against a normal day
-#   z5 = sum(last 5) / (sigma * sqrt(5))       a drift that no single day shows
+#   S  = CUSUM of x / sigma since told         a drift that no single day shows (k 0.5, h 4)
 #   zt = change since told / (sigma * sqrt(n)) n sessions since it was last said
-#   salience = weight * max(|z1|, 0.8 |z5|, 0.9 |zt|)
+#   salience = weight * max(|z1|, 1.5 S / h, 0.9 |zt|), falls times the series' downside
 # Under the deadband (1.5) it isn't said, from the lead (2.5) it leads, and today's move counts
-# only if today hasn't been told already
+# only if today hasn't been told already. z5, the last five sessions, is only for describing it
 def changes(vals, unit):
     if unit == "pct":
         return [100.0 * (b / a - 1.0) if a else 0.0 for a, b in zip(vals, vals[1:])]
@@ -582,9 +613,23 @@ def moves(db, cfg, now):
             n = sum(1 for d in days if d > t["day"])
             moved = changes([t["value"], vals[-1]], s["unit"])[0]
             since = {"day": t["day"], "change": moved, "sessions": n, "z": moved / (sigma * math.sqrt(n))}
-        salience = s["weight"] * max(abs(z1) if new_day else 0.0,
-                                     m["five_weight"] * abs(z5) if new_day else 0.0,
-                                     m["since_weight"] * abs(since["z"]) if since and since["sessions"] > 1 else 0.0)
+        # a drift no single day shows: a two-sided CUSUM (Page, 1954) over the standardised changes
+        # since the last telling (the last 20 sessions if never), tuned for a one normal-day shift
+        # (k = 0.5) and signalling at h = 4, which is scaled to land on the deadband
+        k_, h_ = cfg["care"]["cusum_k"], cfg["care"]["cusum_h"]
+        up = down = 0.0
+        for x, d in list(zip(ch, days[1:]))[-20:]:
+            if t is None or d > t["day"]:
+                up, down = max(0.0, up + x / sigma - k_), max(0.0, down - x / sigma - k_)
+        # a fall says more about what comes next than a rise of the same size (the news impact curve
+        # is asymmetric, Engle and Ng), so a series can weigh its falls a little heavier
+        fall = s.get("downside", 1.0)
+        def lean(x):
+            return fall if x < 0 else 1.0
+        cusum = m["deadband"] * max(up, down) / h_ * (fall if down > up else 1.0)
+        salience = s["weight"] * max(abs(z1) * lean(z1) if new_day else 0.0,
+                                     cusum if new_day else 0.0,
+                                     m["since_weight"] * abs(since["z"]) * lean(since["change"]) if since and since["sessions"] > 1 else 0.0)
         year = vals[-252:]
         out.append({"id": s["id"], "name": s["name"], "unit": s["unit"], "day": days[-1], "value": vals[-1],
                     "change": ch[-1], "sigma": sigma, "z1": z1, "five": five, "z5": z5, "since": since,
@@ -694,6 +739,18 @@ def priorities(db, cfg, now, name, late):
     the strongest follow-up. Late, only the strongest of them"""
     m = cfg["moves"]
     out = []
+    # a safety recall on your car: said once, ahead of everything, deadband or not
+    for name_, src in cfg["sources"].items():
+        if src["kind"] != "recalls":
+            continue
+        days = fresh_days(cfg, src)
+        for r in db.execute("SELECT * FROM items WHERE source = ? AND told IS NULL AND COALESCE(published, seen) > ? "
+                            "ORDER BY published DESC", (name_, now - days * DAY)).fetchall():
+            out.append({"kind": "recall", "shelf": src["shelf"], "source": name_, "ids": [r["id"]], "strength": 100.0,
+                        "label": f"recall: {r['title']}"[:160],
+                        "text": (f"A safety recall that covers {name}'s car, {src.get('who') or name_}, reported "
+                                 f"{datetime.fromtimestamp(r['published'] or r['seen']):%B %Y}: {r['title']}. {r['text']} "
+                                 "Say what it's about and what the fix is, plainly, once.")})
     moved = [mv for mv in moves(db, cfg, now) if mv["salience"] >= m["deadband"]][:3]
     if moved:
         lead = moved[0]["salience"] >= m["lead"]
@@ -714,9 +771,136 @@ def priorities(db, cfg, now, name, late):
     if fu:
         out.append(dict(fu[0], text="A follow-up. Say it as one, briefly what it was and when "
                                     f"{name} heard it, then what's changed: " + fu[0]["text"]))
-    if late:
-        out = sorted(out, key=lambda p: -p["strength"])[:1]
-    return out
+    out = sorted(out, key=lambda p: -p["strength"])
+    return out[:1] if late else out[:3]
+
+
+# -- caring: how much you'd want to hear it (docs/caring.md) -----------------------------------
+# Every candidate gets a care score in log-odds, the way a click model scores an article:
+#   eta = log(weight) + mu_source + mu_shelf          the weights, and what's been learned since
+#       + b_p * proximity                             it touches your own things
+#       + b_s * social                                stars a day, points, other sources on it
+#       + b_v * severity                              a recall, a security hole, a breaking change
+#       - ln 2 * age / half-life                      news goes stale
+#       - b_h * habituation                           a lot from here lately already
+# and is picked with weight e^eta. Habituation is a sum of e^(-age/tau) over recent tellings, so it
+# recovers by itself (spontaneous recovery), and anything severe or surprising enough outweighs it
+# (dishabituation). mu is a Kalman filter over the spoken feedback, sampled each draw (Thompson
+# sampling) so a source that's gone quiet still gets the odd chance to win its way back
+SEVERE = re.compile(r"\b(recalls?|security|vulnerabilit\w*|cve-\d+|exploit\w*|breaking changes?|data loss|fire|burns?|"
+                    r"critical|deprecat\w+)\b", re.I)
+MODULE = re.compile(r"^\s*(?:\w+\()?([a-z0-9_]+)\)?!?\s*:", re.I)
+
+
+def touched_modules(cfg, c):
+    """The printer modules a repo's commits touch, out of the ones the printer uses ([mine] modules)"""
+    if c.src["kind"] != "commits":
+        return []
+    mods = cfg["mine"]["modules"]
+    found = [(MODULE.match(i["title"] or "") or [None, ""])[1].lower() for i in c.items]
+    return sorted({m for m in found if m and m in mods})
+
+
+def mentions(cfg, c):
+    """Which of the [mine] words a candidate mentions"""
+    text = " ".join(f"{i['title'] or ''} {(i['text'] or '')[:400]}" for i in c.items[:4]).lower()
+    return {word for word in cfg["mine"]["words"]
+            if re.search(r"(?<![a-z0-9])" + re.escape(word.lower()) + r"(?![a-z0-9])", text)}
+
+
+def proximity(cfg, c, usual=None):
+    """(0 to 1, what) for how close it comes to your own things. A word counts in proportion to how
+    unusual it is for the source: every post on r/VORONDesign says "Voron", so there it says nothing,
+    and one Hackaday piece that says it says a lot (usual is the share of the source's items with it)"""
+    usual = usual or {}
+    best, hit = 0.0, None
+    for word in mentions(cfg, c):
+        w = cfg["mine"]["words"][word] * (1.0 - usual.get(word, 0.0))
+        if w > best:
+            best, hit = w, word
+    mods = touched_modules(cfg, c)
+    if mods:
+        best, hit = 1.0, ", ".join(mods)
+    return best, hit
+
+
+def social(c, now):
+    i = c.items[0]
+    s = math.log1p(c.coverage)
+    if c.src["kind"] in ("forks", "search") and i.get("metric"):
+        days = max(1.0, (now - (i["published"] or i["seen"])) / DAY)
+        s += math.log1p(i["metric"] / days / 5)       # five stars a day is a little, fifty is a lot
+    elif i.get("metric"):
+        s += math.log1p(i["metric"] / 100)             # points on Hacker News
+    return s
+
+
+def severity(c):
+    if c.src["kind"] == "recalls":
+        return 1.0
+    return 0.5 if any(SEVERE.search(i["title"] or "") for i in c.items[:12]) else 0.0
+
+
+def habituation(cfg, past, now, field, value):
+    tau = cfg["care"]["habit_days"] * DAY
+    return sum(math.exp(-(now - k["told"]) / tau) for k in past if value in k[field])
+
+
+class Interest:
+    """What's been said about it, per source and shelf: a Kalman filter on a drifting level, sampled once
+    a draw. Unknown keys start at 0 with variance p0"""
+
+    def __init__(self, db, cfg, now, rng=None):
+        self.k, self.now, self.rng, self.drawn = cfg["care"], now, rng, {}
+        self.rows = {r["key"]: r for r in db.execute("SELECT * FROM interest")} if db is not None else {}
+
+    def state(self, key):
+        r = self.rows.get(key)
+        if r is None:
+            return 0.0, self.k["p0"]
+        return r["mu"], r["p"] + self.k["q"] * max(0.0, self.now - r["at"]) / DAY
+
+    def get(self, key):
+        if key not in self.drawn:
+            mu, p = self.state(key)
+            self.drawn[key] = mu + (math.sqrt(p) * self.rng.gauss(0, 1) if self.rng else 0.0)
+        return self.drawn[key]
+
+
+def care(cfg, c, now, interest, past):
+    k = cfg["care"]
+    days = fresh_days(cfg, c.src)
+    age = max(0.0, now - c.newest) / DAY
+    eta = math.log(max(c.src["weight"], 1e-3))
+    eta += interest.get("source:" + c.src["name"]) + interest.get("shelf:" + c.shelf)
+    eta += k["proximity"] * c.prox + k["social"] * c.soc + k["severity"] * c.sev
+    eta += -math.log(2) * age / (days / 2) if days else math.log(0.6)
+    if c.src["cursor"]:
+        eta += math.log(min(1.6, 0.8 + 0.1 * len(c.items)))
+    return eta - k["habituation"] * habituation(cfg, past, now, "sources", c.src["name"])
+
+
+def feedback(db, cfg, y, kit=None, now=None):
+    """Liked it (y = +1) or didn't (-1): every source and shelf in the kit moves toward y by the
+    Kalman gain, which is large while it's unsure and small once it's heard a lot"""
+    now = time.time() if now is None else now
+    k = cfg["care"]
+    row = (db.execute("SELECT * FROM kits WHERE id = ?", (kit,)).fetchone() if kit else
+           db.execute("SELECT * FROM kits WHERE told IS NOT NULL ORDER BY told DESC LIMIT 1").fetchone())
+    if row is None:
+        return {"ok": False, "why": "nothing's been said yet"}
+    keys = sorted({f"{f}:{slot[f]}" for slot in json.loads(row["slots"]) for f in ("source", "shelf")})
+    est = Interest(db, cfg, now)
+    out = {}
+    with LOCK:
+        for key in keys:
+            mu, p = est.state(key)
+            gain = p / (p + k["r"])
+            mu, p = mu + gain * (y - mu), (1 - gain) * p
+            db.execute("INSERT OR REPLACE INTO interest VALUES (?, ?, ?, ?)", (key, mu, p, now))
+            out[key] = round(mu, 3)
+        db.commit()
+    return {"ok": True, "kit": row["id"], "interest": out}
 
 
 # -- drawing a kit ----------------------------------------------------------------------------
@@ -742,11 +926,10 @@ def pick_format(cfg, cands, past, late, rng):
     return rng.choices([f for f, _ in live], weights=[w for _, w in live])[0]
 
 
-def pick_items(cfg, fmt, cands, past, now, rng):
+def pick_items(cfg, fmt, cands, past, now, rng, interest=None):
     pool = eligible(fmt, cands)
-    last_shelves = set(past[0]["shelves"]) if past else set()
-    before = set(past[1]["shelves"]) if len(past) > 1 else set()
-    recent_sources = {s for k in past[:4] for s in k["sources"]}
+    interest = interest or Interest(None, cfg, now)    # without one, everyone at the prior
+    k = cfg["care"]
     chosen = []
     for _ in range(fmt["items"]):
         free = [c for c in pool if c not in chosen and not any(c.same_story(x) for x in chosen)]
@@ -760,11 +943,13 @@ def pick_items(cfg, fmt, cands, past, now, rng):
         if not free:
             break
         shelves = sorted({c.shelf for c in free})
-        sw = [cfg["shelves"][s]["weight"] * (0.25 if s in last_shelves else 1.0) * (0.6 if s in before else 1.0) for s in shelves]
+        sw = [cfg["shelves"][s]["weight"] * math.exp(interest.get("shelf:" + s) - k["habituation"] * habituation(cfg, past, now, "shelves", s))
+              for s in shelves]
         shelf = rng.choices(shelves, weights=sw)[0]
         in_shelf = [c for c in free if c.shelf == shelf]
-        cw = [score(cfg, c, now) * (0.35 if c.src["name"] in recent_sources else 1.0) for c in in_shelf]
-        chosen.append(rng.choices(in_shelf, weights=[max(w, 1e-6) for w in cw])[0])
+        etas = [care(cfg, c, now, interest, past) for c in in_shelf]
+        top = max(etas)
+        chosen.append(rng.choices(in_shelf, weights=[math.exp(e - top) for e in etas])[0])
     return chosen
 
 
@@ -784,6 +969,15 @@ def first_sentence(words):
 
 
 def describe(n, c, name):
+    text = describe_item(n, c, name)
+    if getattr(c, "prox", 0) >= 0.8:
+        text += f"\n   This one touches {name}'s own things: {c.hit}."
+    if getattr(c, "coverage", 0) >= 2:
+        text += f"\n   {c.coverage} other sources have it too."
+    return text
+
+
+def describe_item(n, c, name):
     src = c.src
     who = src.get("who") or src["name"]
     def day(t):
@@ -828,7 +1022,7 @@ def draw(db, cfg, occasion="welcome", late=False, now=None, rng=None, keep=True,
         # late, when there's only room for one thing
         room = fmt["items"] - len(first)
         room = (0 if first else 1) if late else max(1, room)
-        chosen = pick_items(cfg, dict(fmt, items=room), cands, past, now, rng) if room else []
+        chosen = pick_items(cfg, dict(fmt, items=room), cands, past, now, rng, Interest(db, cfg, now, rng)) if room else []
     else:
         fmt = {"name": "what moved", "how": "Just what's below, plainly.", "items": 0}
     if not chosen and not first:
@@ -923,7 +1117,8 @@ def status(db, cfg, now=None):
     told = db.execute("SELECT COUNT(*) FROM items WHERE told IS NOT NULL").fetchone()[0]
     moved = [{"series": mv["name"], "day": mv["day"], "change": round(mv["change"], 2), "salience": round(mv["salience"], 2)}
              for mv in moves(db, cfg, now)[:6]]
-    return {"pool": shelves, "told": told, "failing": failing, "moves": moved,
+    interest = {r["key"]: round(r["mu"], 2) for r in db.execute("SELECT * FROM interest ORDER BY mu DESC")}
+    return {"pool": shelves, "told": told, "failing": failing, "moves": moved, "interest": interest,
             "last": [{"format": k["format"], "shelves": k["shelves"], "words": k["words"]} for k in history(db, 5)]}
 
 
@@ -968,7 +1163,7 @@ def serve(cfg, db_path, port):
                 db.close()
 
         def do_POST(self):  # noqa: N802
-            if self.path != "/told":
+            if self.path not in ("/told", "/feedback"):
                 return self.reply(404, {"error": "no such thing"})
             try:
                 body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 100_000)) or b"{}")
@@ -976,7 +1171,10 @@ def serve(cfg, db_path, port):
                 return self.reply(400, {"error": "not JSON"})
             db = connect(db_path)
             try:
-                self.reply(200, tell(db, cfg, str(body.get("kit", "")), str(body.get("words", ""))))
+                if self.path == "/feedback":
+                    self.reply(200, feedback(db, cfg, max(-1.0, min(1.0, float(body.get("y", 0)))), body.get("kit") or None))
+                else:
+                    self.reply(200, tell(db, cfg, str(body.get("kit", "")), str(body.get("words", ""))))
             finally:
                 db.close()
 

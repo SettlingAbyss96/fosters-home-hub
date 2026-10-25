@@ -220,6 +220,12 @@ Where it stops holding: the markets get one value a day, so a crash that recover
 never shows up, and the follow-ups only see what the sources in the digest see. A story one source
 runs and nobody else picks up never comes back, however big it is.
 
+Everything else in the digest gets a care score, the log-odds that you'd want to hear it: the
+weights, what it has learned from "more like that" and "less like that", how close it comes to your
+own machines and car, how fast it's spreading, how severe it is, how old, and how much of the same
+you've heard lately. A new safety recall on your car skips all of it and comes first, once. The
+theory and the math behind all of this are in [caring.md](caring.md).
+
 ### The doors inside
 
 Bedroom and bathroom door sensors are mostly for knowing what can't be true. The vacuum can't

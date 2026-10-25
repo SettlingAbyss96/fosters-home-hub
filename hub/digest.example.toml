@@ -46,6 +46,39 @@ late_openers = [
   "Start quietly on the one thing, and welcome {name} home at the end.",
 ]
 
+# -- what's yours, for the care model (docs/caring.md). News that touches your own things gets about
+# four and a half times the odds (e to the 1.5 at weight 1.0): your machines, your house, your car.
+# A word counts in proportion to how unusual it is for its source, so "Klipper" on r/klippers says
+# nothing and the same word on Hackaday says a lot. A Kalico or Klipper commit titled with one of your
+# printer's modules ("quad_gantry_level: ...") counts as touching it, so list the sections your
+# printer.cfg uses, plus the core ones every print goes through. The words and modules here are a
+# starting point for a Klipper printer, a Bambu and Home Assistant, to make your own
+[mine]
+printer = "the printer"
+modules = ["toolhead", "stepper", "extruder", "heaters", "homing", "mcu", "probe", "bed_mesh",
+           "input_shaper", "resonance_tester", "heater_bed", "exclude_object"]
+
+[mine.words]
+"Klipper" = 0.8
+"Kalico" = 0.8
+"Bambu" = 0.7
+"OrcaSlicer" = 0.7
+"Home Assistant" = 0.7
+
+# the care model's coefficients, here so they can be tuned without touching the code. The b's are
+# log-odds per unit: proximity 0 to 1, social the log of stars a day, points and other sources,
+# severity 0 to 1. Habituation is a sum of e^(-age / habit_days) over what you've heard lately. p0, q
+# and r are the interest filter's starting variance, its drift a day and the noise on one like
+[care]
+proximity = 1.5
+social = 0.5
+severity = 2.0
+habituation = 0.7
+habit_days = 1.5
+p0 = 0.15
+q = 0.01
+r = 1.0
+
 [shelves.printing]
 weight = 3.0
 fresh_days = 21
@@ -61,6 +94,10 @@ fresh_days = 10
 [shelves.wild]
 weight = 1.0
 fresh_days = 14
+
+[shelves.cars]
+weight = 0.8
+fresh_days = 10
 
 [shelves.f1]
 weight = 0.4
@@ -163,18 +200,21 @@ id = "sp500"
 name = "the S&P 500"
 yahoo = "^GSPC"
 weight = 1.0
+downside = 1.25
 
 [[series]]
 id = "ndx"
 name = "the Nasdaq 100"
 yahoo = "^NDX"
 weight = 0.8
+downside = 1.25
 
 [[series]]
 id = "rut"
 name = "small caps, the Russell 2000"
 yahoo = "^RUT"
 weight = 0.6
+downside = 1.25
 
 [[series]]
 id = "ust10"
@@ -195,6 +235,7 @@ id = "hyg"
 name = "high-yield bonds (HYG)"
 yahoo = "HYG"
 weight = 0.6
+downside = 1.25
 
 [[series]]
 id = "vix"
@@ -792,6 +833,36 @@ kind = "feed"
 url = "https://www.notboring.co/feed"
 who = "Packy McCormick's Not Boring"
 weight = 0.5
+
+# -- cars, and electric cars generally. NHTSA's recalls for your car are a priority: said once, ahead
+# of everything, when a new one is filed, and one over a year and a half old is history. Fill in your
+# car's make, model and year as NHTSA spells them, and put its name in [mine.words]
+#
+# [[source]]
+# name = "Car recalls"
+# shelf = "cars"
+# kind = "recalls"
+# make = "toyota"
+# model = "rav4"
+# year = 2021
+# who = "the 2021 RAV4"
+# fresh_days = 540
+
+[[source]]
+name = "Electrek"
+shelf = "cars"
+kind = "feed"
+url = "https://electrek.co/feed/"
+who = "Electrek"
+weight = 0.8
+
+[[source]]
+name = "InsideEVs"
+shelf = "cars"
+kind = "feed"
+url = "https://insideevs.com/rss/articles/all/"
+who = "InsideEVs"
+weight = 0.6
 
 # -- Formula One, now and then
 

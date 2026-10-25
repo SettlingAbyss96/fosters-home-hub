@@ -3,6 +3,7 @@ what's new since last time, and a different way of telling it each time. No netw
 items go straight in the way a fetch would put them."""
 
 import json
+import math
 import pathlib
 import random
 import sys
@@ -242,7 +243,7 @@ def test_the_morning_has_its_own_openers_and_its_own_recent_openings(tmp_path):
 
 
 # -- salience: moves and follow-ups ------------------------------------------------------------
-from datetime import datetime, timedelta  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
 
 SP = {"id": "sp500", "name": "the S&P 500", "unit": "pct", "weight": 1.0, "every": 120}
 
@@ -361,3 +362,167 @@ def test_market_data_comes_in_clean():
     assert d.parse_yahoo(yahoo) == [("2026-10-22", 7663.43)], "a session with no close yet is left out"
     treasury = "﻿Date,\"2 Yr\",\"10 Yr\"\n10/23/2026,3.61,4.42\n10/22/2026,3.58,4.38\n".encode()
     assert d.parse_treasury(treasury, "10 Yr") == [("2026-10-23", 4.42), ("2026-10-22", 4.38)]
+
+
+# -- caring: the model of how much you'd want to hear it (docs/caring.md) ------------------------
+def two_alike(tmp_path, second_title="Dual extrusion on a corexy, the long way round"):
+    cfg = config({"name": "A", "shelf": "printing", "kind": "feed", "url": "x"},
+                 {"name": "B", "shelf": "printing", "kind": "feed", "url": "x"})
+    cfg["series"] = []
+    cfg["mine"] = {"printer": "the Voron", "words": {"Voron": 1.0}, "modules": {"quad_gantry_level"}}
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["A"], [entry("A gantry levelling trick for the Voron 2.4")], NOW)
+    d.ingest(db, cfg["sources"]["B"], [entry(second_title)], NOW)
+    return cfg, db
+
+
+def share(cfg, db, source, n=200, past=(), interest=None):
+    fmt = {"name": "one story", "items": 1, "how": "x"}
+    cands = d.candidates(db, cfg, NOW)
+    hits = sum(d.pick_items(cfg, fmt, cands, list(past), NOW, random.Random(seed), interest)[0].src["name"] == source
+               for seed in range(n))
+    return hits / n
+
+
+def test_my_own_things_come_first(tmp_path):
+    cfg, db = two_alike(tmp_path)
+    a = next(c for c in d.candidates(db, cfg, NOW) if c.src["name"] == "A")
+    assert a.prox == 1.0 and a.hit == "Voron"
+    # e^1.5 is about 4.5 to 1, so about 82%
+    assert 0.72 < share(cfg, db, "A") < 0.92
+
+
+def test_a_commit_that_touches_my_printer_is_marked(tmp_path):
+    cfg = config({"name": "Kalico", "shelf": "printing", "kind": "commits", "repo": "KalicoCrew/kalico"})
+    cfg["series"] = []
+    cfg["mine"] = {"printer": "the Voron", "words": {}, "modules": {"quad_gantry_level", "tmc2209"}}
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["Kalico"], [
+        entry("lis2dw: faster reads", link="https://github.com/KalicoCrew/kalico/commit/1"),
+        entry("quad_gantry_level: retry when the probe disagrees", link="https://github.com/KalicoCrew/kalico/commit/2")], NOW)
+    c = d.candidates(db, cfg, NOW)[0]
+    assert d.touched_modules(cfg, c) == ["quad_gantry_level"]
+    assert "touches the resident's own things: quad_gantry_level" in d.describe(1, c, "the resident")
+
+
+def test_feedback_is_a_kalman_filter(tmp_path):
+    cfg, db = two_alike(tmp_path)
+    kit = d.draw(db, cfg, now=NOW, rng=random.Random(1))
+    d.tell(db, cfg, kit["kit"], "x", now=NOW)
+    src = "source:" + json.loads(db.execute("SELECT slots FROM kits").fetchone()[0])[0]["source"]
+    k = cfg["care"]
+    out = d.feedback(db, cfg, 1.0, now=NOW)
+    gain = k["p0"] / (k["p0"] + k["r"])
+    assert abs(out["interest"][src] - gain) < 1e-3, "the first like moves it by the gain"
+    p1 = (1 - gain) * k["p0"]
+    out = d.feedback(db, cfg, 1.0, now=NOW)
+    gain2 = p1 / (p1 + k["r"])
+    assert abs(out["interest"][src] - (gain + gain2 * (1 - gain))) < 1e-3, "less sure-footed steps as it learns"
+    mu, p = d.Interest(db, cfg, NOW + 30 * DAY).state(src)
+    assert abs(p - ((1 - gain2) * p1 + 30 * k["q"])) < 1e-6, "a month untouched and it's less sure again"
+    out = d.feedback(db, cfg, -1.0, now=NOW + 30 * DAY)
+    assert out["interest"][src] < mu, "and a dislike takes it back down"
+
+
+def test_a_source_i_like_comes_up_more(tmp_path):
+    cfg, db = two_alike(tmp_path, "A gantry levelling trick for corexy machines")
+    cfg["mine"]["words"] = {}
+    before = share(cfg, db, "A")
+    db.execute("INSERT INTO interest VALUES ('source:A', 1.0, 0.01, ?)", (NOW,))
+    db.commit()
+    after = share(cfg, db, "A", interest=d.Interest(db, cfg, NOW))
+    assert after > before + 0.15, (before, after)
+
+
+def test_habituation_wears_off_by_itself(tmp_path):
+    cfg = config({"name": "A", "shelf": "printing", "kind": "feed", "url": "x"})
+    past = [{"told": NOW, "shelves": ["printing"], "sources": ["A"]}]
+    assert d.habituation(cfg, past, NOW, "shelves", "printing") == 1.0
+    later = d.habituation(cfg, past, NOW + cfg["care"]["habit_days"] * DAY, "shelves", "printing")
+    assert abs(later - math.exp(-1)) < 1e-9, "one time constant on, 37% left"
+    assert d.habituation(cfg, past, NOW, "shelves", "market") == 0.0
+
+
+def test_a_safety_recall_on_my_car_comes_first_and_once(tmp_path):
+    cfg = config({"name": "Hackaday", "shelf": "wild", "kind": "feed", "url": "x"},
+                 {"name": "Recalls", "shelf": "wild", "kind": "recalls", "make": "audi", "model": "e-tron", "year": 2019,
+                  "who": "the 2019 e-tron", "fresh_days": 540})
+    cfg["series"] = []
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["Hackaday"], [entry(f"{w} story") for w in ("lathe", "anvil", "kiln")], NOW)
+    found = [{"NHTSACampaignNumber": "25V900000", "ReportReceivedDate": "19/12/2025", "Component": "BACK OVER PREVENTION: CAMERA",
+              "Summary": "The rearview camera image may not display.", "Remedy": "Dealers will update the software."},
+             {"NHTSACampaignNumber": "19V434000", "ReportReceivedDate": "10/06/2019", "Component": "TRACTION BATTERY",
+              "Summary": "Moisture can enter the battery."}]
+    d.ingest(db, cfg["sources"]["Recalls"], [d.recall_entry(r) for r in found], NOW)
+    kit = d.draw(db, cfg, late=True, now=NOW, rng=random.Random(1))
+    assert kit["first"] == ["recall"], "ahead of everything, late or not"
+    assert "Recall 25V900000, back over prevention" in kit["brief"] and "update the software" in kit["brief"]
+    assert "19V434000" not in kit["brief"], "seven years old is history"
+    d.tell(db, cfg, kit["kit"], "x", now=NOW)
+    assert "recall" not in d.draw(db, cfg, now=NOW + 3600, rng=random.Random(2))["first"]
+
+
+def test_a_slow_slide_is_caught_by_the_cusum(tmp_path):
+    cfg, db, sigma, level = market(tmp_path)
+    cfg["series"] = [dict(SP, downside=1.0)]
+    for k in range(15):                                   # 0.8 of a normal day down, every day
+        level *= 1 - 0.8 * sigma / 100
+        session(db, (datetime(2026, 10, 23) + timedelta(days=k)).strftime("%Y-%m-%d"), level)
+    now = NOW + 15 * DAY
+    mv = d.moves(db, cfg, now)[0]
+    assert abs(mv["z1"]) < cfg["moves"]["deadband"], "no single day says anything"
+    assert mv["salience"] >= cfg["moves"]["deadband"], "fifteen of them in a row do"
+    assert "markets" in d.draw(db, cfg, now=now, rng=random.Random(1))["first"]
+
+
+def test_a_fall_weighs_more_than_a_rise_of_the_same_size(tmp_path):
+    saliences = []
+    for way, sub in ((-1, "fall"), (1, "rise")):
+        (tmp_path / sub).mkdir()
+        cfg, db, sigma, level = market(tmp_path / sub)
+        cfg["series"] = [dict(SP, downside=1.25)]
+        session(db, "2026-10-23", level * (1 + way * 2 * sigma / 100))
+        saliences.append(d.moves(db, cfg, NOW)[0]["salience"])
+    assert abs(saliences[0] / saliences[1] - 1.25) < 0.05, saliences
+
+
+def test_more_sources_on_the_same_story_count(tmp_path):
+    cfg = config({"name": "A", "shelf": "printing", "kind": "feed", "url": "x"},
+                 {"name": "B", "shelf": "wild", "kind": "feed", "url": "x"},
+                 {"name": "C", "shelf": "robotics_ai", "kind": "feed", "url": "x"})
+    cfg["series"] = []
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["A"], [entry("Prusa announces open hardware Core One upgrade kit")], NOW)
+    d.ingest(db, cfg["sources"]["B"], [entry("Prusa announces Core One upgrade kit, open hardware")], NOW)
+    d.ingest(db, cfg["sources"]["C"], [entry("Open hardware Core One upgrade kit announced by Prusa")], NOW)
+    cands = d.candidates(db, cfg, NOW)
+    assert [c.coverage for c in cands] == [2, 2, 2]
+    assert "2 other sources have it too" in d.describe(1, cands[0], "x")
+
+
+def test_points_and_recalls_come_in_clean():
+    rss = (b'<?xml version="1.0"?><rss><channel><title>Show HN</title><item><title>Show HN: A thing</title>'
+           b'<link>https://example.com/thing</link><description>Article URL: x Points: 158 Comments: 12</description></item></channel></rss>')
+
+    class Fake:
+        def get(self, url, accept=None):
+            return rss
+    _, items = d.fetch(Fake(), {"kind": "forum", "url": "x", "top": 12}, NOW)
+    assert items[0]["metric"] == 158.0
+    r = d.recall_entry({"NHTSACampaignNumber": "24V621000", "ReportReceivedDate": "19/08/2024", "Component": "SERVICE BRAKES, HYDRAULIC:PEDALS"})
+    assert datetime.fromtimestamp(r["when"], timezone.utc).strftime("%Y-%m-%d") == "2024-08-19"
+    assert r["title"] == "Recall 24V621000, service brakes, hydraulic"
+
+
+def test_a_word_every_post_on_a_forum_says_says_nothing_there(tmp_path):
+    cfg = config({"name": "r/VORONDesign", "shelf": "printing", "kind": "forum", "url": "x"},
+                 {"name": "Hackaday", "shelf": "wild", "kind": "feed", "url": "x"})
+    cfg["series"] = []
+    cfg["mine"] = {"printer": "the Voron", "words": {"Voron": 1.0}, "modules": set()}
+    db = d.connect(str(tmp_path / "digest.db"))
+    d.ingest(db, cfg["sources"]["r/VORONDesign"], [entry(f"My Voron {w} build") for w in ("trident", "salad", "legacy", "switchwire", "zero")], NOW)
+    d.ingest(db, cfg["sources"]["Hackaday"], [entry("A Voron that prints in metal"), entry("A lathe from a drill")], NOW)
+    prox = {c.items[0]["title"]: c.prox for c in d.candidates(db, cfg, NOW)}
+    assert all(prox[f"My Voron {w} build"] == 0.0 for w in ("trident", "salad", "legacy", "switchwire", "zero"))
+    assert prox["A Voron that prints in metal"] == 1.0, "too few to say what's usual for Hackaday, so it counts in full"

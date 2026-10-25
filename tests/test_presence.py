@@ -482,3 +482,11 @@ async def test_the_vacuum_started_on_the_way_out_gets_to_clean(house_at):
     house.set("vacuum.robot_vacuum", "cleaning")
     await house.advance(seconds=10)
     assert house.called("vacuum.return_to_base")
+
+
+async def test_more_or_less_like_that_teaches_the_digest(house_at):
+    # "more like that" after a welcome: the digest's interest filter moves toward what was in it
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening"})
+    assert await house.ask("DigestMore") == "Noted. More like that."
+    assert await house.ask("DigestLess") == "Noted. Less of that."
+    assert [c.data["y"] for c in house.called("rest_command.digest_feedback")] == [1, -1]

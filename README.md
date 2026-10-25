@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-117-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-129-2ea44f?style=flat-square)
 
 </div>
 
@@ -101,6 +101,7 @@ Levels as in my handbook: 1 is no math, 4 is in the weeds.
 | The control system: the asleep filter, occupancy, PID, priorities and holds | [docs/control.md](docs/control.md) | 3 to 4 |
 | Every signal the house has and how far to trust it | [docs/sensing.md](docs/sensing.md) | 2 to 3 |
 | Modes, looks, leaving and arriving, the wake-up | [docs/routines.md](docs/routines.md) | 2 to 3 |
+| Do you care? The math of what's worth saying: surprise, attention, habituation and the care model | [docs/caring.md](docs/caring.md) | 3 to 4 |
 | Lights by layer, the curve they follow through the day, and how to add one | [docs/lighting.md](docs/lighting.md) | 3 |
 | ESP32 sensor nodes to build, and why they beat buying | [docs/esp32.md](docs/esp32.md) | 2 |
 | The scenario tests and the bench they run on | [docs/testing.md](docs/testing.md) | 2 to 3 |

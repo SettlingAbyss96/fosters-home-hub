@@ -1,0 +1,19 @@
+# What you think of what Jarvis just told you, for the digest's care model (packages/digest.yaml,
+# docs/caring.md). It applies to the last welcome or morning briefing: every source and shelf in it
+# moves toward liked or not by the interest filter's gain, so one remark nudges and a habit shows
+language: "en"
+intents:
+  DigestMore:
+    data:
+      - sentences:
+          - "more like that"
+          - "[i] (liked|loved|enjoyed) that"
+          - "that was (good|great|interesting|fun)"
+          - "good (one|pick)"
+  DigestLess:
+    data:
+      - sentences:
+          - "less like that"
+          - "(not interested|i don't care) [in|about] that"
+          - "that was (boring|dull)"
+          - "skip (that|those) next time"
