@@ -67,6 +67,10 @@ something else first.
   reminders or the doorbell at 2 AM never made it in, and words written on a false wake got said
   hours later, and asking for it again got the short version. A log of the night, stale words
   written again, and a repeat in full ([routines.md](routines.md#mornings-and-bedtime))
+- The morning briefing went at 4 AM. A few minutes in front of the Hub at 4:00, an hour and a half
+  before the alarm, and the briefing played to an empty room, once a day, so there was nothing when
+  it was time to get up. The house's Night-to-Morning rule already knew a night trip isn't the
+  morning, and the briefing waits for it now ([routines.md](routines.md#mornings-and-bedtime))
 - Only a good night got a mention. Under a sleep score of 70 the morning briefing said nothing about
   sleep at all, the same good-news-only rule in another place. Every night is in it now, compared with
   the month only past a deadband, and the markets and stories follow the same idea: said once, and

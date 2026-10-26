@@ -248,8 +248,11 @@ watch behind it in case they went straight back. Every door moving counts as som
 Both go off what actually happened, not a clock, because the clock is the part that's wrong
 half the time.
 
-The briefing waits for someone to be up: the first time the Hub sees someone after the house was in
-Night, or after four hours of nobody in front of it, between 4 and 1, once a day. It's the welcome
+The briefing waits for someone to be up, and up is the house's own call: the first time the Hub sees
+someone once the house has left Night (the wake-up does that at the wake time, and on a day off the
+Hub seeing someone does it from 45 minutes before the plan's wake), or after four hours of nobody in
+front of it, between 4 and 1, once a day. Going by the first movement after 4 AM, a few minutes up
+at 4:00 got the whole briefing in an empty room and nothing when it was time to get up. It's the welcome
 home's morning twin. The day ahead (the weather, the first meeting, and with an Oura ring last
 night's sleep good or bad, once the ring's night has ended this morning), then
 what came through overnight, then something nobody's said yet from the digest, from the same pool

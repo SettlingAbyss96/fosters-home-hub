@@ -423,6 +423,12 @@ automation:
         target:
           entity_id: script.morning_briefing_prepare
 
+  # Up is the house's own call (packages/house_mode.yaml): out of Night, which the wake-up does at
+  # the wake time and the Hub seeing someone does from 45 minutes before the plan's wake on a day
+  # off. Going by the first movement after 4 AM, a few minutes up at 4:00, an hour and a half before
+  # the alarm, gets the whole briefing in an empty room and nothing when you're really up, since
+  # it's once a day. The Hub seeing someone and Night ending come in either order, so either one
+  # can start it
   - id: morning_briefing_when_up
     alias: "Morning briefing when I'm up"
     triggers:
@@ -430,6 +436,10 @@ automation:
         entity_id: binary_sensor.hub_500_motion
         from: "off"
         to: "on"
+      - trigger: state
+        entity_id: input_select.house_mode
+        from: Night
+        id: up
     conditions:
       - condition: state
         entity_id: input_boolean.auto_briefing
@@ -441,11 +451,17 @@ automation:
         entity_id: person.resident
         state: home
       - "{{ (states('input_datetime.last_morning_briefing') | as_datetime(none)) is none or (states('input_datetime.last_morning_briefing') | as_datetime | as_local).date() < now().date() }}"
-      # asleep before this: the house was in Night, or nobody had moved in front of the Hub for four hours
+      # out of Night and up: Night ended today (the wake-up, or seen in the morning window), or no
+      # Night at all and nobody moved in front of the Hub for four hours. Night ending counts when
+      # the Hub has just seen someone, since the wake-up ends it while you're still in bed
       - >-
         {% set quiet = state_attr('sensor.hub_last_saw_someone', 'last_off') | as_datetime(none) %}
-        {{ is_state('input_boolean.waking_up', 'on') or is_state('input_select.house_mode', 'Night')
-           or quiet is none or (now() - quiet).total_seconds() > 4 * 3600 }}
+        {% set mode = states.input_select.house_mode %}
+        {% set seen = states('sensor.hub_last_saw_someone') | as_datetime(none) %}
+        {{ mode is not none and mode.state not in ['Night', 'Away']
+           and (trigger.id != 'up' or (seen is not none and (now() - seen).total_seconds() < 120))
+           and (is_state('input_boolean.waking_up', 'on') or as_local(mode.last_changed).date() == now().date()
+                or quiet is none or (now() - quiet).total_seconds() > 4 * 3600) }}
     actions:
       - action: script.morning_briefing
         continue_on_error: true

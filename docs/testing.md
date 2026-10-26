@@ -88,7 +88,7 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 
 | File | Tests | What it pins down |
 |---|---|---|
-| `test_wake.py` | 18 | the wake-up from its real trigger, the backstop, a dead light, a broken plan, every way of saying you're up, the morning briefing written ahead and with no chores in it, the night in it (the doorbell, a reminder three times as one line), stale words written again, asking again getting the whole briefing, asking before the Hub sees you, a reminder already dealt with left out, a bad night said plainly against the month, an ordinary night just its numbers, a restart only when something didn't come back from it, the backup only when it failed |
+| `test_wake.py` | 19 | the wake-up from its real trigger, the backstop, a dead light, a broken plan, every way of saying you're up, the morning briefing written ahead and with no chores in it, the night in it (the doorbell, a reminder three times as one line), stale words written again, asking again getting the whole briefing, asking before the Hub sees you, a reminder already dealt with left out, a bad night said plainly against the month, an ordinary night just its numbers, a restart only when something didn't come back from it, the backup only when it failed, a few minutes up at 4 AM not being the morning |
 | `test_lights.py` | 21 | the gate, holds, by hand against by the house (a hand on a dimmer mid-fade too), the colour and brightness split, a no-dim kitchen left alone, a look never switching a task light on, the light curve through a day, nothing below 2700 K, Calm the hour before bed, blend steps too small to see, a lamp that restarted going straight back, a few more tries at a light that stayed on while you're out, an overhead standing in for a dead lamp, dark for a film |
 | `test_asleep.py` | 10 | the filter: it takes a while, has memory, wakes for a real sign of life, not for a phone finishing its charge or a computer charging on the desk, and the bedroom radar over the desk plug |
 | `test_blocks.py` | 5 | the control blocks alone: the Bayes step, hysteresis, the low-pass step response, PID with and without windup |
@@ -100,7 +100,7 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 | `test_tv.py` | 2 | a TV dozing after its own sleep timer reading as off, and "off" when it already is being done |
 | `test_smoke.py` | 1 | everything loads |
 
-158 in all, about seven minutes on the Hub. The PID test is the closest thing here to hardware in the
+159 in all, about seven minutes on the Hub. The PID test is the closest thing here to hardware in the
 loop: it closes the loop around a simulated room (first order, two-minute time constant) and checks
 it settles with no offset and doesn't wind up, so the block is known to work before anything real
 depends on it.

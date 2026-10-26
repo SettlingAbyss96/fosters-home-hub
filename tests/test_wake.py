@@ -178,6 +178,22 @@ async def test_the_morning_has_the_night_in_it_and_something_new(house_at):
     assert len(told) == 1 and told[0].data["kit"] == "m1", "heard, so retired"
 
 
+async def test_up_at_four_for_a_few_minutes_isnt_the_morning(house_at):
+    # the Hub seeing someone at 4:00, an hour and a half before the alarm, used to be the briefing in
+    # an empty room at 4:01 and nothing when they were really up at 5:55
+    house = await house_at(f"{TUESDAY} 03:50", {"input_select.house_mode": "Night", **DIGEST})
+    house.replies["rest_command.digest_kit"] = MORNING_KIT
+    house.replies["ai_task.generate_data"] = MORNING_WORDS
+    await house.advance(minutes=10)                   # 4:00
+    await up(house)
+    await house.advance(minutes=2)
+    assert not house.said("Grant's reckons"), "a night trip, not the morning"
+    await house.advance(minutes=113)                  # 5:55, the wake-up's been
+    await up(house)
+    await house.advance(seconds=30)
+    assert house.said("Grant's reckons the S&P is really two markets")
+
+
 async def test_words_older_than_the_night_are_written_again(house_at):
     # words written at the sunrise, then a notification before you're up: they're written again
     house = await house_at(f"{TUESDAY} 04:50", {"input_select.house_mode": "Night", **DIGEST})

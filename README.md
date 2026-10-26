@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-158-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-159-2ea44f?style=flat-square)
 
 </div>
 
