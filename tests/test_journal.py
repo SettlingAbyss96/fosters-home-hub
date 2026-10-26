@@ -2,11 +2,15 @@
 to ask, and the house asking it after the welcome home (packages/journal.yaml). The places are made
 up, somewhere around 40° N, and the positions go straight in the way Home Assistant posts them."""
 
+import array
+import io
+import json
 import math
 import pathlib
+import random
 import re
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
@@ -253,6 +257,84 @@ def test_no_question_says_how_long_i_was_anywhere():
                 assert not re.search(r"\b(hours?|minutes?|long|late|early|all day|so soon)\b", t, re.I), (kind, t)
 
 
+# -- listening --------------------------------------------------------------------------------
+def tone(amp, secs):
+    """Something said: a steady tone at this level"""
+    return array.array("h", (int(amp * math.sin(2 * math.pi * 220 * i / j.RATE)) for i in range(int(secs * j.RATE)))).tobytes()
+
+
+def hush(secs):
+    """The echo-cancelled mic with nobody talking, a level of 1 or 2"""
+    r = random.Random(1)
+    return array.array("h", (r.randint(-2, 2) for _ in range(int(secs * j.RATE)))).tobytes()
+
+
+def until_done(ear, pcm):
+    step = j.FRAME * 2
+    for i in range(0, len(pcm) - step + 1, step):
+        if ear.feed(pcm[i:i + step]):
+            return ear.t
+    return None
+
+
+def test_a_pause_to_think_doesnt_end_the_answer():
+    # two seconds, two and a half to think, a second and a half more, then quiet: over 3.5 s later
+    ear = j.Ear(3.5, 10, 180)
+    done = until_done(ear, hush(1) + tone(2000, 2) + hush(2.5) + tone(1500, 1.5) + hush(5))
+    assert abs(done - 10.5) < 0.1
+    assert 6.0 < len(ear.said()) / 2 / j.RATE < 7.5, "from just before the first word to half a second after the last"
+
+
+def test_a_key_press_isnt_the_start_of_an_answer():
+    # a tenth of a second of something once came back from Parakeet as "Mm."
+    ear = j.Ear(3.5, 10, 180)
+    until_done(ear, hush(1) + tone(3000, 0.06) + hush(1) + tone(3000, 0.09) + hush(9))
+    assert not ear.started
+
+
+def test_nothing_said_ends_at_the_wait_and_a_ramble_at_three_minutes():
+    ear = j.Ear(3.5, 10, 180)
+    assert abs(until_done(ear, hush(15)) - 10) < 0.1 and not ear.started
+    ear = j.Ear(3.5, 10, 180)
+    assert abs(until_done(ear, tone(1000, 200)) - 180) < 0.1
+
+
+def test_a_long_answer_goes_to_parakeet_in_pieces_and_comes_back_whole(monkeypatch):
+    got = []
+
+    class Parakeet:
+        """Wyoming, the speech to text's side: it takes events until audio-stop, then a transcript"""
+
+        def __init__(self, *a, **k):
+            self.sent = bytearray()
+
+        def sendall(self, b):
+            self.sent += b
+
+        def makefile(self, mode):
+            f, audio = io.BytesIO(bytes(self.sent)), 0
+            while True:
+                head = json.loads(f.readline())
+                f.read(head.get("data_length", 0))
+                audio += len(f.read(head.get("payload_length", 0)))
+                if head["type"] == "audio-stop":
+                    break
+            got.append(audio)
+            body = json.dumps({"text": f"piece {len(got)}."}).encode()
+            return io.BytesIO(json.dumps({"type": "transcript", "data_length": len(body)}).encode() + b"\n" + body)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(j.socket, "create_connection", Parakeet)
+    text = j.transcribe({"listen": dict(j.LISTEN)}, tone(1000, 60))
+    assert text == "piece 1. piece 2. piece 3."
+    assert sum(got) == 60 * j.RATE * 2 and max(got) <= j.CHUNK_S * j.RATE * 2
+
+
 # -- the house asking -------------------------------------------------------------------------
 TUESDAY = "2026-10-13"
 ASK = {"status": 200, "content": {"ask": 7, "question": "How was work? And Lamplight Coffee, how was the ambiance?",
@@ -260,8 +342,9 @@ ASK = {"status": 200, "content": {"ask": 7, "question": "How was work? And Lampl
                                              {"name": "Lamplight Coffee", "kind": "cafe", "first": True, "minutes": 45}]}}
 
 
-def answers(*sentences):
-    return [{"id": None, "sentence": s, "slots": {}} if isinstance(s, str) else s for s in sentences]
+def heard(*texts):
+    """What the Hub's own listening writes down, one per question"""
+    return [{"status": 200, "content": {"text": t, "speech_seconds": 4.0 if t else 0.0}} for t in texts]
 
 
 async def welcome(house):
@@ -269,60 +352,70 @@ async def welcome(house):
     house.hass.bus.async_fire("welcome_home_words", {"text": "Welcome home. A quiet day in the markets.", "kit": ""})
     await house.settle()
     await house.hass.services.async_call("script", "turn_on", {"entity_id": "script.welcome_home"})
-    await house.advance(seconds=10)
+    await house.advance(seconds=10, step=1)
     assert house.said("A quiet day in the markets")
 
 
-async def test_after_the_welcome_jarvis_asks_how_it_went_and_keeps_it(house_at):
-    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening"})
+async def test_after_the_welcome_jarvis_asks_and_lets_me_ramble(house_at):
+    # the voice pipeline ends the turn at the first pause, so the Hub listens itself
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening", "media_player.fire_tv": "on"})
     house.replies["rest_command.journal_ask"] = ASK
-    house.replies["assist_satellite.ask_question"] = answers(
-        "Good, we shipped the release.", "The coffee place was cosy, too loud to work though.",
-        {"id": "done", "sentence": "no that's it", "slots": {}})
+    house.replies["rest_command.journal_listen"] = heard(
+        "Good, we shipped the release. Then, I don't know, the afternoon just went on meetings.",
+        "The coffee place was cosy, too loud to work though.")
     await welcome(house)
-    asked = house.called("assist_satellite.ask_question")
-    assert asked[0].data["question"] == ASK["content"]["question"]
-    assert asked[1].data["question"].startswith("Anything"), "a sentence ends the turn, so it asks for more"
+    assert house.said(ASK["content"]["question"])
+    listens = house.called("rest_command.journal_listen")
+    assert len(listens) == 2 and listens[1].data.get("wait") == 6, "the answer, then anything else"
+    assert any(house.said(w) for w in ("Anything else?", "Anything more?", "Anything else worth keeping?"))
     kept = house.called("rest_command.journal_answer")
     assert len(kept) == 1 and kept[0].data["ask"] == 7 and kept[0].data["heard"]
-    assert kept[0].data["answer"] == "Good, we shipped the release. The coffee place was cosy, too loud to work though."
+    assert kept[0].data["answer"] == ("Good, we shipped the release. Then, I don't know, the afternoon just went on meetings. "
+                                      "The coffee place was cosy, too loud to work though.")
     line = house.called("notify.send_message", entity_id="notify.journal_log")
     assert line and "Work and Lamplight Coffee" in line[0].data["message"] and "shipped the release" in line[0].data["message"]
     assert any(house.said(w) for w in ("Noted.", "Written down.", "In the journal.", "Duly noted."))
     shown = house.attr("sensor.journal", "entries")
     assert shown[-1]["places"] == "Work and Lamplight Coffee" and "too loud to work" in shown[-1]["answer"], "on the Routines page"
+    ducks = [c.data["command"] for c in house.called("androidtv.adb_command") if "media_session volume" in c.data.get("command", "")]
+    assert ducks and "echo" in ducks[0] and "read v d" in ducks[-1], "the TV quiet while it listens, and back after"
+
+
+async def test_no_thats_it_ends_it(house_at):
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening"})
+    house.replies["rest_command.journal_ask"] = ASK
+    house.replies["rest_command.journal_listen"] = heard("Long day, good day.", "No, that's it.")
+    await welcome(house)
+    assert house.called("rest_command.journal_answer")[0].data["answer"] == "Long day, good day."
 
 
 async def test_not_now_is_an_answer(house_at):
     house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening"})
     house.replies["rest_command.journal_ask"] = ASK
-    house.replies["assist_satellite.ask_question"] = answers({"id": "skip", "sentence": "not now", "slots": {}})
+    house.replies["rest_command.journal_listen"] = heard("Not now.")
     await welcome(house)
     kept = house.called("rest_command.journal_answer")
     assert kept[0].data["answer"] == "" and kept[0].data["heard"], "asked, so it doesn't come round again"
-    assert len(house.called("assist_satellite.ask_question")) == 1
+    assert len(house.called("rest_command.journal_listen")) == 1
     assert house.said("Of course.")
     assert not house.called("notify.send_message", entity_id="notify.journal_log")
 
 
-@pytest.mark.expect_errors("No answer from question")
-@pytest.mark.expect_errors("busy")
-async def test_silence_after_the_question_is_asked_and_a_busy_satellite_isnt(house_at):
+@pytest.mark.expect_errors("unreachable")
+async def test_silence_is_asked_and_a_hub_that_didnt_listen_isnt(house_at):
     house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening"})
     house.replies["rest_command.journal_ask"] = ASK
-
-    def listened_to_nothing(call):
-        house.freezer.tick(timedelta(seconds=12))      # the question, then listening, then nothing
-        return HomeAssistantError("No answer from question")
-
-    house.replies["assist_satellite.ask_question"] = listened_to_nothing
+    house.replies["rest_command.journal_listen"] = heard("")
     await welcome(house)
-    assert house.called("rest_command.journal_answer")[0].data["heard"]
+    kept = house.called("rest_command.journal_answer")
+    assert kept[0].data["heard"] and kept[0].data["answer"] == "", "heard nothing: asked all the same"
+    assert len(house.called("rest_command.journal_listen")) == 1, "no anything else after nothing"
     house.forget()
     await house.advance(minutes=1)
-    house.replies["assist_satellite.ask_question"] = HomeAssistantError("busy")
-    await house.run("journal_ask")
-    assert not house.called("rest_command.journal_answer")[0].data["heard"], "never said: next time"
+    house.replies["rest_command.journal_listen"] = HomeAssistantError("unreachable")
+    await house.hass.services.async_call("script", "turn_on", {"entity_id": "script.journal_ask"})
+    await house.advance(seconds=5, step=1)
+    assert not house.called("rest_command.journal_answer")[0].data["heard"], "never listened: next time"
 
 
 async def test_no_questions_with_guests_in_at_night_or_switched_off(house_at):
@@ -330,20 +423,20 @@ async def test_no_questions_with_guests_in_at_night_or_switched_off(house_at):
                   {"input_boolean.auto_journal": "off"}, {"input_boolean.jarvis_muted": "on"}):
         house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Evening", **state})
         house.replies["rest_command.journal_ask"] = ASK
-        await house.run("journal_ask")
-        await house.advance(seconds=5)
-        assert not house.called("assist_satellite.ask_question"), state
+        await house.hass.services.async_call("script", "turn_on", {"entity_id": "script.journal_ask"})
+        await house.advance(seconds=5, step=1)
+        assert not house.called("rest_command.journal_listen"), state
         assert not house.called("rest_command.journal_ask"), state
 
 
 async def test_ask_me_about_my_day_works_even_switched_off(house_at):
     house = await house_at(f"{TUESDAY} 21:00", {"input_select.house_mode": "Evening", "input_boolean.auto_journal": "off"})
     house.replies["rest_command.journal_ask"] = ASK
-    house.replies["assist_satellite.ask_question"] = answers("Fine.", {"id": "done", "sentence": "no", "slots": {}})
+    house.replies["rest_command.journal_listen"] = heard("Fine.", "no")
     assert await house.ask("JournalAskMe") == "Of course."
-    assert not house.called("assist_satellite.ask_question"), "not over the top of its own answer"
-    await house.advance(seconds=6)
-    assert house.called("assist_satellite.ask_question")
+    assert not house.called("rest_command.journal_listen"), "not over the top of its own answer"
+    await house.advance(seconds=10, step=1)
+    assert house.called("rest_command.journal_listen")
     assert house.called("rest_command.journal_answer")[0].data["answer"] == "Fine."
 
 
@@ -352,7 +445,7 @@ async def test_ask_me_with_nothing_to_ask_says_so(house_at):
     await house.ask("JournalAskMe")
     await house.advance(seconds=6)
     assert house.said("Nothing I'd ask about today")
-    assert not house.called("assist_satellite.ask_question")
+    assert not house.called("rest_command.journal_listen")
 
 
 async def test_a_note_and_todays_journal_by_voice(house_at):

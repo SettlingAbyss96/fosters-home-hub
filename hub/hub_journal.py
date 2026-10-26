@@ -5,8 +5,8 @@ Home Assistant sends every new phone position here (packages/journal.yaml). From
 out the stays, somewhere that isn't home for a while, and what kind of place each one was, from a
 copy of OpenStreetMap's cafes, restaurants, shops and the rest in a box around home. When you get
 in, Home Assistant asks for a question about the trip (GET /ask), Jarvis asks it after the
-welcome home and listens, and the answer comes back (POST /answer) to be kept here, with a copy in
-Home Assistant's /config/journal so it rides along with the backups.
+welcome home, this listens (POST /listen), and the answer comes back (POST /answer) to be kept
+here, with a copy in Home Assistant's /config/journal so it rides along with the backups.
 
 What gets asked about, out of journal.toml (journal.example.toml until you make your own):
   - work, once a day, however ordinary the day
@@ -22,6 +22,7 @@ Positions never leave the house. The map comes down once a month as a box around
 about where you've been goes anywhere, and the questions are written here, not by a model.
 
   GET  /ask             the question for the trip just ending, or {} when there's nothing to ask
+  POST /listen          {"pause", "wait", "max"}: the Hub's own mic until the answer's over, as text
   POST /answer          {"ask": id, "answer": text, "heard": true}: "" is asked and not answered
   POST /point           {"t", "lat", "lon", "acc", "zone", "aoi"}
   POST /note            {"text"}: a line for the journal with no place
@@ -36,19 +37,22 @@ about where you've been goes anywhere, and the questions are written here, not b
   hub_journal.py --stays [DAYS]   the stays it sees, and what it would ask now, without keeping it
 """
 import argparse
+import array
 import csv
 import json
 import math
 import os
 import random
+import socket
 import sqlite3
 import statistics
+import subprocess
 import threading
 import time
 import tomllib
 import urllib.parse
 import urllib.request
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -117,6 +121,7 @@ def load_config(path):
         cfg = tomllib.load(f)
     cfg["stays"] = {**STAYS, **cfg.get("stays", {})}
     cfg["map"] = {**MAP, **cfg.get("map", {})}
+    cfg["listen"] = {**LISTEN, **cfg.get("listen", {})}
     cfg.setdefault("work_zone", "Work")
     cfg.setdefault("kinds", {})
     return cfg
@@ -544,6 +549,181 @@ def status(db, cfg, now=None):
             "home_known": home_of(db) is not None}
 
 
+# -- listening ----------------------------------------------------------------------------------
+# What Jarvis hears after its own question. Home Assistant's voice pipeline ends a turn after 1.25 s
+# of silence at the most relaxed and after 15 s in all, which suits "lights off" and cut a journal
+# answer off mid-thought. So for an answer the Hub listens itself: the echo-cancelled
+# mic (hub_mic, host/60-audio.sh), its own idea of when the answer's over, and Parakeet on the Hub
+# for the words (host/76-parakeet.sh). Nothing here leaves the Hub either.
+#
+# Over, by default: 3.5 s of quiet after some speech, nothing at all for 10 s, or 3 minutes in all.
+# A frame is speech when it's well over the room's floor, which the quiet frames keep up to date:
+# the echo-cancelled mic sits around 1 to 3 (of 32767) with nobody talking
+LISTEN = {"source": "hub_mic", "pause": 3.5, "wait": 10.0, "max": 180.0, "parakeet": "127.0.0.1:10310"}
+RATE = 16000
+FRAME = 480                    # 30 ms
+FRAME_S = FRAME / RATE
+LEVEL_MIN = 40                 # about -58 dBFS: under this is never speech
+OVER_FLOOR = 6                 # about 16 dB over the floor is speech
+ONSET = (5, 7)                 # 5 loud frames out of the last 7 (150 of 210 ms) start the speech:
+                               # a key press or a cough is shorter, and a tenth of a second of
+                               # something once came back from Parakeet as "Mm."
+PREROLL = 10                   # frames kept from before the start, so the first word's whole
+SAID_MIN = 0.3                 # less speech than this, in seconds, is nothing said
+SETTLE = 8                     # frames ignored at the start, the tail of Jarvis's own question
+CHUNK_S = 25                   # longest piece Parakeet gets at once
+LISTENING = threading.Lock()
+
+
+def level(frame):
+    a = array.array("h")
+    a.frombytes(frame[: len(frame) // 2 * 2])
+    return math.sqrt(sum(x * x for x in a) / len(a)) if a else 0.0
+
+
+class Ear:
+    """Decides, frame by frame, whether the answer's over. feed() takes 30 ms of 16-bit mono and
+    says True when it's done; said() is what was said, from just before the first word to a short
+    tail after the last"""
+
+    def __init__(self, pause, wait, longest):
+        self.pause, self.wait, self.longest = pause, wait, longest
+        self.floor = None
+        self.t = 0.0
+        self.recent = deque(maxlen=ONSET[1])
+        self.quiet = 0.0
+        self.speech = 0.0
+        self.started = False
+        self.pre = deque(maxlen=PREROLL)
+        self.pcm = bytearray()
+        self.skip = SETTLE
+
+    def threshold(self):
+        return max(LEVEL_MIN, (self.floor or 0) * OVER_FLOOR)
+
+    def feed(self, frame):
+        self.t += FRAME_S
+        if self.skip:
+            self.skip -= 1
+            return False
+        r = level(frame)
+        loud = r > self.threshold()
+        if not loud:
+            self.floor = r if self.floor is None else 0.95 * self.floor + 0.05 * r
+        if not self.started:
+            self.pre.append(bytes(frame))
+            self.recent.append(loud)
+            if sum(self.recent) >= ONSET[0]:
+                self.started = True
+                for f in self.pre:
+                    self.pcm += f
+                self.speech = sum(self.recent) * FRAME_S
+            return self.t >= self.wait or self.t >= self.longest
+        self.pcm += frame
+        if loud:
+            self.quiet = 0.0
+            self.speech += FRAME_S
+        else:
+            self.quiet += FRAME_S
+        return self.quiet >= self.pause or self.t >= self.longest
+
+    def said(self):
+        """What was said, with the closing quiet trimmed to half a second"""
+        drop = max(0, int((self.quiet - 0.5) / FRAME_S)) * FRAME * 2
+        return bytes(self.pcm[:max(0, len(self.pcm) - drop)])
+
+
+def record(cfg, pause, wait, longest):
+    """(pcm, seconds of speech) from the mic, until the Ear says the answer's over"""
+    env = {**os.environ}
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+    proc = subprocess.Popen(["parecord", f"--device={cfg['listen']['source']}", f"--rate={RATE}", "--channels=1",
+                             "--format=s16le", "--raw", "--latency-msec=30"],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
+    ear = Ear(pause, wait, longest)
+    try:
+        while True:
+            frame = proc.stdout.read(FRAME * 2)
+            if len(frame) < FRAME * 2 or ear.feed(frame):
+                break
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    return (ear.said(), ear.speech) if ear.started and ear.speech >= SAID_MIN else (b"", 0.0)
+
+
+def pieces(pcm):
+    """Long answers in pieces of at most CHUNK_S, each cut at the quietest moment in its last five
+    seconds, so a word isn't split in two"""
+    size = CHUNK_S * RATE * 2
+    out = []
+    while len(pcm) > size:
+        start = size - 5 * RATE * 2
+        frames = [(level(pcm[i:i + FRAME * 2]), i) for i in range(start, size - FRAME * 2 + 1, FRAME * 2)]
+        cut = min(frames)[1] + FRAME
+        out.append(pcm[:cut])
+        pcm = pcm[cut:]
+    return out + [pcm] if pcm else out
+
+
+def wyoming(sock, etype, data=None, payload=b""):
+    body = json.dumps(data or {}).encode()
+    head = {"type": etype, "version": "1.5.2", "data_length": len(body)}
+    if payload:
+        head["payload_length"] = len(payload)
+    sock.sendall(json.dumps(head).encode() + b"\n" + body + payload)
+
+
+def wyoming_read(f):
+    line = f.readline()
+    if not line:
+        raise ConnectionError("the speech to text closed the connection")
+    head = json.loads(line)
+    data = dict(head.get("data") or {})
+    if head.get("data_length"):
+        data.update(json.loads(f.read(head["data_length"])))
+    if head.get("payload_length"):
+        f.read(head["payload_length"])
+    return head["type"], data
+
+
+def transcribe(cfg, pcm):
+    """Parakeet's words for 16 kHz mono, over Wyoming, a piece at a time"""
+    host, port = cfg["listen"]["parakeet"].rsplit(":", 1)
+    words = []
+    for piece in pieces(pcm):
+        with socket.create_connection((host, int(port)), timeout=120) as sock:
+            fmt = {"rate": RATE, "width": 2, "channels": 1}
+            wyoming(sock, "transcribe", {"language": "en"})
+            wyoming(sock, "audio-start", fmt)
+            for i in range(0, len(piece), RATE * 2):
+                wyoming(sock, "audio-chunk", fmt, piece[i:i + RATE * 2])
+            wyoming(sock, "audio-stop", {})
+            f = sock.makefile("rb")
+            while True:
+                etype, data = wyoming_read(f)
+                if etype == "transcript":
+                    words.append((data.get("text") or "").strip())
+                    break
+    return " ".join(w for w in words if w)
+
+
+def listen(cfg, pause=None, wait=None, longest=None):
+    """{"text", "speech_seconds"}: one answer, heard and written down"""
+    c = cfg["listen"]
+    if not LISTENING.acquire(blocking=False):
+        return {"error": "already listening"}
+    try:
+        pcm, speech = record(cfg, float(pause or c["pause"]), float(wait or c["wait"]), float(longest or c["max"]))
+        text = transcribe(cfg, pcm) if pcm else ""
+        return {"text": text, "speech_seconds": round(speech, 1)}
+    finally:
+        LISTENING.release()
+
+
 # -- the service ------------------------------------------------------------------------------
 def serve(cfg, db_path, port):
     def mapper():
@@ -587,7 +767,7 @@ def serve(cfg, db_path, port):
                 db.close()
 
         def do_POST(self):  # noqa: N802
-            if self.path not in ("/point", "/answer", "/note"):
+            if self.path not in ("/point", "/answer", "/note", "/listen"):
                 return self.reply(404, {"error": "no such thing"})
             try:
                 body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 100_000)) or b"{}")
@@ -599,6 +779,9 @@ def serve(cfg, db_path, port):
                     with LOCK:
                         add_point(db, body)
                     self.reply(200, {"ok": True})
+                elif self.path == "/listen":
+                    got = listen(cfg, body.get("pause"), body.get("wait"), body.get("max"))
+                    self.reply(409 if "error" in got else 200, got)
                 elif self.path == "/answer":
                     heard = body.get("heard", True) not in (False, "false", "False", 0, "0")
                     self.reply(200, answer(db, cfg, int(body.get("ask") or 0), str(body.get("answer") or ""), heard))
@@ -606,6 +789,8 @@ def serve(cfg, db_path, port):
                     self.reply(200, note(db, str(body.get("text") or "")))
             except (KeyError, ValueError, TypeError) as e:
                 self.reply(400, {"error": str(e)[:200]})
+            except OSError as e:                     # the mic or the speech to text
+                self.reply(503, {"error": str(e)[:200]})
             finally:
                 db.close()
 

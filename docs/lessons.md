@@ -86,9 +86,10 @@ something else first.
   everyday news about a car you only drive outscored a sport you love, which has no proximity at
   all. Using something and caring about it are separate terms in the model now
   ([caring.md](caring.md#owning-it-isnt-caring-about-it))
-- Not answering Jarvis is an error. `assist_satellite.ask_question` raises when nobody says anything,
-  so the house's error alert would send "something broke" every evening nobody felt like talking.
-  The alert lets "No answer from" go ([journal.md](journal.md#what-gets-asked))
+- The journal cut people off. Asked through the voice pipeline, a journal answer ends at the first
+  pause, since Home Assistant waits 1.25 seconds of silence at the most and listens for 15 seconds
+  in all. The Hub listens itself, through pauses and for up to three minutes
+  ([journal.md](journal.md#listening-while-you-think))
 - Jarvis wouldn't leave a conversation alone. With guests over, two false wakes turned into a running
   commentary: an answer ending in a question opened the long follow-up window, which heard more side
   talk, and so on until it got muted. openWakeWord went back to its default 0.5, and Jarvis answers

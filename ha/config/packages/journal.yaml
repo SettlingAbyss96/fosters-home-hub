@@ -3,11 +3,15 @@
 # works out where you stayed and what kind of place it was. Once the welcome home's been said, Jarvis
 # asks about the trip: work once a day (a zone called Work in Home Assistant), anywhere new,
 # somewhere familiar only after a while, and never a doctor's, a petrol station or anywhere with no
-# name on the map, which is mostly other people's houses. It listens for the answer
-# (assist_satellite.ask_question, which stops at speech to text, so what you say goes nowhere near
-# the cloud agent), asks once or twice whether there's anything else, and keeps it twice: in the
-# Hub's database, and as a line in /config/journal/journal.md (notify.journal_log, added by
-# tools/setup_ha.py), which goes with the backups.
+# name on the map, which is mostly other people's houses.
+#
+# Then the Hub listens, itself (POST /listen): Home Assistant's voice pipeline ends a turn after 1.25
+# seconds of silence and 15 in all, which cuts a journal answer off mid-thought. The journal's
+# listener waits out pauses (3.5 s of quiet ends it) for up to 3 minutes, and Parakeet writes it
+# down on the Hub, so what you say goes nowhere near the cloud agent. The TV goes quiet while it
+# listens (script.tv_duck). Then "Anything else?" once, and it's kept twice: in the Hub's database,
+# and as a line in /config/journal/journal.md (notify.journal_log, added by tools/setup_ha.py), which
+# goes with the backups.
 #
 # "Not now" is an answer too, and so is saying nothing: that trip doesn't come round again. Not with
 # guests in (guest mode), not at night, not while Jarvis is muted. "Jarvis, note ..." adds a line any
@@ -24,6 +28,13 @@ rest_command:
     url: "http://{{ states('input_text.hub_address') }}:10231/ask"
     method: get
     timeout: 10
+  # blocks until the answer's over and written down: up to max seconds of listening, then Parakeet
+  journal_listen:
+    url: "http://{{ states('input_text.hub_address') }}:10231/listen"
+    method: post
+    content_type: "application/json"
+    payload: '{{ {"pause": pause | default(3.5), "wait": wait | default(10), "max": max | default(180)} | to_json }}'
+    timeout: 240
   journal_answer:
     url: "http://{{ states('input_text.hub_address') }}:10231/answer"
     method: post
@@ -44,7 +55,7 @@ rest_command:
 script:
   journal_ask:
     alias: "How did it go?"
-    description: "Jarvis asks how the trip went (work, a new cafe, a restaurant), listens, and keeps the answer in the journal."
+    description: "Jarvis asks how the trip went (work, a new cafe, a restaurant), listens for as long as you talk, and keeps the answer in the journal."
     icon: mdi:notebook-edit-outline
     mode: single
     max_exceeded: silent
@@ -61,6 +72,11 @@ script:
       - delay: "{{ wait | default(0) | int(0) }}"
       - variables:
           by_voice: "{{ asked | default(false) | bool }}"
+          # what "not now" and "no, that's it" sound like once Parakeet's written them down
+          skips: ["not now", "skip", "skip it", "skip that", "never mind", "nevermind", "no thanks", "no thank you",
+                  "id rather not", "rather not", "pass", "later", "nothing"]
+          dones: ["no", "nope", "thats it", "thats all", "no thats it", "no thats all", "thats everything", "nothing",
+                  "nothing else", "all good", "im good", "no thanks", "thatll do", "no im good"]
       - condition: >-
           {{ by_voice or (is_state('input_boolean.auto_journal', 'on')
                           and is_state('input_boolean.guest_mode', 'off')
@@ -73,9 +89,9 @@ script:
           q: >-
             {% set c = (got if got is defined and got is mapping else {}).get('content') %}
             {{ c if c is mapping and c.get('question') else {} }}
-          started: "{{ now().timestamp() }}"
           words: ""
           added: ""
+          listened: false
       - if: "{{ not q }}"
         then:
           - if: "{{ by_voice }}"
@@ -88,85 +104,67 @@ script:
                   message: "Nothing I'd ask about today. Say note, and whatever you'd like kept."
                   preannounce: false
           - stop: "Nothing to ask"
-      - action: assist_satellite.ask_question
+      - action: assist_satellite.announce
+        continue_on_error: true
+        target:
+          entity_id: assist_satellite.hub_500_voice_assist_satellite
+        data:
+          message: "{{ q.question }}"
+          preannounce: false
+      # after the question: the satellite going idle puts the TV back (tv_ducks_for_jarvis)
+      - delay: 1
+      - action: script.tv_duck
         continue_on_error: true
         data:
-          entity_id: assist_satellite.hub_500_voice_assist_satellite
-          question: "{{ q.question }}"
-          preannounce: false
-          answers:
-            - id: skip
-              sentences:
-                - "not now"
-                - "skip [it|that]"
-                - "never mind"
-                - "no thanks"
-                - "[i'd] rather not [say]"
-                - "pass"
-                - "later"
-                - "nothing"
+          duck: true
+      - action: rest_command.journal_listen
+        continue_on_error: true
         response_variable: heard
-      # no answer at all raises, and so does a satellite that's busy or gone. Only the first takes
-      # the few seconds of saying the question and listening, and only that one counts as asked
       - variables:
-          listened: "{{ heard is defined and heard is mapping }}"
-          skipped: "{{ heard is defined and heard is mapping and heard.id == 'skip' }}"
-          words: "{{ heard.sentence | default('') | trim if heard is defined and heard is mapping and heard.id != 'skip' else '' }}"
-          spoken: "{{ heard is defined or now().timestamp() - started > 4 }}"
-      # a sentence ends the turn (docs/voice.md), so a journal answer often comes in two
+          said: >-
+            {% set c = (heard if heard is defined and heard is mapping else {}).get('content') %}
+            {{ c.get('text', '') | trim if c is mapping else '' }}
+          # the Hub listened, whatever it heard: asked, and it doesn't come round again
+          listened: >-
+            {% set c = (heard if heard is defined and heard is mapping else {}).get('content') %}
+            {{ c is mapping and c.get('text') is not none }}
+          skipped: "{{ said | lower | regex_replace(\"[^a-z ]\", '') | trim in skips }}"
+          words: "{{ '' if skipped else said }}"
       - if: "{{ words != '' }}"
         then:
-          - action: assist_satellite.ask_question
+          - action: assist_satellite.announce
+            continue_on_error: true
+            target:
+              entity_id: assist_satellite.hub_500_voice_assist_satellite
+            data:
+              message: "{{ ['Anything else?', 'Anything more?', 'Anything else worth keeping?'] | random }}"
+              preannounce: false
+          - delay: 1
+          - action: script.tv_duck
             continue_on_error: true
             data:
-              entity_id: assist_satellite.hub_500_voice_assist_satellite
-              question: "{{ ['Anything else?', 'Anything more?', 'Anything else worth keeping?'] | random }}"
-              preannounce: false
-              answers:
-                - id: done
-                  sentences:
-                    - "no"
-                    - "nope"
-                    - "[no] that's (it|all|everything)"
-                    - "nothing [else]"
-                    - "all good"
-                    - "i'm good"
-                    - "no thanks"
-                    - "that'll do"
+              duck: true
+          - action: rest_command.journal_listen
+            continue_on_error: true
+            data:
+              wait: 6
             response_variable: more
           - variables:
-              added: "{{ more.sentence | default('') | trim if more is defined and more is mapping and more.id != 'done' else '' }}"
+              added: >-
+                {% set c = (more if more is defined and more is mapping else {}).get('content') %}
+                {% set t = c.get('text', '') | trim if c is mapping else '' %}
+                {{ '' if t | lower | regex_replace("[^a-z ]", '') | trim in dones else t }}
               words: "{{ (words ~ ' ' ~ added) | trim }}"
-          - if: "{{ added != '' }}"
-            then:
-              - action: assist_satellite.ask_question
-                continue_on_error: true
-                data:
-                  entity_id: assist_satellite.hub_500_voice_assist_satellite
-                  question: "Anything else?"
-                  preannounce: false
-                  answers:
-                    - id: done
-                      sentences:
-                        - "no"
-                        - "nope"
-                        - "[no] that's (it|all|everything)"
-                        - "nothing [else]"
-                        - "all good"
-                        - "i'm good"
-                        - "no thanks"
-                        - "that'll do"
-                response_variable: last
-              - variables:
-                  words: >-
-                    {% set a = last.sentence | default('') | trim if last is defined and last is mapping and last.id != 'done' else '' %}
-                    {{ (words ~ ' ' ~ a) | trim }}
+      - action: script.tv_duck
+        continue_on_error: true
+        data:
+          duck: false
       - action: rest_command.journal_answer
         continue_on_error: true
         data:
           ask: "{{ q.ask }}"
           answer: "{{ words }}"
-          heard: "{{ spoken }}"
+          heard: "{{ listened }}"
       - choose:
           - conditions: "{{ words != '' }}"
             sequence:

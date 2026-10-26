@@ -222,9 +222,6 @@ automation:
       # (never about itself, or one failure in here would keep setting it off)
       - "{{ trigger.event.data.name is search('^homeassistant[.]components[.](automation|script|template|intent_script)')
            and not trigger.event.data.name.endswith('house_error_alert') }}"
-      # nobody answering Jarvis's question is an error to Home Assistant, not the house breaking
-      # (packages/journal.yaml)
-      - "{{ 'No answer from' not in (trigger.event.data.message | default([]) | join(' ')) }}"
       - >-
         {% set at = states('input_datetime.house_error_at') | as_datetime(none) %}
         {{ trigger.event.data.name != states('input_text.house_error_from')

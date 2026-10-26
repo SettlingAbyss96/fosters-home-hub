@@ -273,6 +273,30 @@ script:
       - stop: "Done"
         response_variable: result
 
+  # The TV silenced while something's listening, and put back after: the satellite
+  # (automation tv_ducks_for_jarvis) and the journal's own listening (packages/journal.yaml). The
+  # level before is kept in a file on the TV, so a second duck doesn't duck twice, and a volume
+  # changed in between ("turn the TV up") is left alone instead of being put back
+  tv_duck:
+    alias: "TV quiet while listening"
+    icon: mdi:volume-off
+    mode: queued
+    fields:
+      duck:
+        description: "true to silence it, false to put the volume back"
+        selector:
+          boolean:
+    sequence:
+      - condition: "{{ states('media_player.fire_tv') not in ['unavailable', 'unknown'] }}"
+      - action: androidtv.adb_command
+        continue_on_error: true
+        target:
+          entity_id: media_player.fire_tv
+        data:
+          command: >-
+            {% if duck | default(true) | bool %}f=/data/local/tmp/hub_duck; if [ ! -f $f ] && dumpsys power | grep -q mWakefulness=Awake; then v=$(dumpsys audio | grep -A5 '^- STREAM_MUSIC' | grep -o 'streamVolume:[0-9]*' | cut -d: -f2); d=0; echo "$v $d" > $f; cmd media_session volume --stream 3 --set $d >/dev/null 2>&1; fi
+            {%- else %}f=/data/local/tmp/hub_duck; if [ -f $f ]; then read v d < $f; rm -f $f; now=$(dumpsys audio | grep -A5 '^- STREAM_MUSIC' | grep -o 'streamVolume:[0-9]*' | cut -d: -f2); [ "$now" = "$d" ] && cmd media_session volume --stream 3 --set $v >/dev/null 2>&1; fi{% endif %}
+
   tv_ambient:
     alias: "Ambient mode on the TV"
     description: "Puts the TV into ambient mode (the slow-moving pictures), waking it first if it's off."

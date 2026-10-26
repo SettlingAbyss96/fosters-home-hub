@@ -78,18 +78,38 @@ comes out as "How was work? And {name}, how was the ambiance?". Once you've answ
 the trip is dropped, so last night's shop doesn't turn up tomorrow. The questions are templates,
 never one of the last three used for that kind, and none of them says how long you were anywhere.
 
-The asking happens after the welcome home, through `assist_satellite.ask_question`, which plays the
-question and stops the pipeline at speech to text, so the answer goes into the journal and nowhere
-near the cloud agent. A finished sentence ends the turn on this satellite ([voice.md](voice.md)) and
-15 seconds is the most it listens for, while a journal answer is often two sentences, so it asks
-"Anything else?" once or twice until you say no. "Not now" is an answer, silence is too, and either
-way that trip doesn't come round again. Not with guests in, not at night and not with Jarvis muted.
-"Note" and anything at all adds a line whenever, and "ask me about my day" asks now, even with
-"Jarvis asks how it went" switched off.
+The asking happens after the welcome home. Jarvis says the question, the TV goes quiet if it's on,
+and the Hub listens on its own (below), so the answer goes into the journal and nowhere near the
+cloud agent. Then "Anything else?" once, for whatever comes to mind a few seconds later. "Not now"
+is an answer, silence is too, and either way that trip doesn't come round again. Not with guests in,
+not at night and not with Jarvis muted. "Note" and anything at all adds a line whenever, and "ask me
+about my day" asks now, even with "Jarvis asks how it went" switched off.
 
-Silence turned out to be the fiddly one. Home Assistant logs it as an error, and the house's error
-alert would send "something broke" to the phone every evening nobody felt like talking, so the alert
-lets that one go.
+## Listening while you think
+
+1.25 seconds of silence is the longest Home Assistant's voice pipeline will wait before it decides a
+turn is over, and 15 seconds is the most it'll listen to at all, which is right for "lights off" and
+wrong for a question like "how was work?", where you pause, think, go back to something and ramble
+on. Asked through the pipeline, a journal answer gets cut off before it's finished. So after the
+question the Hub listens itself, from the same echo-cancelled mic the satellite uses, and writes the
+answer down with Parakeet, also on the Hub.
+
+A 30 ms frame counts as speech when its level is over both a fixed floor of 40 (out of 32,767, about
+-58 dBFS) and six times the room's own level, about 16 dB, which the quiet frames keep up to date as
+a running average, $`f \leftarrow 0.95 f + 0.05 r`$. With nobody talking the echo-cancelled mic sits
+around 1 to 3. The answer starts when 5 of the last 7 frames are speech, since a tenth of a second
+of something, a key press most likely, once got taken for an answer and came back from Parakeet as
+"Mm.". It's over after 3.5 seconds of quiet, after 10 seconds of nothing at all, or at 3 minutes,
+and anything under 0.3 seconds of speech counts as nothing said. Parakeet gets it in pieces of at
+most 25 seconds, each cut at the quietest 30 ms in its last five, so a word isn't split down the
+middle. A test answer in Kokoro's voice with a three-second pause in it came back word for word, in
+under 8 seconds with Kokoro speaking it included.
+
+Where it stops holding is the room. A fixed 3.5 seconds is a guess at how long people think for, and
+the speech test is just loudness, so music playing on something other than the TV, or someone else
+talking, keeps it listening until the three minutes are up. The satellite's own wake word is still
+running while it listens too, so saying "Jarvis" in the middle of an answer starts a whole other
+conversation.
 
 ## What stays in the house
 

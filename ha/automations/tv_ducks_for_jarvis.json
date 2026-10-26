@@ -1,6 +1,6 @@
 {
   "alias": "TV mutes while Jarvis listens",
-  "description": "Silences the TV while the Hub's satellite is listening, follow-up windows included, and puts the volume back when the conversation is over, so TV dialogue never ends up in a transcript. A quarter volume wasn't enough: YouTube's \"Thanks for watching!\" still got heard and answered. The level before muting is kept in a file on the TV, so a second listen in the same conversation doesn't mute twice, and if the volume got changed in between (\"turn the TV up\") it's left alone instead of being put back.",
+  "description": "Silences the TV while the Hub's satellite is listening, follow-up windows included, and puts the volume back when the conversation is over, so TV dialogue never ends up in a transcript. A quarter volume wasn't enough: YouTube's \"Thanks for watching!\" still got heard and answered. The level before muting is kept in a file on the TV, so a second listen in the same conversation doesn't mute twice, and if the volume got changed in between (\"turn the TV up\") it's left alone instead of being put back. The duck itself is script.tv_duck (packages/tv.yaml), which the journal's own listening uses too.",
   "mode": "queued",
   "triggers": [
     {
@@ -24,46 +24,11 @@
   ],
   "actions": [
     {
-      "choose": [
-        {
-          "conditions": [
-            {
-              "condition": "trigger",
-              "id": "duck"
-            }
-          ],
-          "sequence": [
-            {
-              "action": "androidtv.adb_command",
-              "target": {
-                "entity_id": "media_player.fire_tv"
-              },
-              "data": {
-                "command": "f=/data/local/tmp/hub_duck; if [ ! -f $f ] && dumpsys power | grep -q mWakefulness=Awake; then v=$(dumpsys audio | grep -A5 '^- STREAM_MUSIC' | grep -o 'streamVolume:[0-9]*' | cut -d: -f2); d=0; echo \"$v $d\" > $f; cmd media_session volume --stream 3 --set $d >/dev/null 2>&1; fi"
-              }
-            }
-          ]
-        },
-        {
-          "conditions": [
-            {
-              "condition": "trigger",
-              "id": "restore"
-            }
-          ],
-          "sequence": [
-            {
-              "action": "androidtv.adb_command",
-              "target": {
-                "entity_id": "media_player.fire_tv"
-              },
-              "data": {
-                "command": "f=/data/local/tmp/hub_duck; if [ -f $f ]; then read v d < $f; rm -f $f; now=$(dumpsys audio | grep -A5 '^- STREAM_MUSIC' | grep -o 'streamVolume:[0-9]*' | cut -d: -f2); [ \"$now\" = \"$d\" ] && cmd media_session volume --stream 3 --set $v >/dev/null 2>&1; fi"
-              }
-            }
-          ]
-        }
-      ]
+      "action": "script.tv_duck",
+      "continue_on_error": true,
+      "data": {
+        "duck": "{{ trigger.id == 'duck' }}"
+      }
     }
   ]
 }
