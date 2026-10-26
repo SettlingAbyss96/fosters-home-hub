@@ -90,6 +90,9 @@ something else first.
   pause, since Home Assistant waits 1.25 seconds of silence at the most and listens for 15 seconds
   in all. The Hub listens itself, through pauses and for up to three minutes
   ([journal.md](journal.md#listening-while-you-think))
+- A REST call setting named `max` never went out. With nothing passed, `max` in a template is
+  Jinja's own `max()`, not a number, so the payload isn't JSON. The bench fakes every REST call
+  without rendering it, so a test reads them for names like that
 - Jarvis wouldn't leave a conversation alone. With guests over, two false wakes turned into a running
   commentary: an answer ending in a question opened the long follow-up window, which heard more side
   talk, and so on until it got muted. openWakeWord went back to its default 0.5, and Jarvis answers
@@ -184,6 +187,13 @@ something else first.
   through departures and missed a welcome, and twice it restarted itself at its own 4000 K and
   blended back for 40 minutes. Away gives a light that's still on a few more tries, and a restart
   goes straight back ([lighting.md](lighting.md#blending-not-switching))
+- Then the house was what rebooted it. Home Assistant follows a colour-only command with an On, and
+  an On a few milliseconds after a colour change is what the same lamp's firmware can fall over on,
+  back at 4000 K ten times in twenty minutes, most of them 12 seconds after a blend step. The
+  colour command carries the brightness the lamp's already at, which means no On. The restart guard
+  had also been leaving a jump alone while the house's own fade was running, so a jump to the
+  restart colour during a fade toward a look nowhere near it counts as a restart now, and a light's
+  timed-out command no longer sets off the "something broke" alert
 - The vacuum's pause sent it home on the way out. Started from its own app as the door closed, the
   pause took it for the app's schedule and sent it back 10 seconds later. A start within three
   minutes of the front door gets to clean

@@ -448,6 +448,24 @@ async def test_ask_me_with_nothing_to_ask_says_so(house_at):
     assert not house.called("rest_command.journal_listen")
 
 
+def test_no_rest_call_names_a_variable_after_a_jinja_builtin():
+    # a variable called "max" with nothing passed is Jinja's own max(), not a number, so the payload
+    # isn't JSON and the call never goes out. The bench fakes rest_command and
+    # never renders its templates, so this reads them instead
+    builtins = {"max", "min", "range", "dict", "namespace", "lipsum", "cycler", "joiner", "zip", "now", "states",
+                "is_state", "state_attr", "float", "int", "bool", "iif", "this"}
+    clash = []
+    for path in (REPO / "ha" / "config" / "packages").glob("*.yaml"):
+        text = path.read_text(encoding="utf-8")
+        if "rest_command:" not in text:
+            continue
+        block = text[text.index("rest_command:"):]
+        for name in re.findall(r"\b([a-z_]+)\s*\|\s*default\(", block):
+            if name in builtins:
+                clash.append(f"{path.name}: {name}")
+    assert not clash, clash
+
+
 async def test_a_note_and_todays_journal_by_voice(house_at):
     house = await house_at(f"{TUESDAY} 21:00", {"input_select.house_mode": "Evening"})
     said = await house.ask("JournalNote", note="the new nozzle prints PETG beautifully")

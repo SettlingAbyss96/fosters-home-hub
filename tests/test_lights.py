@@ -294,6 +294,32 @@ async def test_a_lamp_that_restarted_goes_straight_back(house_at):
     assert fades and max(fades) <= 2
 
 
+async def test_a_colour_never_goes_without_its_brightness(house_at):
+    # a colour on its own gets Home Assistant's Matter light to send an On right after it, and an On
+    # a few milliseconds after a colour change can reboot a lamp
+    house = await house_at(f"{TUESDAY} 20:30", {"input_select.house_mode": "Evening", "sensor.bedtime_plan": PLAN})
+    since = len(house.light_calls)
+    await house.run("lights_look", look="evening")
+    await house.advance(minutes=3)
+    await house.run("light_set", entity="light.living_room_lamp", level=40, kelvin=2700, fade=60, source="look evening")
+    await house.advance(seconds=5)
+    colours = [kw for e, how, kw in house.light_calls[since:] if how == "on" and ("color_temp_kelvin" in kw or "hs_color" in kw)]
+    assert colours and all("brightness" in kw or "brightness_pct" in kw for kw in colours)
+
+
+async def test_a_lamp_that_restarts_in_the_middle_of_a_fade_goes_back_too(house_at):
+    # a lamp that drops off Matter in the middle of the house's own blend step toward 2700 K comes
+    # back at its own 4000 K, and with a fade still running it used to be left there
+    house = await house_at(f"{TUESDAY} 20:30", {"input_select.house_mode": "Evening", "sensor.bedtime_plan": PLAN})
+    await house.run("lights_look", look="evening")
+    await house.advance(minutes=3)
+    await house.run("light_set", entity="light.living_room_lamp", level=40, kelvin=2700, fade=60, source="look evening")
+    await house.advance(seconds=5)
+    house.report("light.living_room_lamp", "on", 35, kelvin=4000)
+    await house.advance(seconds=10)
+    assert house.attr("light.living_room_lamp", "color_temp_kelvin") == 2700, "a 2700 K look never fades through 4000"
+
+
 @pytest.mark.expect_errors("didn't answer")
 async def test_away_tries_a_stuck_light_a_few_more_times_and_then_leaves_it(house_at):
     # a lamp that's dropped off the network stays on through the Away look: a few more tries, only

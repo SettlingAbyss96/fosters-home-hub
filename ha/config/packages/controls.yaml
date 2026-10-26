@@ -222,6 +222,12 @@ automation:
       # (never about itself, or one failure in here would keep setting it off)
       - "{{ trigger.event.data.name is search('^homeassistant[.]components[.](automation|script|template|intent_script)')
            and not trigger.event.data.name.endswith('house_error_alert') }}"
+      # a light that didn't answer a command isn't the house breaking: the house carries on past it,
+      # tries again (lights.yaml), and one that stays gone is in the attention line as offline
+      - >-
+        {% set msg = trigger.event.data.message | default([]) | join(' ') %}
+        {{ not (trigger.event.data.name is search('[.](light_set|lights_look)$')
+                and msg is search('Channel is closed|timed out|Timeout|not responding|NodeNotResolving|unavailable', ignorecase=true)) }}
       - >-
         {% set at = states('input_datetime.house_error_at') | as_datetime(none) %}
         {{ trigger.event.data.name != states('input_text.house_error_from')

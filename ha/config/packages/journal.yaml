@@ -28,12 +28,14 @@ rest_command:
     url: "http://{{ states('input_text.hub_address') }}:10231/ask"
     method: get
     timeout: 10
-  # blocks until the answer's over and written down: up to max seconds of listening, then Parakeet
+  # blocks until the answer's over and written down: up to `longest` seconds of listening, then
+  # Parakeet. Not "max": with nothing passed that's Jinja's own max(), which isn't JSON, so the call
+  # never goes out
   journal_listen:
     url: "http://{{ states('input_text.hub_address') }}:10231/listen"
     method: post
     content_type: "application/json"
-    payload: '{{ {"pause": pause | default(3.5), "wait": wait | default(10), "max": max | default(180)} | to_json }}'
+    payload: '{{ {"pause": pause | default(3.5), "wait": wait | default(10), "max": longest | default(180)} | to_json }}'
     timeout: 240
   journal_answer:
     url: "http://{{ states('input_text.hub_address') }}:10231/answer"

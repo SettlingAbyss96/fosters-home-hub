@@ -164,7 +164,10 @@ script:
           # brightness with the fade. Both in one command with a fade sent a Govee floor lamp's
           # firmware into a fade that never finished: its Level Control cluster sat at "53.8 s
           # remaining" for hours, reporting its level one step either side of the target 1.4 times
-          # a second (202, 203, 202...). Split, or either one fading alone, it settles
+          # a second (202, 203, 202...). Split, or either one fading alone, it settles. The colour
+          # command carries the brightness it's already at: a colour on its own makes Home
+          # Assistant's Matter light send an On straight after it, and an On a few milliseconds
+          # after a colour change can reboot that same lamp
           - conditions: "{{ dims and hs not in [none, '', 'None'] }}"
             sequence:
               - action: light.turn_on
@@ -173,6 +176,7 @@ script:
                   entity_id: "{{ entity }}"
                 data:
                   hs_color: "{{ hs }}"
+                  brightness: "{{ state_attr(entity, 'brightness') if is_state(entity, 'on') and state_attr(entity, 'brightness') else 3 }}"
                   transition: 0
               - action: light.turn_on
                 continue_on_error: true
@@ -191,6 +195,7 @@ script:
                   entity_id: "{{ entity }}"
                 data:
                   color_temp_kelvin: "{% from 'control.jinja' import param %}{{ [[kelvin | int, param('kelvin_floor') | int] | max, 6500] | min }}"
+                  brightness: "{{ state_attr(entity, 'brightness') if is_state(entity, 'on') and state_attr(entity, 'brightness') else 3 }}"
                   transition: 0
               - action: light.turn_on
                 continue_on_error: true
@@ -549,10 +554,6 @@ automation:
         {% set k = trigger.to_state.attributes.get('color_temp_kelvin') | int(0) %}
         {% set was = trigger.from_state.attributes.get('color_temp_kelvin') | int(0) if trigger.from_state is not none else 0 %}
         {{ param('restart_kelvin') | int > 0 and (k - param('restart_kelvin') | int) | abs <= 25 and (k - was) | abs > 200 }}
-      - >-
-        {% from 'control.jinja' import param %}
-        {% set c = (state_attr('sensor.light_arbiter', 'commands') or {}).get(trigger.entity_id) %}
-        {{ c is none or now().timestamp() - (c.at | float(0)) > (c.fade | float(0)) + param('command_settle_seconds') | float }}
     actions:
       - action: script.lights_look
         response_variable: target
@@ -561,7 +562,15 @@ automation:
           dry_run: true
       - variables:
           item: "{{ (target.plan | default([])) | selectattr('entity', 'eq', trigger.entity_id) | list | first | default(none) }}"
-      - if: "{{ item is not none and item.level | int(0) > 0 and item.kelvin is not none }}"
+      # A jump to the restart colour in the middle of the house's own fade could be the fade, unless
+      # the look it's fading to is nowhere near that colour. A lamp that drops off Matter mid-fade
+      # and comes back at its own default would otherwise be left there, a fade still running
+      - if: >-
+          {% from 'control.jinja' import param %}
+          {% set c = (state_attr('sensor.light_arbiter', 'commands') or {}).get(trigger.entity_id) %}
+          {% set settled = c is none or now().timestamp() - (c.at | float(0)) > (c.fade | float(0)) + param('command_settle_seconds') | float %}
+          {{ item is not none and item.level | int(0) > 0 and item.kelvin is not none
+             and (settled or ((item.kelvin | int(0)) - param('restart_kelvin') | int) | abs > 200) }}
         then:
           - action: script.light_set
             continue_on_error: true
