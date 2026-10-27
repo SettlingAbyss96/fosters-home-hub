@@ -2,19 +2,28 @@
 # Home Assistant OS as a KVM guest on br0, so it gets its own IP on the LAN.
 # Pulls the latest haos_ova qcow2 from the official GitHub release and checks it against the
 # sha256 GitHub publishes for the asset. Does nothing if the VM already exists.
-# Sizing is for the Hub's stock 8 GB. With 16 GB in it: HAOS_MEM=8192.
+# Sizing is for the Hub's stock 8 GB: 3 GB in use out of 4, the rest kept back by the balloon so it
+# can go back without a reboot (virsh setmem haos 4G --live). With all 4 the guest fills 2 GB of it
+# with its own disk cache while the Hub pushes Kokoro and Parakeet out to swap, and Jarvis's first
+# sentence after a quiet spell takes more than twice as long to start. Rerunning this on an
+# existing VM sets just that. With 16 GB in it: HAOS_MEM=8192 HAOS_MAX=8192.
 # From the PC: ssh hub@ha-hub.local 'sudo bash -s' < host/30-haos-vm.sh
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 name=haos
 img=/var/lib/libvirt/images/$name.qcow2
-mem=${HAOS_MEM:-4096}
+mem=${HAOS_MEM:-3072}
+max=${HAOS_MAX:-4096}
 cpus=${HAOS_CPUS:-3}
 disk=${HAOS_DISK:-64G}
 
 if virsh -c qemu:///system dominfo "$name" >/dev/null 2>&1; then
-  echo "$name already exists, leaving it alone"
+  virsh -c qemu:///system setmaxmem "$name" "${max}M" --config >/dev/null
+  virsh -c qemu:///system setmem "$name" "${mem}M" --config >/dev/null
+  virsh -c qemu:///system setmem "$name" "${mem}M" --live >/dev/null 2>&1 ||
+    echo "$name gets ${mem} MiB at its next restart, past the most it booted with"
+  echo "$name already exists, left alone apart from its memory: $(virsh -c qemu:///system dommemstat "$name" | awk '/^actual/ {print $2 / 1024 " MiB"}')"
   exit 0
 fi
 
@@ -41,7 +50,7 @@ virt-install --connect qemu:///system \
   --name "$name" --description "Home Assistant OS $ver" \
   --osinfo generic \
   --boot uefi,firmware.feature0.name=secure-boot,firmware.feature0.enabled=no \
-  --cpu host-passthrough --vcpus "$cpus" --memory "$mem" \
+  --cpu host-passthrough --vcpus "$cpus" --memory memory="$max",currentMemory="$mem" \
   --disk path="$img",bus=virtio,cache=none,discard=unmap \
   --network bridge=br0,model=virtio \
   --channel unix,target.type=virtio,target.name=org.qemu.guest_agent.0 \

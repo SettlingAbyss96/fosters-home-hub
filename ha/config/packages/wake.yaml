@@ -145,7 +145,8 @@ template:
           {% set nobody = trigger.platform == 'state' and (
                (trigger.entity_id == 'binary_sensor.tv_picture' and trigger.to_state.state == 'off')
                or (trigger.entity_id == 'sensor.phone_battery_state' and trigger.to_state.state | lower == 'full')) %}
-          {{ (this.state if this is defined else none) if nobody else now().isoformat() }}
+          {# nobody keeps the last one, if there is one: a fresh house has none yet #}
+          {{ (this.state if this is defined and this.state | as_datetime(none) is not none else none) if nobody else now().isoformat() }}
         attributes:
           what: >-
             {% set nobody = trigger.platform == 'state' and (

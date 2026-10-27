@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-167-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-168-2ea44f?style=flat-square)
 
 </div>
 
@@ -120,7 +120,7 @@ host/               scripts that build the Debian host, run in order (tools/push
   20-bridge.sh        br0 on the Ethernet port
   21-wifi-off.sh      Wi-Fi off once br0 works
   22-mdns-name.sh     wins ha-hub.local back if avahi renames itself after a conflict
-  30-haos-vm.sh       downloads, checks and creates the Home Assistant OS VM
+  30-haos-vm.sh       downloads, checks and creates the Home Assistant OS VM, and sets its memory
   40-kiosk.sh         the dashboard on the touchscreen with a touch keyboard, and its watchdog
   50-screen.sh        hub-screen: panel power and brightness, PIR, touch wake, over MQTT
   55-stats.sh         hub-stats: CPU, memory, temperatures and disk, per part

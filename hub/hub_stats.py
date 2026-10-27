@@ -20,7 +20,9 @@ import paho.mqtt.client as mqtt
 ENV_FILE = "/etc/ha-hub/mqtt.env"
 BASE = "ha-hub/stats"
 AVAIL = f"{BASE}/availability"
-INTERVAL = 15
+# 30 s: every 15 s wrote 37,000 states a day between the sensors, for graphs that look the
+# same at half that
+INTERVAL = 30
 DEVICE = {"identifiers": ["ha-hub"], "name": "Hub 500", "manufacturer": "Lenovo",
           "model": "ThinkSmart Hub 500"}
 TICK = os.sysconf("SC_CLK_TCK")

@@ -85,8 +85,8 @@ BASELINE = {
     "conversation.jarvis_cloud": "unknown",
     "sun.sun": ("below_horizon", {"elevation": -20}),
     "binary_sensor.hub_500_motion": "off",
-    "binary_sensor.tv_picture": "off",
-    "sensor.tv_status": "Off",
+    # the TV asleep, which the house reads into sensor.tv_status itself (packages/tv.yaml)
+    "media_player.fire_tv": ("off", {"adb_response": "mWakefulness=Asleep"}),
     "sensor.computer_session_state": "Locked",
     "sensor.computer_last_active": "2026-01-01T00:00:00+00:00",
     "binary_sensor.phone_focus": "off",
@@ -211,6 +211,14 @@ class House:
         for domain in DOMAINS:
             assert await async_setup_component(hass, domain, config), f"{domain} didn't set up"
         await hass.async_block_till_done()
+        # A state set here before the packages load takes the name, and the package's own entity
+        # comes up as name_2 with nothing reading it. sensor.tv_status was a stand-in like that, so
+        # the TV tests were checking the stand-in. The bench's own lights replace the package's on
+        # purpose (the Klipper case light's template)
+        doubled = [e.entity_id for e in er.async_get(hass).entities.values()
+                   if e.entity_id.endswith("_2") and e.entity_id[:-2] not in house.lights]
+        assert not doubled, f"set before the packages loaded, so the packages' own are {doubled}"
+        hass.bus.async_fire("tv_changed", {})
 
         # a lived-in house: every date-and-time helper starts long ago, the way a real one has been
         # set some day before today (a brand new one says midnight today, which reads as "already

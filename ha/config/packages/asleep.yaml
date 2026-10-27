@@ -36,6 +36,7 @@ automation:
   - id: asleep_with_lights_on
     alias: "Fell asleep with the lights on"
     mode: single
+    max_exceeded: silent
     triggers:
       - trigger: time_pattern
         minutes: "/5"

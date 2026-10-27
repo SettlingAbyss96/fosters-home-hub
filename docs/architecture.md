@@ -45,7 +45,7 @@ flowchart TD
 ```
 
 Debian runs on the metal because it's what drives the touchscreen (I2C touch on the stock kernel),
-the USB audio and the panel's DDC brightness. Home Assistant OS runs in a VM (3 vCPUs, 4 GB) on a
+the USB audio and the panel's DDC brightness. Home Assistant OS runs in a VM (3 vCPUs, 3 GB with a fourth held back by the balloon) on a
 bridge, `br0`, with its own address, so it keeps its app store and its backups and looks like any
 other Home Assistant on the network. The two talk over the LAN like strangers would, which is a
 feature: either side can be rebuilt without the other noticing.

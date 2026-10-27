@@ -504,7 +504,10 @@ script:
 # doesn't say anything. A media player (USAGE_MEDIA) that's started is playing, one that's paused is
 # paused. While Jarvis has the TV muted for listening, the volume shown is the one it'll go back to.
 # The media player trigger only fires on real state changes (to: null). Without that, every ADB
-# reply (an attribute) set off another poll, this one's own included
+# reply (an attribute) set off another poll, this one's own included.
+# Asleep, the TV only gets asked whether it's awake. The whole reading (dumpsys audio is the heavy
+# one) every 15 s around the clock comes to about 5,800 a day, mostly to a TV that's off. Off, the
+# volume and mute stay at their last reading, which is what they'll be when it wakes
 template:
   - trigger:
       - trigger: homeassistant
@@ -525,11 +528,14 @@ template:
               entity_id: media_player.fire_tv
             data:
               command: >-
-                dumpsys power | grep mWakefulness=; dumpsys window | grep mCurrentFocus;
+                w=$(dumpsys power | grep mWakefulness=); echo "$w";
+                case "$w" in *Asleep*|*Dozing*) ;; *)
+                dumpsys window | grep mCurrentFocus;
                 dumpsys media_session | grep -E 'package=|metadata:';
                 a=/data/local/tmp/hub_audio; dumpsys audio > $a;
                 grep -A5 '^- STREAM_MUSIC' $a | grep -E 'Muted:|streamVolume';
-                grep 'AudioPlaybackConfiguration.*usage=USAGE_MEDIA' $a | grep -o 'state:[a-z]*' | sed 's/^/player_/'; rm -f $a;
+                grep 'AudioPlaybackConfiguration.*usage=USAGE_MEDIA' $a | grep -o 'state:[a-z]*' | sed 's/^/player_/'; rm -f $a;;
+                esac;
                 cat /data/local/tmp/hub_duck 2>/dev/null | sed 's/^/ducked=/'
             continue_on_error: true
       - variables:
@@ -560,7 +566,7 @@ template:
                   'title': desc[0] if desc and desc[0] != 'null' and playback else none,
                   'artist': desc[1] if desc | length > 1 and desc[1] != 'null' and playback else none,
                   'volume': ducked if ducked >= 0 else (raw if raw >= 0 and not muted else none),
-                  'muted': muted} }}
+                  'muted': muted if 'Muted:' in r else none} }}
             {% endif %}
     # No tv at all when the TV didn't answer (it happens around restarts), so every line falls back
     # to the last reading
@@ -585,7 +591,9 @@ template:
             {% set v = tv.volume if tv is defined and tv.state is defined else none %}
             {% set v = v if v is not none else this.attributes.get('volume') %}
             {{ (v / 100) | round(2) if v is not none else none }}
-          muted: "{{ tv.muted if tv is defined and tv.state is defined else this.attributes.get('muted', false) }}"
+          muted: >-
+            {% set m = tv.muted if tv is defined and tv.state is defined else none %}
+            {{ m if m is not none else this.attributes.get('muted', false) }}
           apps: "{{ ['Netflix', 'YouTube', 'Disney+', 'Prime Video', 'Spotify'] }}"
 
   # Whether the dashboard's TV screenshot is worth showing: the TV is on and nothing in front is a

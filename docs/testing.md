@@ -55,7 +55,9 @@ And one it fell into. The bench used to set a starting state for `binary_sensor.
 real template `at_the_desk_2`, so every asleep and wake-up test read a desk that was always off,
 and the bug that kept the house from noticing I was asleep ([sensing.md](sensing.md#asleep))
 couldn't show up here. The bench leaves it alone now, and the night it broke is a test that fails
-with the old 35 W line.
+with the old 35 W line. Then it fell in again with `sensor.tv_status` and `binary_sensor.tv_picture`,
+so the TV tests were reading stand-ins, and that's when the bench learned to refuse to build at all
+when a package's entity comes up as `_2`.
 
 ## What a test looks like
 
@@ -97,10 +99,13 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 | `test_reminders.py` | 2 | reminders go off on time, in order |
 | `test_digest.py` | 33 | the digest on its own: nothing said twice, a kit nobody heard retiring nothing, a repo only ever what's new since last time, the same story from a fork, a forum post and a write-up a week later, the way of telling it never one of the last two, shelves taking turns, late being one thing, old news dropping out, feeds coming in clean, chores and help requests left out, the morning's own openers, a quiet market left out, a big day leading with how big and the why, a move said once and back only when it kept going, a repo that kept growing, a story two more sources picked up, late being only the strongest, market data coming in clean, the care model: your own things first, a commit that touches your printer's modules marked, the interest filter's exact Kalman steps, a source you like coming up more, habituation wearing off, a car recall first and once, a slow slide caught by the CUSUM, a fall weighing more than a rise, other sources on a story counted, points and recalls parsed, a word every post on a forum says counting for nothing there, a recall on a daily driver taking its turn on the shelf |
 | `test_journal.py` | 30 | the journal: one position and then the next place is a stay that ended about a drive earlier, a stop and home itself aren't stays, the place the stay most likely was, a crowded block with a poor fix being nowhere in particular (or the market the phone says it's in), the map's tags, work and a new cafe in one question with work first, never the pharmacy, the petrol station or somewhere off the map, somewhere familiar only after a while, the weekly shop only the first time, work once a day, silence asked and an unheard question back next time, an answer kept and the rest of the trip gone with it, never the same question three times running, a location log as history, today read back, no question saying how long you were anywhere, the Hub's own listening (a pause to think not ending it, a key press not starting it, nothing said ending at the wait, three minutes at the most, a long answer to Parakeet in pieces and back whole), and the house asking: after the welcome and through a ramble with the TV quiet, "no, that's it", "not now", silence against a Hub that didn't listen, never with guests, at night, muted or switched off, "ask me about my day", a note and today's journal by voice, every position reaching the Hub, no REST call naming a variable after a Jinja built-in |
-| `test_tv.py` | 2 | a TV dozing after its own sleep timer reading as off, and "off" when it already is being done |
+| `test_tv.py` | 3 | a TV dozing after its own sleep timer reading as off, "off" when it already is being done, and a TV asleep only asked if it's awake, keeping its volume and mute |
 | `test_smoke.py` | 1 | everything loads |
 
-167 in all, about seven minutes on the Hub. The PID test is the closest thing here to hardware in the
+168 in all, about three minutes on the Hub. It runs three at a time (`TEST_WORKERS`) at the lowest
+priority, which leaves the house on the same box first in line, and a template compiled for one test
+is kept for the next: every test builds a new Home Assistant, and every one of them used to compile
+the same few hundred templates again, about a second of each test's two. The PID test is the closest thing here to hardware in the
 loop: it closes the loop around a simulated room (first order, two-minute time constant) and checks
 it settles with no offset and doesn't wind up, so the block is known to work before anything real
 depends on it.

@@ -31,8 +31,11 @@ something else first.
   skips direct scanout (`WLR_SCENE_DISABLE_DIRECT_SCANOUT=1`), and a watchdog takes a tiny
   screenshot every minute and restarts the kiosk after two failures, because a frozen one can still
   answer simple questions
-- 8 GB is tight. The VM takes 3.8 GiB on the host (only 1.3 of it Home Assistant actually working),
-  Parakeet 830 MB, and Kokoro its share, which leaves little to spare. 16 GB fixes it
+- 8 GB is tight, and the VM is the one that hoards it. Given 4 GB, it filled 2 of them with its own
+  disk cache while the Hub pushed most of Kokoro and a good part of Parakeet out to swap, so the
+  first sentence after a quiet spell took 1.9 s to start instead of 0.8, all of it the voice coming
+  back from disk. The balloon holds the VM at 3 GB now, which still leaves it over a gigabyte of
+  cache, and the fourth comes back without a reboot if it needs it. 16 GB fixes it properly
 
 ## The network
 
@@ -133,7 +136,9 @@ something else first.
   `sensor.tv_status` asks the TV over ADB every 15 s, and straight after anything changes: off,
   ambient mode, the home screen, or the app in front, plus volume, mute and the title when the app
   publishes one. Playing or paused comes from Android's audio players, because YouTube's media session
-  says "playing" whenever it's open, menus included
+  says "playing" whenever it's open, menus included. A TV that's asleep only gets asked whether it's
+  awake, since the whole reading, `dumpsys audio` and all, every 15 s around the clock is about 5,800
+  a day, mostly to a TV that's off
 - Off is ambient mode. The remote's short power press flips between awake and the ambient pictures,
   `KEYCODE_SLEEP` is the real off, and the TV turns ambient mode off by itself after a few hours. "All
   the way off" is its own sentence
@@ -229,5 +234,10 @@ something else first.
 - Nobody had put Kokoro in Home Assistant. It comes as a Python library, so `kokoro_wyoming.py` is the
   Wyoming bridge, about 150 lines. Parakeet got the same treatment
 - Port 80, not 8123. This Home Assistant OS refuses the port every guide mentions
+- Some sensors have no history. A house like this writes something like 190,000 states a day, and
+  a good part of them is things nobody reads back: smart plugs' voltage and current every few
+  seconds, System Monitor's inside view of a VM hub-stats already watches from outside, and the
+  cameras, whose state is an access token that changes every five minutes.
+  `packages/recorder.yaml` leaves them out. They all still show what they're at now
 
 Next: back to [the README](../README.md), or [how the house decides](control.md).

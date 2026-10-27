@@ -1,8 +1,28 @@
 """Scenario tests for the house's logic, on the real Home Assistant (see house.py)."""
 
 import pytest
+from homeassistant.helpers import template as ha_template
 
 from house import House
+
+# Every test builds a new Home Assistant, and every new one compiled the same 632 templates from
+# scratch, about a second of each test's two. The compiled code doesn't belong to any one Home
+# Assistant (it's handed its environment when it runs), so one copy does for the whole run
+_COMPILED: dict = {}
+_compile = ha_template.TemplateEnvironment.compile
+
+
+def _compile_once(self, source, name=None, filename=None, raw=False, defer_init=False):
+    if not isinstance(source, str) or name is not None or filename is not None or raw or defer_init:
+        return _compile(self, source, name, filename, raw, defer_init)
+    key = (self.limited, source)
+    if key not in _COMPILED:
+        _COMPILED[key] = _compile(self, source)
+    code = self.template_cache[source] = self.compiled_code_pin[source] = _COMPILED[key]
+    return code
+
+
+ha_template.TemplateEnvironment.compile = _compile_once
 
 
 @pytest.fixture

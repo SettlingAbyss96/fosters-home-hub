@@ -1,0 +1,16 @@
+# What the recorder keeps. A house like this one writes something like 190,000 states a day, and
+# a good part of them is history nothing here ever reads: smart plugs' voltage and current every
+# few seconds, System Monitor's view of the VM from the inside (hub-stats already has the whole
+# box), and the cameras and images, whose "state" is a token that changes every five minutes. They
+# all still work and still show their value now, they just don't go in the database. Power stays
+# (the desk and the dashboard's graphs use it), and so does a battery's voltage, a slow line worth
+# having
+recorder:
+  exclude:
+    domains:
+      - camera
+      - image
+    entity_globs:
+      - sensor.*_effective_voltage
+      - sensor.*_effective_current
+      - sensor.system_monitor_*

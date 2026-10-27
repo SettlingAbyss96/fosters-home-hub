@@ -146,6 +146,7 @@ automation:
   - id: doorbell_lingering
     alias: "Someone's hanging around the door"
     mode: single
+    max_exceeded: silent
     triggers:
       - trigger: state
         entity_id: binary_sensor.doorbell_motion

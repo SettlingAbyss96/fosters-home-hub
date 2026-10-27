@@ -685,6 +685,7 @@ automation:
   - id: presence_arrived
     alias: "Home"
     mode: single
+    max_exceeded: silent
     triggers:
       - trigger: event
         event_type: home_wifi_joined
