@@ -234,10 +234,11 @@ something else first.
 - Nobody had put Kokoro in Home Assistant. It comes as a Python library, so `kokoro_wyoming.py` is the
   Wyoming bridge, about 150 lines. Parakeet got the same treatment
 - Port 80, not 8123. This Home Assistant OS refuses the port every guide mentions
-- Some sensors have no history. A house like this writes something like 190,000 states a day, and
-  a good part of them is things nobody reads back: smart plugs' voltage and current every few
-  seconds, System Monitor's inside view of a VM hub-stats already watches from outside, and the
-  cameras, whose state is an access token that changes every five minutes.
-  `packages/recorder.yaml` leaves them out. They all still show what they're at now
+- A year of history, not ten days. Home Assistant's recorder deletes everything older than ten
+  days by default, every night at 4:12, so the first weeks of a house are gone before anyone thinks
+  to look, and after that they only live in backups until the rotation takes those too.
+  `packages/recorder.yaml` keeps a year of everything, about 46 MB a day here, and the first wall
+  it'll hit is Home Assistant Cloud's 5 GB backup limit, months out. I'd rather the old history get
+  an archive of its own by then than keep less of it
 
 Next: back to [the README](../README.md), or [how the house decides](control.md).

@@ -1,16 +1,9 @@
-# What the recorder keeps. A house like this one writes something like 190,000 states a day, and
-# a good part of them is history nothing here ever reads: smart plugs' voltage and current every
-# few seconds, System Monitor's view of the VM from the inside (hub-stats already has the whole
-# box), and the cameras and images, whose "state" is a token that changes every five minutes. They
-# all still work and still show their value now, they just don't go in the database. Power stays
-# (the desk and the dashboard's graphs use it), and so does a battery's voltage, a slow line worth
-# having
+# What the recorder keeps: everything, for a year. Home Assistant's default is ten days, and every
+# night at 4:12 it deletes the oldest day for good, so a house's first weeks are gone before anyone
+# thinks to look. The record of the house is worth more than the disk it takes: a house like this
+# one writes something like 190,000 states a day, around 46 MB, so a year is roughly 17 GB.
+# The limit that comes first is Home Assistant Cloud's: one backup, 5 GB at most, and the database
+# goes in it. At that rate it's most of a year out, so older history wants an archive of its own
+# before then, not a shorter year
 recorder:
-  exclude:
-    domains:
-      - camera
-      - image
-    entity_globs:
-      - sensor.*_effective_voltage
-      - sensor.*_effective_current
-      - sensor.system_monitor_*
+  purge_keep_days: 365
