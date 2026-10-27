@@ -226,6 +226,23 @@ something else first.
   to KLAP v2, which python-kasa handles from 0.11.0.1 while Home Assistant was still on 0.10.2. Next time
   an old TP-Link plug won't log in, I'm checking that before the password
 
+## Moving a house onto it
+
+My own house ran on its own copy of all this until October 2026, with its own entity names, and
+moving it onto the standard ones taught three things worth knowing before you try it with yours.
+
+- Renaming an entity in the registry takes its history and its long-term statistics along, because
+  the recorder follows the rename. A person doesn't: it keeps its trackers as a list of entity ids
+  and nobody tells it, so after the phone's tracker got its new name the person sat at unknown, and
+  every presence automation with it, until its list was fixed. `tools/setup_ha.py` fixes the list
+  itself now when it renames a tracker
+- A package entity whose unique id changes is a new entity, and the old one's history stays behind
+  under the old id. The way round it is to rename the old one to the id the new one will come up as
+  (its history moves), remove its registry entry, and restart, and the new one carries on where the
+  old one stopped. It only works if nothing's used that id before, which the recorder checks
+- A template entity's id comes from its name, so a name that doesn't spell the id the packages use
+  puts it somewhere nothing reads ([testing.md](testing.md) has the one that did)
+
 ## Choices that look like bugs
 
 - No HACS, on purpose. Moonraker, the map card and the rest come straight from their GitHub

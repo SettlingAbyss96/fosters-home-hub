@@ -6,21 +6,36 @@ fork anywhere public. Level 1.*
 The way this goes wrong is boring and permanent: someone forks the repo to keep their own changes,
 commits `house.toml` along with everything else because `git add .` doesn't ask, pushes it, and
 now their Wi-Fi's name, their addresses and the iCal link that shows when they're out are on GitHub,
-where even a force-push doesn't really take them back. So the repo is laid out to make that hard to
-do by accident, and there's a check for the rest, and none of it is clever, it's mostly just keeping
-the house in three files that git never sees and everything else generic.
+where even a force-push doesn't really take them back. A line in `.gitignore` only holds until
+someone types `git add -f`, zips the folder for a friend or copies it somewhere without the
+`.gitignore`, so the safer way is for the house never to be inside the clone at all. That's how mine
+runs, with a check at every way out for whatever slips past anyway.
 
-## The three files that are yours
+## Your house, in a folder of its own
 
-| File | What's in it |
+Picture two folders next to each other. One is this repo, the engine, the same for every house and
+with nothing of anyone's in it. The other is yours, a private repo of its own if you'd like the
+history, and it holds the house and nothing else:
+
+| In the house folder | What's in it |
 |---|---|
-| `house.toml` | your rooms, devices, addresses, your Wi-Fi's name, the calendar address |
+| `house.toml` | your rooms, devices, addresses, your Wi-Fi's name, what Jarvis calls you and the printers |
 | `ha/context/about.local.md` | what Jarvis knows about the household: who lives here, how to talk to them |
 | `hub/parakeet-words.local.txt` | the words you say that speech to text should lean towards: names, places |
+| `hub/digest.toml`, `hub/journal.toml` | what the welcome home reads, what the journal asks about |
+| `tv/debloat.txt`, `tv/before.txt` | the TV's own debloat list and how it was before |
+| `private-words.txt` | what the checks below stop on besides `house.toml`: names, the street, where you work |
+| `ha/config/`, `ha/dashboards/` | packages and dashboards of your own, laid over this repo's |
 
-All three are in `.gitignore`, and so is everything made from them (`ha/config/house/`, the
-generated dashboard). Back them up somewhere, they're the only parts of the house that aren't in
-Home Assistant or in here.
+`python tools/house.py use ../my-house` tells the clone where it is, and the clone keeps that in
+its `.git/config`, which is the one part of a clone that's never in a commit. From then on every
+tool reads the house through `tools/house.py`, and the deploy builds what goes to Home Assistant
+into `.build/` in the house folder (`tools/build.py`: the packages with your words filled in and
+your own files on top), so nothing made from the house lands in the clone either. Home Assistant
+gets plain config, the same as if it had been written for your house by hand.
+
+The quick way still works: `house.toml` and the rest in the clone itself, all in `.gitignore`.
+It's fine for a first evening, and exactly as safe as every `git add` after it.
 
 ## Where the secrets live
 
@@ -80,18 +95,24 @@ entities come from the doorbell's app, so they're never written in the repo. And
 hangs on a match: a recognised face only confirms an arrival the phone already started, and it's
 never announced as certain.
 
-## Before you push a fork
+## The checks
 
 ```bash
-python tools/privacy_check.py
+python tools/privacy_check.py --install
 ```
 
-It reads every file git would commit and stops on the three files above being committed, on any
-value from your `house.toml` turning up in a committed file, and on anything shaped like a token or
-a private key. It also lists private addresses, MACs and emails for you to look at, since some of
-those are fine. It can't know everything private to you (a friend's name typed into a comment, say),
-so read your diff too. If something did get pushed, rotating it (a new token, a new Wi-Fi password)
-is the fix that actually works; rewriting history only hides it from people who haven't looked yet.
+That puts three git hooks in the clone, local ones that are never committed, and they look at the
+same thing three times: what a commit adds, what its message says, and every commit a push is about
+to send, author included, because something added and taken out again two commits later is still
+in the history for anyone who looks. Each stops on any value from your `house.toml`, anything in
+your `private-words.txt`, one of your own files being committed at all, and anything shaped like a
+token, a private key, a private network address, a MAC address (with or without its colons) or an
+email. The list of what to stop on is read out of the house folder every time, so it can't go
+stale and it never ends up in the repo itself. A clone that's been told where its house is and can't
+find it refuses to check against nothing.
 
-What I'd like to add when there's time: the same check as a pre-push hook in the repo, so it runs
-without anyone remembering to.
+By hand, `privacy_check.py` reads the working tree, and `--history` reads every commit there is,
+which for this repo takes under two seconds. It's a net, not a guarantee. It doesn't know that a
+story about your week is private, so read your diff too. If something did get pushed, rotating it
+(a new token, a new Wi-Fi password) is the fix that actually works, since rewriting history only
+hides it from people who haven't looked yet.

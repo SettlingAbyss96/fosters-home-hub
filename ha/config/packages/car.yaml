@@ -1,0 +1,239 @@
+# The car, through the Audi Connect integration (audi in extras.install, tools/ha-extras.sh puts it
+# in, you sign in under Devices & Services with your region, and tools/setup_ha.py gives its entities
+# the car_ names used here). Another make works the same if its integration gets renamed onto
+# sensor.car_battery, sensor.car_charging_state, sensor.car_charging_done_at and
+# binary_sensor.car_plugged_in. Without them, none of this ever fires.
+#
+# It's here for one job, idle fees. A public charger bills by the minute once the car has stopped
+# charging and is still plugged in, and the stop is the thing nobody's watching for at three in the
+# morning. Being plugged in with no session started costs nothing, since the fee only starts when
+# the car ends a charge, so it's a charge stopping that starts all of this, never the plug on its own:
+#   - charging stops with the plug still in: the phone, time-sensitive, with "Unplugged" and "15
+#     more minutes", and out loud on the Hub too when someone's home and up. Again every 10 minutes
+#     until the car says it's unplugged or "Unplugged" gets tapped, for three hours at most
+#   - the car's own estimate of when it'll be done: the same reminders start then, because Audi's
+#     data comes every 15 minutes at best, so the stop can be 14 minutes old before it shows
+#   - bedtime: still charging at the bedtime nudge with the car's estimate after bedtime, so you hear
+#     when it'll be done while you can still do something about it
+#   - the morning: still plugged in after a finished charge when the house goes to Morning, said
+#     out loud
+input_datetime:
+  car_charge_done_at:
+    name: "Car charge finished"
+    icon: mdi:ev-station
+    has_date: true
+    has_time: true
+
+script:
+  car_unplug_reminder:
+    alias: "Car: unplug it"
+    description: "Keeps reminding you the car's finished charging and still plugged in, until it's unplugged."
+    icon: mdi:ev-plug-type1
+    mode: restart
+    fields:
+      why:
+        description: "done (the car says it stopped) or due (its own estimate says now)"
+        selector:
+          select:
+            options: [done, due]
+    sequence:
+      - variables:
+          started: "{{ now().timestamp() }}"
+          why: "{{ why | default('done') }}"
+      - if: "{{ why == 'done' }}"
+        then:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.car_charge_done_at
+            data:
+              datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+      - repeat:
+          count: 18
+          sequence:
+            - variables:
+                minutes: "{{ ((now().timestamp() - started | float) / 60) | round(0) | int }}"
+                battery: "{{ states('sensor.car_battery') | int(0) }}"
+                message: >-
+                  {% if repeat.first and why == 'due' %}The car should be done charging about now, {{ battery }}%. Unplug it before the idle fees start.
+                  {% elif repeat.first %}The car's done charging at {{ battery }}% and still plugged in. Idle fees start soon.
+                  {% else %}The car's still plugged in, {{ minutes }} minutes on.{% endif %}
+                aloud: "{{ is_state('person.resident', 'home') and states('input_select.house_mode') not in ['Night', 'Movie', 'Away'] }}"
+            - action: notify.mobile_app_phone
+              continue_on_error: true
+              data:
+                title: "Car"
+                message: "{{ message }}"
+                data:
+                  tag: car_unplug
+                  push:
+                    interruption-level: time-sensitive
+                  actions:
+                    - action: CAR_UNPLUGGED
+                      title: "Unplugged"
+                    - action: CAR_SNOOZE
+                      title: "15 more minutes"
+            - if: "{{ aloud }}"
+              then:
+                - action: script.tell_resident
+                  continue_on_error: true
+                  data:
+                    message: "{{ message }}"
+            - wait_for_trigger:
+                - trigger: state
+                  entity_id: binary_sensor.car_plugged_in
+                  to: "off"
+                - trigger: event
+                  event_type: mobile_app_notification_action
+                  event_data:
+                    action: CAR_UNPLUGGED
+                - trigger: event
+                  event_type: mobile_app_notification_action
+                  event_data:
+                    action: CAR_SNOOZE
+              timeout: "00:10:00"
+            - variables:
+                answer: >-
+                  {{ 'none' if wait.trigger is none
+                     else ('unplugged' if wait.trigger.platform == 'state' or wait.trigger.event.data.action == 'CAR_UNPLUGGED'
+                           else 'snooze') }}
+            # snoozed: 15 more minutes, unless it comes unplugged in the meantime
+            - if: "{{ answer == 'snooze' }}"
+              then:
+                - wait_for_trigger:
+                    - trigger: state
+                      entity_id: binary_sensor.car_plugged_in
+                      to: "off"
+                    - trigger: event
+                      event_type: mobile_app_notification_action
+                      event_data:
+                        action: CAR_UNPLUGGED
+                  timeout: "00:15:00"
+                - if: "{{ wait.trigger is not none }}"
+                  then:
+                    - action: notify.mobile_app_phone
+                      continue_on_error: true
+                      data:
+                        message: clear_notification
+                        data:
+                          tag: car_unplug
+                    - stop: "Unplugged"
+            - if: "{{ answer == 'unplugged' }}"
+              then:
+                - action: notify.mobile_app_phone
+                  continue_on_error: true
+                  data:
+                    message: clear_notification
+                    data:
+                      tag: car_unplug
+                - stop: "Unplugged"
+
+automation:
+  # the car ending a charge with the plug still in: from charging to anything else, or straight to
+  # one of the "reached what it was charging to" states when the 15-minute fetch missed the
+  # charging part
+  - id: car_charge_stopped
+    alias: "Car: finished charging, still plugged in"
+    triggers:
+      - trigger: state
+        entity_id: sensor.car_charging_state
+        from: charging
+        not_to: [charging, unavailable, unknown]
+      # (not from charging: that change is the trigger above, and both firing sent the first
+      # reminder twice)
+      - trigger: state
+        entity_id: sensor.car_charging_state
+        not_from: [charging]
+        to: [chargePurposeReachedAndNotConservationCharging, chargePurposeReachedAndConservation]
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.car_plugged_in
+        state: "on"
+    actions:
+      - action: script.turn_on
+        target:
+          entity_id: script.car_unplug_reminder
+        data:
+          variables:
+            why: done
+
+  # the car's own estimate of when it'll be done, ahead of the fetch that would show it
+  - id: car_should_be_done
+    alias: "Car: should be done charging about now"
+    triggers:
+      - trigger: time
+        at: sensor.car_charging_done_at
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.car_plugged_in
+        state: "on"
+      - condition: state
+        entity_id: sensor.car_charging_state
+        state: charging
+      - condition: state
+        entity_id: script.car_unplug_reminder
+        state: "off"
+    actions:
+      - action: script.turn_on
+        target:
+          entity_id: script.car_unplug_reminder
+        data:
+          variables:
+            why: due
+
+  # at the bedtime nudge, still charging and not done until after bed. Before noon the plan is still
+  # last night's, so the two hours keep a morning from counting
+  - id: car_charging_past_bedtime
+    alias: "Car: still charging at bedtime"
+    triggers:
+      - trigger: template
+        value_template: >-
+          {% set n = state_attr('sensor.bedtime_plan', 'nudge_at') | as_datetime(none) %}
+          {{ n is not none and n <= now() < n + timedelta(hours=2) }}
+    conditions:
+      - condition: state
+        entity_id: person.resident
+        state: home
+      - condition: state
+        entity_id: binary_sensor.car_plugged_in
+        state: "on"
+      - condition: state
+        entity_id: sensor.car_charging_state
+        state: charging
+      - >-
+        {% set done = states('sensor.car_charging_done_at') | as_datetime(none) %}
+        {% set bed = states('sensor.bedtime_plan') | as_datetime(none) %}
+        {{ done is not none and bed is not none and done > bed }}
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Car"
+          phone: true
+          message: >-
+            The car's charging until {{ as_local(states('sensor.car_charging_done_at') | as_datetime).strftime('%-I:%M') }},
+            after bedtime. Unplug it before bed, or I'll keep reminding you once it's done.
+
+  # the morning after: finished overnight and still plugged in when the house goes to Morning
+  - id: car_still_plugged_in_morning
+    alias: "Car: still plugged in in the morning"
+    triggers:
+      - trigger: state
+        entity_id: input_select.house_mode
+        to: Morning
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.car_plugged_in
+        state: "on"
+      - "{{ not is_state('sensor.car_charging_state', 'charging') }}"
+      - >-
+        {% set done = states('input_datetime.car_charge_done_at') | as_datetime(none) %}
+        {{ done is not none and (now() - as_local(done)).total_seconds() < 12 * 3600 }}
+    actions:
+      - action: script.tell_resident
+        continue_on_error: true
+        data:
+          title: "Car"
+          phone: true
+          message: >-
+            The car finished charging at {{ as_local(states('input_datetime.car_charge_done_at') | as_datetime).strftime('%-I:%M') }}
+            and it's still plugged in.

@@ -4,7 +4,7 @@
 intent_script:
   JarvisDone:
     speech:
-      text: "{{ ['Of course.', 'Very good.', 'Anytime.'] | random }}"
+      text: "{{ ['Of course«, sir».', 'Very good«, sir».', 'Anytime«, sir».'] | random }}"
   # and runs the goodnight routine (packages/routines.yaml)
   JarvisGoodnight:
     description: "Going to bed: runs the goodnight routine."
@@ -12,9 +12,9 @@ intent_script:
       - action: script.goodnight
         continue_on_error: true
     speech:
-      text: "Good night."
+      text: "Good night«, sir»."
   # The running joke (custom_sentences/en/banter.yaml). Answered here so it's instant and comes out
   # exactly right every time: through the cloud agent it sometimes comes out paraphrased
   WhoAmI:
     speech:
-      text: "Genius, billionaire, playboy, philanthropist."
+      text: "Genius, billionaire, playboy, philanthropist«, sir»."

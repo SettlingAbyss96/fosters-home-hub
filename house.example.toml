@@ -1,6 +1,8 @@
-# house.toml: your house, in the one file that's yours. Copy this to house.toml in the same folder
-# and fill it in. house.toml is in .gitignore, because it's where your network, your devices and
-# your Wi-Fi's name live, and it should never end up in a repo, yours or anyone's.
+# house.toml: your house, in the one file that's yours. Copy this into a folder of your own, next to
+# this repo rather than in it, as house.toml, and run `python tools/house.py use ../that-folder`
+# (docs/privacy.md says why). Copied into the clone itself it works too, and .gitignore keeps it
+# out, but that's only as safe as every git add after it. It's where your network, your devices and
+# your Wi-Fi's name live, and it should never end up in a public repo, yours or anyone's.
 #
 # Nothing in here is a password. Tokens and logins never go in this file: the Home Assistant token
 # lives in ~/.config/ha-hub/token, the broker login on the Hub, the ESPHome Wi-Fi in the Hub's
@@ -64,6 +66,12 @@ cloud_agent = ""
 writer = ""
 # a small model on the Hub instead (host/80-ollama.sh). Slow and not very bright on 8 GB, honestly
 local_model = ""
+# How Jarvis addresses you: "sir", "ma'am", a name, or nothing at all. It goes into what he says
+# ("Good night, sir.") and his prompt, at the deploy (tools/build.py). Empty: just the words
+address = ""
+# entities Jarvis gets to see on top of what the deploy shows him, which wins over its own hiding
+# (the phone's sensors are hidden, so a phone sensor you want him to read goes here)
+expose = []
 
 [news]
 # what the welcome home and the morning briefing look up, in plain words. Empty: home news only
@@ -160,12 +168,39 @@ bedroom_door = ""
 bathroom_door = ""
 # a measuring plug the desk runs from: its power sensor becomes sensor.desk_power
 desk_power = ""
+# The notify services, when they aren't already the standard ones. A phone that signed in before it
+# was called Phone keeps notify.mobile_app_<its name>, and a computer HASS.Agent knows by another
+# name keeps notify.<that name>: put those here and the deploy adds the standard name on top
+phone_notify = ""
+computer_notify = ""
+
+[names]
+# What you call things, which is what Jarvis says ("The Voron's finished its print") and listens
+# for. These are the defaults
+klipper = "Klipper printer"
+bambu = "Bambu"
+vacuum = "vacuum"
+computer = "computer"
+
+[names.said]
+# the other ways speech to text writes a name, so "how's the vorn doing" still finds the printer
+klipper = []
+bambu = []
+
+[params]
+# The house's own value for any of the settings in ha/config/custom_templates/control.jinja (each
+# has its reason in docs/control.md). Only what's really about your house, like when a wake-up falls
+# back to with no plan at all:
+# wake_without_plan = "06:00"
 
 [computer]
 # part of the name of a headset on the computer (as Windows names the audio device). When it's the
 # computer's output and you're at the desk, Jarvis talks in the headset instead of on the Hub.
 # Empty: always the Hub
 headset = ""
+# part of the name of a monitor with speakers. A laptop on its own speakers switches to it before
+# the alarm talks out of it, through a HASS.Agent button called "Sound to the monitor". Empty: never
+monitor = ""
 
 [fire_tv]
 # A Fire TV over ADB (ha/config/packages/tv.yaml): its reserved address, and the room it's in.
@@ -173,6 +208,9 @@ headset = ""
 # name seven times, then Developer Options), and accept the prompt on the TV the first time
 address = ""
 area = "Living Room"
+# its device's name, and the names people say for media_player.tv
+name = "Fire TV"
+aliases = ["television", "telly"]
 
 [fire_tv.apps]
 # the apps it can open, by Android package name
@@ -195,4 +233,5 @@ moonraker = ""
 #   hass_agent    the Home Assistant half of HASS.Agent (media player and notify for the computer)
 #   vacuum_map    the interactive map card and its map image for a Roborock
 #   piper_jarvis  a community Jarvis voice for Piper, the fallback when Kokoro isn't there
+#   audi          Audi Connect, the car, for the idle-fee reminders (packages/car.yaml)
 install = ["mushroom"]

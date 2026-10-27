@@ -24,6 +24,12 @@
 #   - piper_jarvis: the Jarvis voice for Piper (jgkawell/jarvis on Hugging Face, MIT), medium and
 #     high, into /share/piper where the Piper app looks for custom voices. Only the fallback, when
 #     Kokoro (host/74-kokoro.sh) isn't there
+#   - audi: Audi Connect 2.5.1 (audiconnect/audi_connect_ha), the car: plugged in, charging, the
+#     battery and when it'll be done, for the idle-fee reminders (packages/car.yaml). You sign in
+#     with the myAudi login under Devices & Services and pick your region. Talks to Audi and
+#     Volkswagen Group hosts only, one Python requirement, beautifulsoup4, the same one Bambu has.
+#     Read before pinning: it logs the session token at debug level and nothing at the normal
+#     levels. Audi has been refusing European logins to it since October 2026; US ones go another way
 # Updating one means a new version and a new sha256 below, nothing else. Run after ha-apps.sh.
 # Home Assistant restarts only when a file in /config actually changed.
 set -euo pipefail
@@ -49,6 +55,8 @@ hassagent_ver=2.1.3
 hassagent_sha=b9e829645c249449d1d45a2dd2621b80ec120f2a0c1d0989fcbf67b0432b404c
 bambu_ver=2.2.26
 bambu_sha=7d2d8c7d3ba5faf08a6ccc6bc870bda4cb8ce3fbf362d92119f3185dca802626
+audi_ver=2.5.1
+audi_sha=903bd45ac05dbb711dbaa5b2a25afcefabc732189a008d731da9e59c0ee388ef
 
 fetch() {  # fetch URL FILE SHA256
   curl -fsSL -m 120 -o "$2" "$1"
@@ -93,6 +101,11 @@ if wants bambu; then
   fetch "https://codeload.github.com/greghesp/ha-bambulab/tar.gz/refs/tags/v$bambu_ver" .tmp-extras/bambu.tar.gz "$bambu_sha"
   tar -xzf .tmp-extras/bambu.tar.gz -C .tmp-extras --strip-components=2 "ha-bambulab-$bambu_ver/custom_components/bambu_lab"
   mv .tmp-extras/bambu_lab .tmp-extras/config/custom_components/
+fi
+if wants audi; then
+  fetch "https://codeload.github.com/audiconnect/audi_connect_ha/tar.gz/refs/tags/v$audi_ver" .tmp-extras/audi.tar.gz "$audi_sha"
+  tar -xzf .tmp-extras/audi.tar.gz -C .tmp-extras --strip-components=2 "audi_connect_ha-$audi_ver/custom_components/audiconnect"
+  mv .tmp-extras/audiconnect .tmp-extras/config/custom_components/
 fi
 
 # same copy-if-different as ha/config in tools/setup_ha.py, so a rerun doesn't restart anything. Only a

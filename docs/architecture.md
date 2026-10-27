@@ -108,23 +108,31 @@ to be instant, and the one above as slow enough to be constant. The details are 
 
 ## Deploying a change
 
-The repo and `house.toml` are the truth. Nothing gets edited in Home Assistant's UI and left there,
-because the next deploy puts it back.
+This repo and your house folder are the truth. Nothing gets edited in Home Assistant's UI and left
+there, because the next deploy puts it back.
 
 ```mermaid
 flowchart LR
-    R[Repo and house.toml] -->|tools/test.sh| B[Test bench<br/>on the Hub]
+    R[This repo] -->|bench build| B[Test bench<br/>on the Hub]
+    R --> D[tools/build.py]
+    F[Your house folder] --> D
     B -->|all pass| A[tools/ha-apps.sh]
+    D --> A
     A -->|config, apps,<br/>names, labels| HA[Home Assistant]
     R -->|tools/push.sh| H[host/ scripts<br/>on Debian]
 ```
 
 `tools/ha-apps.sh` checks `house.toml`, runs the scenario tests ([testing.md](testing.md)), then
-hands over to `tools/setup_ha.py`, which copies `ha/config` into `/config`, restarts Home Assistant
-only if something changed, sets up the apps and integrations it can, renames your entities onto the
-standard names ([devices.md](devices.md)), labels the lights, sets starting values once, builds the
-dashboard, and restarts again if the agent's prompt changed (a changed prompt breaks any
-conversation still open). `tools/push.sh` copies `host/` and `hub/` to the Hub and runs the named
+hands over to `tools/setup_ha.py`. That builds the config for your house (`tools/build.py`, the
+packages with your words filled in and your own files laid over them), copies into `/config` what
+changed and removes what the last deploy put there and this one doesn't, has Home Assistant check
+it, and restarts only if something changed. A failed check puts every file back the way it was, so
+neither the running house nor the next restart ever sees a broken config. Then it sets up the apps
+and integrations it can, renames your entities onto the standard names ([devices.md](devices.md)),
+labels the lights, sets starting values once, builds the dashboard, and restarts again if the
+agent's prompt changed (a changed prompt breaks any conversation still open). `setup_ha.py --plan`
+does the whole run as questions instead: it asks Home Assistant what's there and prints each change
+it would make, and only the ones that really are changes. `tools/push.sh` copies `host/` and `hub/` to the Hub and runs the named
 scripts there as root. Everything third party is pinned: Python packages by version, models and
 community pieces by sha256.
 

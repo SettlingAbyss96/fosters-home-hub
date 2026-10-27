@@ -9,7 +9,7 @@ control system behind them. Set up the way I set up mine, for anyone with the sa
 ![Hardware](https://img.shields.io/badge/Lenovo-ThinkSmart%20Hub%20500-e2231a?style=flat-square)
 ![Debian](https://img.shields.io/badge/Debian-13%20trixie-a81d33?style=flat-square)
 ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.10%20in%20a%20VM-41bdf5?style=flat-square)
-![Tests](https://img.shields.io/badge/scenario%20tests-168-2ea44f?style=flat-square)
+![Tests](https://img.shields.io/badge/scenario%20tests-177-2ea44f?style=flat-square)
 
 </div>
 
@@ -83,9 +83,11 @@ flowchart BT
     B --> G[Arbiter<br/>priorities, holds] --> A[Lights, TV, vacuum]
 ```
 
-Your house goes in `house.toml`, which never leaves your computer. The deploy renames your devices
-onto a set of standard names the packages read, labels your lights by layer and job, and builds the
-dashboard from your rooms, so the packages themselves never change from house to house.
+Your house goes in a folder of its own, `house.toml` and the few other files that are yours, kept
+next to this repo rather than in it ([docs/privacy.md](docs/privacy.md)). The deploy renames your
+devices onto a set of standard names the packages read, labels your lights by layer and job, fills
+in what Jarvis calls you and your things, and builds the dashboard from your rooms, so the packages
+themselves never change from house to house.
 
 ## Where to start
 
@@ -113,7 +115,7 @@ Levels as in my handbook: 1 is no math, 4 is in the weeds.
 ## What's in here
 
 ```text
-house.example.toml  your house, as an example: copy it to house.toml (never committed) and fill it in
+house.example.toml  your house, as an example: copy it into a folder of your own as house.toml
 host/               scripts that build the Debian host, run in order (tools/push.sh runs them)
   00-base.sh          updates and base tools
   10-virt.sh          KVM, libvirt, UEFI firmware for the VM
@@ -150,8 +152,9 @@ esphome/            the ESP32 sensor nodes, one YAML each, and common/ with the 
 tests/              scenario tests on the real Home Assistant with a frozen clock
 tools/              run from your computer
   ha-apps.sh          the deploy: checks house.toml, runs the tests, then setup_ha.py
-  setup_ha.py         every Home Assistant step, from house.toml
-  house.py            reads and checks house.toml
+  setup_ha.py         every Home Assistant step, from house.toml (--plan says what it would change)
+  build.py            the packages with your house filled in and your own files on top
+  house.py            finds your house folder, reads and checks house.toml
   dashboard.py        builds the dashboard from your rooms and lights
   ha.py               REST, WebSocket and Supervisor calls (the token lives in ~/.config/ha-hub/token)
   push.sh             copies host/ and hub/ to the Hub and runs host scripts there
@@ -160,7 +163,7 @@ tools/              run from your computer
   esphome.sh          the ESP32 nodes: check, build, flash, update, logs
   tv.py               the Fire TV through Home Assistant's ADB: a debloat applied, checked, restored
   tv-keeper.sh        builds the TV keeper app on the Hub
-  privacy_check.py    looks for your house in your repo before you push it
+  privacy_check.py    keeps your house out of the repo: by hand, and as git hooks on commit and push
 pc/                 HASS.Agent's sensors and commands for a Windows computer
 tv/                 the Fire TV: an example debloat list, and the keeper app that keeps ADB on
 probe/              the hardware probe and audio test behind docs/hardware.md

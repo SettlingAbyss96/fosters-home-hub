@@ -36,7 +36,7 @@ intent_script:
         data:
           y: 1
     speech:
-      text: "Noted. More like that."
+      text: "Noted«, sir». More like that."
   DigestLess:
     description: "The listener wasn't interested in what Jarvis just told them: less like that."
     action:
@@ -45,4 +45,4 @@ intent_script:
         data:
           y: -1
     speech:
-      text: "Noted. Less of that."
+      text: "Noted«, sir». Less of that."

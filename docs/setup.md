@@ -42,21 +42,27 @@ plan you can borrow.
    echo "hub ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/hub
    ```
 
-## 3. The repo and your house.toml
+## 3. The repo and your house folder
 
-On your computer:
+On your computer, the repo and next to it a folder for your house, which can be a private repo of
+its own (`git init` in it) if you'd like its history:
 
 ```bash
 git clone https://github.com/SettlingAbyss96/fosters-home-hub.git
 ```
 
 ```bash
-cd fosters-home-hub && cp house.example.toml house.toml
+mkdir my-house && cp fosters-home-hub/house.example.toml my-house/house.toml
 ```
 
-For now only `[hub]` matters: `ssh` (leave it as `hub@ha-hub.local` once mDNS works, or put the
-Hub's address in for the first few steps) and `address`. The rest of `house.toml` gets filled in as
-the house does. It never leaves your computer, `.gitignore` sees to that.
+```bash
+cd fosters-home-hub && python tools/house.py use ../my-house && python tools/privacy_check.py --install
+```
+
+The first tells the clone where your house is (it remembers in its own `.git/config`), and the
+second puts the checks on every commit and push ([privacy.md](privacy.md) has both). For now only
+`[hub]` in `house.toml` matters: `ssh` (leave it as `hub@ha-hub.local` once mDNS works, or put the
+Hub's address in for the first few steps) and `address`. The rest gets filled in as the house does.
 
 ## 4. The host scripts
 
@@ -126,7 +132,8 @@ integration), then its conversation agent, and put that agent's entity id in `ho
 `voice.cloud_agent`. The deploy renames it `conversation.jarvis_cloud` and gives it
 `ha/context/about.md` as its prompt. Pick its model and its settings in the provider's own options:
 a fast model with low reasoning effort suits a voice, and web search makes the news parts work.
-Copy `ha/context/about.local.example.md` to `about.local.md` and tell it who lives here.
+Copy `ha/context/about.local.example.md` to `ha/context/about.local.md` in your house folder and
+tell it who lives here.
 
 The welcome home is written by a separate AI task when the digest is on the Hub, because the digest
 is text off the internet and an AI task never gets the house's tools. Most providers' integrations
@@ -165,8 +172,8 @@ when the bench itself is what's broken.
   with `tools/push.sh`
 - A new device: pair it, add it to `house.toml`, `tools/ha-apps.sh`
 - A backup: Home Assistant's own, with Matter Server and Mosquitto in it (the deploy adds both, or
-  a restore loses every Matter pairing). Keep `house.toml` and `about.local.md` somewhere safe too,
-  they're the only parts that aren't in Home Assistant or here
+  a restore loses every Matter pairing). The house folder is the only part that isn't in Home
+  Assistant or here, so it wants a backup of its own, which a private repo is
 
 How long the first `ha-apps.sh` takes depends mostly on Whisper downloading its model, about ten
 minutes on mine.

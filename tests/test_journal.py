@@ -337,6 +337,16 @@ def test_a_long_answer_goes_to_parakeet_in_pieces_and_comes_back_whole(monkeypat
 
 # -- the house asking -------------------------------------------------------------------------
 TUESDAY = "2026-10-13"
+
+
+@pytest.fixture
+def house_at(house_at):
+    """The journal lives on the Hub, so these houses have its address, the way the deploy sets it
+    from hub.address"""
+    async def build(at, states=None):
+        return await house_at(at, {"input_text.hub_address": "192.0.2.10", **(states or {})})
+    return build
+
 ASK = {"status": 200, "content": {"ask": 7, "question": "How was work? And Lamplight Coffee, how was the ambiance?",
                                   "places": [{"name": "Work", "kind": "work", "first": False, "minutes": 480},
                                              {"name": "Lamplight Coffee", "kind": "cafe", "first": True, "minutes": 45}]}}
@@ -490,3 +500,14 @@ async def test_every_position_goes_to_the_journal(house_at):
     assert len(sent) == 1
     p = sent[0].data["point"]
     assert (p["lat"], p["lon"], p["zone"], p["aoi"]) == (40.01, -75.02, "not_home", "Riverside Market")
+
+
+async def test_without_a_hub_address_the_journal_stays_quiet(house_at):
+    # a house without one, or one whose first deploy hasn't set it yet: nothing to send a position
+    # to, and asking http://unknown:10231 was an error alert on the phone
+    house = await house_at(f"{TUESDAY} 12:00", {"input_select.house_mode": "Away", "input_text.hub_address": "",
+                                                "person.resident": ("not_home", {"latitude": 40.0, "longitude": -75.0})})
+    house.forget()
+    house.set("person.resident", "not_home", latitude=40.01, longitude=-75.02, gps_accuracy=6)
+    await house.settle()
+    assert not house.called("rest_command.journal_point")

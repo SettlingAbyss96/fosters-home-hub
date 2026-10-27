@@ -1,5 +1,6 @@
 # A Bambu Lab printer by voice, and every printer at once. Intents in packages/bambu.yaml. Speech
-# to text hears "Bambu" a few ways, and the list takes the model name too ("x1c", "p1s"): add yours
+# to text hears "Bambu" a few ways, and the model name ("x1c", "p1s") goes in [names.said] in
+# house.toml, which the deploy adds to the list
 language: "en"
 intents:
   BambuStatus:
@@ -23,5 +24,5 @@ intents:
 lists:
   bambu:
     values:
-      - in: "(bambu|bamboo|bambu lab|bamboo lab|bambu printer)"
+      - in: "(bambu|bamboo|bambu lab|bamboo lab|bambu printer«|bambu»)"
         out: "bambu"

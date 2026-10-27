@@ -192,8 +192,8 @@ automation:
           message: >-
             {% set bt = as_local(states('sensor.bedtime_plan') | as_datetime).strftime('%-I:%M') %}
             {% set wt = as_local(state_attr('sensor.bedtime_plan', 'wake') | as_datetime).strftime('%-I:%M') %}
-            {% if now() >= as_local(states('sensor.bedtime_plan') | as_datetime) %}It's bedtime. Up at {{ wt }} tomorrow.
-            {% else %}Bed by {{ bt }} gets you {{ hours }} hours before {{ wt }}.{% endif %}
+            {% if now() >= as_local(states('sensor.bedtime_plan') | as_datetime) %}It's bedtime«, sir». Up at {{ wt }} tomorrow.
+            {% else %}Bed by {{ bt }} gets you {{ hours }} hours before {{ wt }}«, sir».{% endif %}
       - action: input_datetime.set_datetime
         target:
           entity_id: input_datetime.last_bedtime_nudge
@@ -250,7 +250,7 @@ intent_script:
         target:
           entity_id: input_boolean.day_off_tomorrow
     speech:
-      text: "No early start tomorrow, then."
+      text: "«Very good, sir. »No early start tomorrow."
   KeepMeAwake:
     description: "No bedtime nudge tonight."
     action:
@@ -258,7 +258,7 @@ intent_script:
         target:
           entity_id: input_boolean.keep_me_awake
     speech:
-      text: "No bedtime nudge tonight."
+      text: "No bedtime nudge tonight«, sir»."
   BedtimeSnooze:
     description: "Push tonight's bedtime nudge back an hour."
     action:
@@ -268,13 +268,13 @@ intent_script:
         data:
           datetime: "{{ (now() + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S') }}"
     speech:
-      text: "I'll remind you at {{ (now() + timedelta(hours=1)).strftime('%-I:%M') }}."
+      text: "I'll remind you at {{ (now() + timedelta(hours=1)).strftime('%-I:%M') }}«, sir»."
   BedtimeWhen:
     description: "When to go to bed tonight, and why."
     speech:
       text: >-
         {% set b = states('sensor.bedtime_plan') | as_datetime(none) %}
-        {% if b is none %}No plan yet.
+        {% if b is none %}No plan yet«, sir».
         {% else %}{% set h = (state_attr('sensor.bedtime_plan', 'sleep_goal') | string).replace('.0', '').replace('.5', ' and a half').replace('.25', ' and a quarter').replace('.75', ' and three quarters') %}
         {% set w = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) %}
-        By {{ as_local(b).strftime('%-I:%M') }}, for {{ h }} hours{{ (' before ' ~ as_local(w).strftime('%-I:%M')) if w is not none else '' }}.{% endif %}
+        By {{ as_local(b).strftime('%-I:%M') }}«, sir», for {{ h }} hours{{ (' before ' ~ as_local(w).strftime('%-I:%M')) if w is not none else '' }}.{% endif %}

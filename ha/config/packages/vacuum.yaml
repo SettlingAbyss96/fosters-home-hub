@@ -20,7 +20,7 @@ timer:
 script:
   vacuum_clean:
     alias: "Vacuum the rooms it can get to"
-    description: "Start the vacuum on every room whose door isn't shut."
+    description: "Start the «vacuum» on every room whose door isn't shut."
     icon: mdi:robot-vacuum
     mode: single
     sequence:
@@ -55,7 +55,7 @@ script:
 
   vacuum_later:
     alias: "Vacuum in a while"
-    description: "Start the vacuum on the rooms it can get to, so many minutes from now."
+    description: "Start the «vacuum» on the rooms it can get to, so many minutes from now."
     icon: mdi:robot-vacuum-alert
     mode: restart
     fields:
@@ -105,7 +105,7 @@ intent_script:
       - stop: "Done"
         response_variable: set
     speech:
-      text: "The vacuum goes at {{ action_response.at if action_response is defined else 'that time' }}."
+      text: "The vacuum goes at {{ action_response.at if action_response is defined else 'that time' }}«, sir»."
   VacuumLaterCancel:
     description: "Cancel a vacuum that's waiting to start."
     action:
@@ -119,16 +119,16 @@ intent_script:
         response_variable: result
     speech:
       text: >-
-        {{ 'Cancelled, the vacuum stays docked.' if action_response is not defined or action_response.waiting
-           else "There wasn't one waiting." }}
+        {{ 'Cancelled, the vacuum stays docked«, sir».' if action_response is not defined or action_response.waiting
+           else "There wasn't one waiting«, sir»." }}
   # The whole home, by voice, goes the door-aware way too. Single rooms ("clean the kitchen") are
   # Home Assistant's own and go straight to that room
   VacuumCleanNow:
-    description: "Vacuum every room the vacuum can get to."
+    description: "Vacuum every room the «vacuum» can get to."
     action:
       - action: script.vacuum_clean
         response_variable: done
       - stop: "Done"
         response_variable: done
     speech:
-      text: "Off it goes{{ (' ' ~ action_response.note) if action_response is defined and action_response.note else '' }}."
+      text: "Off it goes{{ (' ' ~ action_response.note) if action_response is defined and action_response.note else '' }}«, sir»."

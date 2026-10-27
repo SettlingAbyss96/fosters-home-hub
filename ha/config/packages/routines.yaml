@@ -197,42 +197,42 @@ intent_script:
       - action: script.movie_night
         continue_on_error: true
     speech:
-      text: "Enjoy the film."
+      text: "Enjoy the film«, sir»."
   MovieEnd:
     description: "Ends movie night and brings the lights back up."
     action:
       - action: script.movie_end
         continue_on_error: true
     speech:
-      text: "Lights up."
+      text: "Lights up«, sir»."
   CalmMode:
     description: "Calm mode: low lights, softer voice."
     action:
       - action: script.calm_mode
         continue_on_error: true
     speech:
-      text: "Calm mode."
+      text: "Calm mode«, sir»."
   MorningMode:
     description: "The morning lights: most lights on."
     action:
       - action: script.morning_mode
         continue_on_error: true
     speech:
-      text: "Morning lights."
+      text: "Morning lights«, sir»."
   DayMode:
     description: "Daytime: lamps and ambient lights on."
     action:
       - action: script.day_mode
         continue_on_error: true
     speech:
-      text: "Daytime."
+      text: "Daytime«, sir»."
   EveningMode:
     description: "The normal evening lights."
     action:
       - action: script.evening_mode
         continue_on_error: true
     speech:
-      text: "Evening lights."
+      text: "Evening lights«, sir»."
   BrightLights:
     description: "Every light in the home all the way up."
     action:
@@ -242,7 +242,7 @@ intent_script:
           look: bright
           override: true
     speech:
-      text: "Lights up."
+      text: "Lights up«, sir»."
   LightsOut:
     description: "Every light in the home off, the bedside lamp included."
     action:
@@ -252,7 +252,7 @@ intent_script:
           look: "off"
           override: true
     speech:
-      text: "Lights out."
+      text: "Lights out«, sir»."
   LeavingHome:
     description: "Heading out: lights and TV off a minute later, and the vacuum asked about."
     action:
@@ -264,7 +264,7 @@ intent_script:
           variables:
             wait: 60
     speech:
-      text: "Very good. Lights off in a minute."
+      text: "Very good«, sir». Lights off in a minute."
   GuestModeOn:
     description: "Guest mode on: the house stops reacting to the phone leaving."
     action:
@@ -272,7 +272,7 @@ intent_script:
         target:
           entity_id: input_boolean.guest_mode
     speech:
-      text: "Guest mode."
+      text: "Guest mode«, sir»."
   GuestModeOff:
     description: "Guest mode off."
     action:
@@ -280,4 +280,4 @@ intent_script:
         target:
           entity_id: input_boolean.guest_mode
     speech:
-      text: "Guest mode off."
+      text: "Guest mode off«, sir»."

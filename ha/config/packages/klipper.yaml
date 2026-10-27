@@ -16,19 +16,19 @@ intent_script:
                           ~ (m ~ ' minute' ~ ('s' if m != 1 else '') if m or not h else '') %}
         {% set file = states('sensor.klipper_filename') | replace('.gcode', '') | replace('_', ' ') %}
         {% if state == 'printing' %}
-          The Klipper printer is printing{{ ' ' ~ file if file not in ['', 'unknown', 'unavailable'] }}, {{ pct }} percent done, about {{ left_txt }} left.
+          The «klipper» is printing{{ ' ' ~ file if file not in ['', 'unknown', 'unavailable'] }}, {{ pct }} percent done, about {{ left_txt }} left.
         {% elif state == 'paused' %}
-          The Klipper printer is paused at {{ pct }} percent.
+          The «klipper» is paused at {{ pct }} percent.
         {% elif state == 'complete' %}
-          The Klipper printer is done{{ ', ' ~ file ~ ' finished' if file not in ['', 'unknown', 'unavailable'] }}.
+          The «klipper» is done{{ ', ' ~ file ~ ' finished' if file not in ['', 'unknown', 'unavailable'] }}.
         {% elif state == 'cancelled' %}
-          The last print on the Klipper printer was cancelled.
+          The last print on the «klipper» was cancelled.
         {% elif state == 'error' %}
-          The Klipper printer has an error: {{ states('sensor.klipper_printer_message') }}
+          The «klipper» has an error: {{ states('sensor.klipper_printer_message') }}
         {% elif state in ['unknown', 'unavailable'] %}
-          I can't reach the Klipper printer right now.
+          I can't reach the «klipper» right now.
         {% else %}
-          The Klipper printer is idle. The bed is at {{ states('sensor.klipper_bed_temperature') | float(0) | round(0) | int }} degrees.
+          The «klipper» is idle. The bed is at {{ states('sensor.klipper_bed_temperature') | float(0) | round(0) | int }} degrees.
         {% endif %}
 
   KlipperTemps:
@@ -41,9 +41,9 @@ intent_script:
                           'chamber': 'number.klipper_chamber_heater_target'} %}
         {% macro one(p) %}{% set now = states(t[p]) | float(0) | round(0) | int %}{% set goal = states(targets[p]) | float(0) %}{% if state_attr(targets[p], 'unit_of_measurement') == '°F' %}{% set goal = (goal - 32) * 5 / 9 %}{% endif %}the {{ p }} is at {{ now }} degrees{{ ', heading for ' ~ (goal | round(0) | int) if goal > 1 }}{% endmacro %}
         {% if part in t %}
-          On the Klipper printer, {{ one(part) }}.
+          On the «klipper», {{ one(part) }}.
         {% else %}
-          On the Klipper printer, {{ one('nozzle') }}, {{ one('bed') }}, and {{ one('chamber') }}.
+          On the «klipper», {{ one('nozzle') }}, {{ one('bed') }}, and {{ one('chamber') }}.
         {% endif %}
 
 # The case light is an output pin in Klipper ([output_pin caselight] in printer.cfg), a number from

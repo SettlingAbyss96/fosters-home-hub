@@ -43,8 +43,12 @@ def _house(key, default):
 URL = os.environ.get("HA_URL") or _house("home_assistant.url", "http://homeassistant.local")
 URL = URL.rstrip("/")
 TV = "media_player.fire_tv"
-LIST = ROOT / "tv" / "debloat.txt"
-BEFORE = ROOT / "tv" / "before.txt"
+sys.path.insert(0, str(ROOT / "tools"))
+import house  # noqa: E402
+
+# the TV's own list and how it was before, which are yours (tools/house.py)
+LIST = house.file("debloat")
+BEFORE = house.file("before")
 KEEPER_APK = ROOT / "tv" / "keeper" / "build" / "keeper.apk"
 KEEPER = "home.hub.tvkeeper"
 

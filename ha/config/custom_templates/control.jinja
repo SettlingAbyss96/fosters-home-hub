@@ -61,8 +61,11 @@
   'bedtime_without_plan': '22:30',
   'wake_without_plan': '07:00',
   'stand_in_band': 15,
+  'accent_on_from': 50,
 } -%}
-{{- p[name] -}}
+{#- the house's own settings, from [params] in house.toml (tools/build.py fills this line in) -#}
+{%- set house = {} -%}
+{{- house.get(name, p[name]) -}}
 {%- endmacro -%}
 
 {#- Bayes filter, one step. b is the belief the hidden state is "on" (asleep, say) a step ago.

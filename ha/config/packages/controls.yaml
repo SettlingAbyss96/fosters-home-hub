@@ -189,7 +189,7 @@ automation:
         continue_on_error: true
         data:
           title: "Vacuum"
-          message: "The vacuum started on its own (its app's schedule?). It's paused here, so I sent it back to the dock."
+          message: "The «vacuum» started on its own (its app's schedule?). It's paused here, so I sent it back to the dock."
           data:
             tag: vacuum_paused
             actions:
@@ -286,7 +286,7 @@ intent_script:
         target:
           entity_id: timer.vacuum_later
     speech:
-      text: "The vacuum stays home until you say otherwise."
+      text: "The vacuum stays home until you say otherwise«, sir»."
   VacuumResumeAuto:
     description: "Let the vacuum run by itself again."
     action:
@@ -294,4 +294,4 @@ intent_script:
         target:
           entity_id: input_boolean.auto_vacuum
     speech:
-      text: "The vacuum's back on its usual rounds."
+      text: "The vacuum's back on its usual rounds«, sir»."

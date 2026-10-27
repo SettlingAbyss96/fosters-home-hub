@@ -1,9 +1,10 @@
 # The Klipper printer (Moonraker integration, from tools/ha-extras.sh): how the print is going and
 # how hot things are, in the words people actually use. The built-in sentences only answer "what is
 # the Klipper progress", one sensor at a time, and a small local model is hopeless with devices (it
-# goes looking for the bed in the hallway). Add your printer's own name to the klipper list below
-# (people call a printer by its name, not "the Klipper printer"), with the ways speech to text spells it. "The
-# printer" alone means every printer (bambu.yaml). Intents in packages/klipper.yaml.
+# goes looking for the bed in the hallway). People call a printer by its name, not "the Klipper
+# printer", so the name and the ways speech to text spells it come from [names] in house.toml and
+# get added to the klipper list below at the deploy (tools/build.py). "The printer" alone means
+# every printer (bambu.yaml). Intents in packages/klipper.yaml.
 language: "en"
 intents:
   KlipperStatus:
@@ -27,7 +28,7 @@ intents:
 lists:
   klipper:
     values:
-      - in: "(klipper|klipper printer|clipper)"
+      - in: "(klipper|klipper printer|clipper«|klipper»)"
         out: "klipper"
   klipper_part:
     values:

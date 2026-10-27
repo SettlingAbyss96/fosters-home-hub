@@ -89,7 +89,7 @@ automation:
               continue_on_error: true
               data:
                 title: "Reminder"
-                message: "A reminder: {{ repeat.item.message }}."
+                message: "«Sir, »a reminder: {{ repeat.item.message }}."
                 phone: true
 
 intent_script:
@@ -104,10 +104,10 @@ intent_script:
       - stop: "Done"
         response_variable: set
     speech:
-      text: "I'll remind you at {{ action_response.at if action_response is defined else 'the time' }}."
+      text: "I'll remind you at {{ action_response.at if action_response is defined else 'the time' }}«, sir»."
   RemindersClear:
     description: "Cancel all the reminders."
     action:
       - event: reminder_clear
     speech:
-      text: "Reminders cleared."
+      text: "Reminders cleared«, sir»."

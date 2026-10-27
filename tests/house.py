@@ -218,6 +218,16 @@ class House:
         doubled = [e.entity_id for e in er.async_get(hass).entities.values()
                    if e.entity_id.endswith("_2") and e.entity_id[:-2] not in house.lights]
         assert not doubled, f"set before the packages loaded, so the packages' own are {doubled}"
+        # A template entity's id comes from its name unless default_entity_id pins it, so one whose
+        # name doesn't spell its id comes up somewhere nothing reads. "Phone on the home Wi-Fi" was
+        # binary_sensor.phone_on_the_home_wi_fi while everything read binary_sensor.phone_on_home_wifi
+        text = "\n".join(p.read_text(encoding="utf-8") for p in CONFIG.rglob("*") if p.suffix in (".yaml", ".jinja"))
+        astray = [f"{e.entity_id} (the packages read {e.domain}.{e.unique_id})"
+                  for e in er.async_get(hass).entities.values()
+                  if e.platform == "template" and e.entity_id != f"{e.domain}.{e.unique_id}"
+                  and f"{e.domain}.{e.unique_id}" not in house.lights
+                  and re.search(rf"\b{e.domain}\.{e.unique_id}\b", text) and not re.search(rf"\b{re.escape(e.entity_id)}\b", text)]
+        assert not astray, f"package entities under ids nothing reads: {astray}"
         hass.bus.async_fire("tv_changed", {})
 
         # a lived-in house: every date-and-time helper starts long ago, the way a real one has been

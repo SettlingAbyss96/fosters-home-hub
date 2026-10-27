@@ -8,10 +8,14 @@ run gets what it can and a rerun after adding things picks up the rest.
 
   python tools/setup_ha.py              everything
   python tools/setup_ha.py lights tv    just those steps (names below, in STEPS)
+  python tools/setup_ha.py --plan       ask Home Assistant everything and change nothing: each
+                                        change a step would make gets printed instead, and only
+                                        when it really is a change (PLAN=1 does the same)
 
 Needs the token in ~/.config/ha-hub/token, the Hub's host scripts run (50-screen.sh writes the
 broker login, 70-voice.sh starts the satellite), and SSH to the Hub. Standard library only.
 """
+import difflib
 import hashlib
 import io
 import json
@@ -26,10 +30,16 @@ import time
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
+import build as builder  # noqa: E402
 import ha as hapi  # noqa: E402
 import house as housefile  # noqa: E402
 
+PLAN = os.environ.get("PLAN") == "1" or "--plan" in sys.argv
+# a plan waits for nothing, since nothing it asked for is happening
+sleep = (lambda seconds: None) if PLAN else time.sleep
 H = housefile.load()
+# what the house calls its printers and its vacuum ([names] in house.toml)
+NAMES = {**housefile.DEFAULTS["names"], **H["names"]}
 HUB_SSH = os.environ.get("HUB") or H["hub"]["ssh"]
 HA_HOST = os.environ.get("HA_HOST") or H["home_assistant"]["host"]
 _ws = None
@@ -92,12 +102,16 @@ WAKE_NAMES = {"hey_jarvis": "Hey Jarvis", "okay_nabu": "Okay Nabu", "hey_mycroft
 
 def ws(cmd, strict=False):
     global _ws
+    if PLAN and not reads(cmd):
+        return planned(cmd)
     if _ws is None:
         _ws = hapi.WS()
     return _ws.call(cmd, strict=strict)
 
 
 def rest(method, path, body=None):
+    if PLAN and method != "GET":
+        return planned_rest(method, path.lstrip("/"), body)
     return hapi.rest(method, "/" + path.lstrip("/"), body, strict=False)
 
 
@@ -124,7 +138,155 @@ def ssh(target, cmd, data=None):
 
 
 def ssh_ha(cmd, data=None):
+    if PLAN and not (cmd.lstrip().startswith("cat ") and ">" not in cmd.replace("2>/dev/null", "") and data is None):
+        would("run on Home Assistant: " + cmd.strip().splitlines()[0][:100])
+        return ""
     return ssh(f"root@{HA_HOST}", cmd, data)
+
+
+# -- plan mode: the change, printed instead of made ---------------------------------------------
+# Later steps see the house as it was, so one that needs an earlier step's change (a rename, a new
+# entry) can say it's missing something that a real run would have made.
+
+def would(what):
+    say("  would " + what)
+
+
+def reads(cmd):
+    t = cmd["type"]
+    if t == "supervisor/api":
+        return cmd.get("method") == "get"
+    return t in ("get_states", "lovelace/config") or t.endswith(("/list", "/get", "/info", "/progress", "get_segments"))
+
+
+def same(a, b):
+    """Equal the way Home Assistant means it: a list is a set, nothing is nothing"""
+    def norm(x):
+        if x in (None, "", [], {}):
+            return None
+        if isinstance(x, (list, set, tuple)):
+            return sorted(map(str, x))
+        if isinstance(x, float) and x.is_integer():
+            return int(x)
+        return x
+    return norm(a) == norm(b)
+
+
+def changes(current, wanted, skip=()):
+    return [f"{k} {current.get(k)!r} -> {v!r}" for k, v in wanted.items() if k not in skip and not same(current.get(k), v)]
+
+
+_restart_next = set()
+
+
+def planned(cmd):
+    t = cmd["type"]
+    if t == "config/entity_registry/update":
+        eid = cmd["entity_id"]
+        cur = ws({"type": "config/entity_registry/get", "entity_id": eid}) or {}
+        if not cur:
+            would(f"change {eid}, which isn't there (yet)")
+            return {}
+        out = changes(cur, cmd, skip=("type", "entity_id", "new_entity_id", "options", "options_domain"))
+        if cmd.get("new_entity_id", eid) != eid:
+            out.insert(0, f"rename to {cmd['new_entity_id']}")
+        if "options" in cmd:
+            have = (cur.get("options") or {}).get(cmd["options_domain"]) or {}
+            out += [f"{cmd['options_domain']} option {k} {have.get(k)!r} -> {v!r}" for k, v in cmd["options"].items() if not same(have.get(k), v)]
+        if out:
+            would(f"change {eid}: " + "; ".join(out))
+        return {"entity_entry": cur}
+    if t == "config/device_registry/update":
+        d = next((x for x in devices() if x["id"] == cmd["device_id"]), {})
+        out = changes(d, cmd, skip=("type", "device_id"))
+        if out:
+            would(f"change device {d.get('name_by_user') or d.get('name')}: " + "; ".join(out))
+        return {}
+    if t == "config/area_registry/update":
+        a = next((x for x in ws({"type": "config/area_registry/list"}) or [] if x["area_id"] == cmd["area_id"]), {})
+        out = changes(a, cmd, skip=("type", "area_id"))
+        if out:
+            would(f"change area {a.get('name')}: " + "; ".join(out))
+        return {}
+    if t == "homeassistant/expose_entity":
+        have = (ws({"type": "homeassistant/expose_entity/list"}) or {}).get("exposed_entities") or {}
+        flip = [e for e in cmd["entity_ids"] if bool((have.get(e) or {}).get("conversation")) != cmd["should_expose"]]
+        if flip:
+            would(("show Jarvis " if cmd["should_expose"] else "hide from Jarvis ") + ", ".join(flip))
+        return {}
+    if t == "assist_pipeline/pipeline/update":
+        cur = next((p for p in (ws({"type": "assist_pipeline/pipeline/list"}) or {}).get("pipelines", [])
+                    if p["id"] == cmd["pipeline_id"]), {})
+        out = changes(cur, cmd, skip=("type", "pipeline_id"))
+        if out:
+            would(f"change pipeline {cur.get('name')}: " + "; ".join(out))
+        return {}
+    if t == "assist_pipeline/pipeline/set_preferred":
+        if (ws({"type": "assist_pipeline/pipeline/list"}) or {}).get("preferred_pipeline") != cmd["pipeline_id"]:
+            would(f"make pipeline {cmd['pipeline_id']} the preferred one")
+        return {}
+    if t == "lovelace/config/save":
+        cur = ws({"type": "lovelace/config", "url_path": cmd["url_path"]})
+        if cur != cmd["config"]:
+            n = sum(1 for _ in difflib_lines(cur, cmd["config"]))
+            would(f"save dashboard {cmd['url_path']} ({n} lines differ)")
+        return {}
+    if t == "supervisor/api":
+        ep = cmd["endpoint"]
+        slug = ep.split("/")[2] if ep.count("/") >= 2 else ep
+        if ep.endswith("/options"):
+            cur = (sup("get", f"/addons/{slug}/info") or {}).get("options") or {}
+            new = (cmd.get("data") or {}).get("options") or {}
+            # names only: an app's options can hold a password
+            diff = [k for k, v in new.items() if not same(cur.get(k), v)]
+            if diff:
+                would(f"set {slug}'s {', '.join(diff)}")
+                _restart_next.add(slug)
+        elif ep.endswith(("/restart", "/start")):
+            if slug in _restart_next:
+                would(f"restart {slug}")
+        else:
+            would(f"{cmd.get('method')} {ep}")
+        return {}
+    if t == "backup/config/update":
+        would("include " + ", ".join(cmd.get("create_backup", {}).get("include_addons", [])) + " in the backups")
+        return {}
+    would(t + " " + json.dumps({k: v for k, v in cmd.items() if k != "type"}, ensure_ascii=False)[:160])
+    return {}
+
+
+def difflib_lines(a, b):
+    return (l for l in difflib.unified_diff(json.dumps(a, indent=1, sort_keys=True).splitlines(),
+                                            json.dumps(b, indent=1, sort_keys=True).splitlines(), n=0, lineterm="")
+            if l[:1] in "+-" and l[:3] not in ("+++", "---"))
+
+
+def planned_rest(method, path, body):
+    if path.startswith("api/services/"):
+        domain, service = path.split("/")[2:4]
+        eid = (body or {}).get("entity_id")
+        st = (states().get(eid) or {}).get("state") if isinstance(eid, str) else None
+        want = {"select_option": (body or {}).get("option"), "turn_off": "off", "turn_on": "on"}.get(service)
+        if service == "set_value":
+            want = (body or {}).get("value")
+            if st is not None and want is not None and domain != "input_text":
+                try:
+                    if float(st) == float(want):
+                        return {}
+                except ValueError:
+                    pass
+        if st is not None and want is not None and str(st) == str(want):
+            return {}
+        would(f"call {domain}.{service} for {eid} ({st!r} now): {json.dumps({k: v for k, v in (body or {}).items() if k != 'entity_id'}, ensure_ascii=False)[:120]}")
+        return {}
+    if path.startswith("api/config/automation/config/"):
+        cur = hapi.rest("GET", "/" + path, strict=False) or {}
+        cur = {k: v for k, v in cur.items() if k != "id"}
+        if cur != {k: v for k, v in (body or {}).items() if k != "id"}:
+            would(f"save automation {path.rsplit('/', 1)[1]} ({sum(1 for _ in difflib_lines(cur, body))} lines differ)")
+        return {}
+    would(f"{method} {path} {json.dumps(body, ensure_ascii=False)[:160] if body else ''}")
+    return {}
 
 
 def states():
@@ -151,9 +313,9 @@ def update_entity(entity_id, **kw):
     return ws({"type": "config/entity_registry/update", "entity_id": entity_id, **kw})
 
 
-def expose(ids, on=True):
+def expose(ids, on=True, keep=()):
     have = states()
-    ids = [e for e in ids if e in have]
+    ids = [e for e in ids if e in have and e not in keep]
     if ids:
         ws({"type": "homeassistant/expose_entity", "assistants": ["conversation"], "entity_ids": ids,
             "should_expose": on})
@@ -176,7 +338,16 @@ def rename(entity_id, new_id):
     if new_id in taken:
         say(f"  {new_id} is taken already, {entity_id} keeps its name")
         return False
-    return update_entity(entity_id, new_entity_id=new_id) is not None
+    if update_entity(entity_id, new_entity_id=new_id) is None:
+        return False
+    # a person follows its trackers by entity id and isn't told about a rename, so without this
+    # it's unknown from then on (the recorder and Proximity do follow)
+    if entity_id.startswith("device_tracker."):
+        for p in (ws({"type": "person/list"}) or {}).get("storage", []):
+            if entity_id in p.get("device_trackers", []):
+                ws({"type": "person/update", "person_id": p["id"], "name": p["name"], "user_id": p.get("user_id"),
+                    "device_trackers": [new_id if t == entity_id else t for t in p["device_trackers"]]})
+    return True
 
 
 def common_prefix(ids):
@@ -219,19 +390,19 @@ def rename_device(entity_id, new_prefix):
 
 
 def prompt():
-    """ha/context/about.md, then about.local.md if it's there, comments out"""
+    """ha/context/about.md, then the house's about.local.md if it's there, comments out and the
+    house's words in (tools/build.py)"""
     out = []
-    for name in ("about.md", "about.local.md"):
-        p = ROOT / "ha" / "context" / name
+    for p in (ROOT / "ha" / "context" / "about.md", housefile.file("about")):
         if p.is_file():
-            out.append(re.sub(r"<!--.*?-->", "", p.read_text(encoding="utf-8"), flags=re.S).strip())
+            text = re.sub(r"<!--.*?-->", "", p.read_text(encoding="utf-8"), flags=re.S).strip()
+            out.append(builder.render(text, H))
     return "\n\n".join(x for x in out if x) + "\n"
 
 
 def words():
     out = []
-    for name in ("parakeet-words.txt", "parakeet-words.local.txt"):
-        p = ROOT / "hub" / name
+    for p in (ROOT / "hub" / "parakeet-words.txt", housefile.file("words")):
         if p.is_file():
             out += [l.strip() for l in p.read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]
     return list(dict.fromkeys(out))
@@ -295,7 +466,7 @@ def step_discovered():
         missing = [d for d, n in need.items() if have.get(d, 0) < n]
         if not missing:
             return
-        time.sleep(10)
+        sleep(10)
     say(f"still waiting on: {', '.join(missing)} (run this again once they show up)")
 
 
@@ -328,7 +499,7 @@ def step_system_monitor():
     """The VM from the inside (and Settings, System, Hardware). The whole box comes from hub-stats"""
     if not entries("systemmonitor"):
         flow("systemmonitor", {})
-        time.sleep(5)
+        sleep(5)
     for e in ("disk_usage", "load_1_min", "memory_free", "memory_use", "memory_usage", "processor_use", "swap_usage"):
         update_entity(f"sensor.system_monitor_{e}", disabled_by=None)
 
@@ -357,7 +528,7 @@ def step_tv():
             rest("POST", f"api/config/config_entries/options/flow/{f['flow_id']}", {"apps": "NewApp", **opts})
             rest("POST", f"api/config/config_entries/options/flow/{f['flow_id']}", {"app_id": package, "app_name": name})
         rest("POST", f"api/config/config_entries/options/flow/{f['flow_id']}", opts)
-        time.sleep(5)
+        sleep(5)
         say(f"TV added at {tv_ip} (accept the prompt on the TV if it's the first time)")
     entry = next(iter(entries("androidtv")), None)
     if not entry:
@@ -368,7 +539,7 @@ def step_tv():
             if e["entity_id"].startswith("media_player."):
                 rename(e["entity_id"], "media_player.fire_tv")
                 if e.get("device_id"):
-                    ws({"type": "config/device_registry/update", "device_id": e["device_id"], "name_by_user": "Fire TV",
+                    ws({"type": "config/device_registry/update", "device_id": e["device_id"], "name_by_user": H["fire_tv"]["name"],
                         "area_id": areas().get(H["fire_tv"]["area"].lower())})
             elif e["entity_id"].startswith("remote."):
                 rename(e["entity_id"], "remote.fire_tv_remote")
@@ -583,7 +754,7 @@ def step_lights():
                          and e.get("device_id") and e.get("device_id") == reg[src].get("device_id")), None)
             if mine is None and want not in reg:
                 flow("switch_as_x", {"entity_id": src, "target_domain": "light"})
-                time.sleep(3)
+                sleep(3)
                 reg = {e["entity_id"]: e for e in registry()}
                 mine = next((e for e in reg.values() if e["platform"] == "switch_as_x"
                              and (e.get("device_id") == reg[src].get("device_id") or e["entity_id"] == "light." + src.split(".", 1)[1])), None)
@@ -609,63 +780,126 @@ def step_lights():
         say(f"{want}: {l['name'] or ''}, {l['area'] or 'no room'}, {'/'.join([l['layer']] + l['roles'])}")
 
 
-def generate():
-    """ha/config/house/: the lists a state trigger needs spelled out (packages/arbiter.yaml and
-    packages/lights.yaml can't follow a label). Made from house.toml, never committed"""
-    out = ROOT / "ha" / "config" / "house"
-    out.mkdir(parents=True, exist_ok=True)
-    lights = [l["becomes"] for l in H["light"]]
-    no_dim = [l["becomes"] for l in H["light"] if "no_dim" in l["roles"]]
-    # a state trigger needs at least one entity; one that never exists never fires
-    for name, ids in (("lights.yaml", lights), ("no_dim_lights.yaml", no_dim)):
-        body = "".join(f"- {i}\n" for i in ids) or "- light.none_in_house_toml\n"
-        (out / name).write_text("# made by tools/setup_ha.py from house.toml, don't edit\n" + body, encoding="utf-8", newline="\n")
+# step_config's undo: the files as they were before the copy, and the new ones gone again
+ROLLBACK = """
+  cd /tmp/ha-hub-prev || exit 1
+  for f in $(find . -type f ! -name .new | sed 's|^[.]/||'); do mkdir -p "$(dirname "/config/$f")"; cp -p "$f" "/config/$f"; done
+  for f in $(cat .new); do rm -f "/config/$f"; done"""
+
+
+def version(repo):
+    r = subprocess.run(["git", "-C", str(repo), "describe", "--always", "--dirty", "--abbrev=12"], capture_output=True, text=True)
+    return r.stdout.strip() or "unknown"
 
 
 def step_config():
-    """ha/config into /config, copied as-is, and Home Assistant restarted only when something
-    actually changed, after a config check"""
-    generate()
+    """The build (tools/build.py: ha/config with the house filled in and laid over) into /config.
+    A file that changed gets copied, a file the last deploy put there and this one doesn't gets
+    removed (/config/.ha-hub-files remembers which, so an old package can't linger and fight a new
+    one), and Home Assistant restarts only when something changed, after a config check. Every
+    deploy that changed something leaves a line in /config/.ha-hub-deploys: which version of this
+    repo and of the house went in, so a backup says what made it"""
+    changed = copy_config(copy=not PLAN)
+    if PLAN:
+        if changed:
+            would("check the config and restart Home Assistant")
+        return
+    if not changed:
+        say("config unchanged")
+        return
+    check_config()
+    restart()
+
+
+def copy_config(copy):
+    """The build onto /config, or with copy=False only compared with it. True if anything differs"""
+    built = housefile.build_dir() / "config"
+    try:
+        for n in builder.build(built, H):
+            say("note:", n)
+    except ValueError as e:
+        sys.exit(f"build: {e}")
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w") as tar:
-        for p in sorted((ROOT / "ha" / "config").rglob("*")):
+        for p in sorted(built.rglob("*")):
             if p.is_file():
-                tar.add(p, arcname=str(p.relative_to(ROOT / "ha" / "config")).replace("\\", "/"))
-    out = ssh_ha("""
+                tar.add(p, arcname=p.relative_to(built).as_posix())
+    script = """
+      COPY=%s
       rm -rf /tmp/ha-hub-config && mkdir -p /tmp/ha-hub-config && tar -x -C /tmp/ha-hub-config
       cd /tmp/ha-hub-config && changed=0
-      for f in $(find . -type f); do
-        cmp -s "$f" "/config/$f" || { mkdir -p "$(dirname "/config/$f")"; cp "$f" "/config/$f"; changed=1; }
+      find . -type f | sed 's|^[.]/||' | sort > /tmp/ha-hub-files
+      # what each file was before, so a failed config check can put it all back (step_config)
+      rm -rf /tmp/ha-hub-prev && mkdir -p /tmp/ha-hub-prev && : > /tmp/ha-hub-prev/.new
+      keep() { [ -f "/config/$1" ] && [ ! -f "/tmp/ha-hub-prev/$1" ] && mkdir -p "$(dirname "/tmp/ha-hub-prev/$1")" && cp -p "/config/$1" "/tmp/ha-hub-prev/$1"; }
+      for f in $(cat /tmp/ha-hub-files); do
+        cmp -s "$f" "/config/$f" && continue
+        if [ -f "/config/$f" ]; then echo "changed $f"; else echo "new $f"; echo "$f" >> /tmp/ha-hub-prev/.new; fi
+        [ $COPY = 1 ] && { keep "$f"; mkdir -p "$(dirname "/config/$f")"; cp "$f" "/config/$f"; }
+        changed=1
       done
+      if [ -f /config/.ha-hub-files ]; then
+        for f in $(grep -vxF -f /tmp/ha-hub-files /config/.ha-hub-files); do
+          [ -f "/config/$f" ] || continue
+          echo "removed $f"
+          [ $COPY = 1 ] && { keep "$f"; rm -f "/config/$f"; }
+          changed=1
+        done
+      fi
+      [ $COPY = 1 ] && { keep .ha-hub-files; keep configuration.yaml; cp /tmp/ha-hub-files /config/.ha-hub-files; }
       grep -q "^homeassistant:" /config/configuration.yaml || {
-        printf "\\n# Packages: one file per feature, from the fosters-home-hub repo\\nhomeassistant:\\n  packages: !include_dir_named packages\\n" >>/config/configuration.yaml
+        echo "changed configuration.yaml (packages)"
+        [ $COPY = 1 ] && printf "\\n# Packages: one file per feature, from the fosters-home-hub repo\\nhomeassistant:\\n  packages: !include_dir_named packages\\n" >>/config/configuration.yaml
         changed=1; }
       # the journal writes there (packages/journal.yaml)
-      mkdir -p /config/journal
+      [ $COPY = 1 ] && mkdir -p /config/journal
       grep -q "allowlist_external_dirs" /config/configuration.yaml || {
-        sed -i "s|^  packages: !include_dir_named packages$|&\\n  allowlist_external_dirs:\\n    - /config/journal|" /config/configuration.yaml
+        echo "changed configuration.yaml (allowlist_external_dirs)"
+        [ $COPY = 1 ] && sed -i "s|^  packages: !include_dir_named packages$|&\\n  allowlist_external_dirs:\\n    - /config/journal|" /config/configuration.yaml
         changed=1; }
       grep -q "^    - /config/journal$" /config/configuration.yaml || {
-        sed -i "s|^  allowlist_external_dirs:$|&\\n    - /config/journal|" /config/configuration.yaml
+        echo "changed configuration.yaml (/config/journal)"
+        [ $COPY = 1 ] && sed -i "s|^  allowlist_external_dirs:$|&\\n    - /config/journal|" /config/configuration.yaml
         changed=1; }
-      echo $changed""", buf.getvalue())
+      echo "result $changed" """ % ("1" if copy else "0")
+    # straight over SSH even in plan mode: with COPY=0 it only compares, in /tmp
+    out = ssh(f"root@{HA_HOST}", script, buf.getvalue())
     if out is None:
         sys.exit(f"couldn't reach root@{HA_HOST} over SSH (is the Terminal & SSH app running with this computer's key?)")
-    if out.strip().endswith("1"):
-        if ssh_ha("ha core check >/dev/null && ha core restart >/dev/null && echo ok") is None:
-            sys.exit("the config check failed: nothing restarted, the old config is still running (ha core check on the VM says why)")
-        say("config changed, Home Assistant restarted")
-        reconnect()
-        time.sleep(20)
-        for _ in range(40):
-            try:
-                if hapi.rest("GET", "/api/", strict=False):
-                    break
-            except OSError:
-                pass
-            time.sleep(5)
-    else:
-        say("config unchanged")
+    lines = out.strip().splitlines()
+    for l in lines[:-1]:
+        if not copy:
+            would(l.replace("changed ", "change ", 1).replace("new ", "add ", 1).replace("removed ", "remove ", 1))
+        elif not l.startswith("changed "):
+            say(" ", l)
+    changed = lines[-1].endswith("1")
+    if copy and changed:
+        ssh_ha("cat >> /config/.ha-hub-deploys",
+               f"{time.strftime('%Y-%m-%dT%H:%M:%S%z')} engine {version(ROOT)} house {version(housefile.home()) if housefile.outside() else 'in the engine'}\n".encode())
+    return changed
+
+
+def check_config():
+    """Home Assistant's own config check on what copy_config put there. A failure puts every file
+    back the way it was, so the running house and the next restart are both still the old config"""
+    if ssh_ha("ha core check >/dev/null && echo ok") is None:
+        ssh_ha(ROLLBACK)
+        sys.exit("the config check failed, so every file went back the way it was and nothing restarted "
+                 "(ha core check on the VM says why)")
+
+
+def restart():
+    ssh_ha("ha core restart >/dev/null")
+    say("config changed, Home Assistant restarted")
+    reconnect()
+    sleep(20)
+    for _ in range(40):
+        try:
+            if hapi.rest("GET", "/api/", strict=False):
+                break
+        except OSError:
+            pass
+        sleep(5)
 
 
 def step_journal_log():
@@ -691,7 +925,11 @@ def step_vacuum():
     vac = next((e for e in registry() if e["entity_id"] == "vacuum.robot_vacuum"), None)
     if vac is None:
         return
-    update_entity("vacuum.robot_vacuum", name="Robot vacuum", aliases=["vacuum", "robot vacuum", "robot"])
+    # its name is the one the house calls it ([names] vacuum), which is also what "send the vacuum
+    # home" hands the built-in intent (custom_sentences/en/vacuum.yaml)
+    called = NAMES["vacuum"]
+    update_entity("vacuum.robot_vacuum", name=called[:1].upper() + called[1:],
+                  aliases=list(dict.fromkeys(["vacuum", "robot vacuum", "robot", called.lower()])))
     room = areas()
     segs = (ws({"type": "vacuum/get_segments", "entity_id": "vacuum.robot_vacuum"}) or {}).get("segments", [])
     mapping = {}
@@ -770,7 +1008,18 @@ def step_doorbell():
 
 def step_printers():
     """Printer temperatures and heater duty in whole numbers: Klipper reports 22.68 °C, which on the
-    printer page is just noise"""
+    printer page is just noise. And the house's own entities about a printer carry the printer's
+    name ([names] in house.toml): "Klipper summary" is "Voron summary" in a house that calls it
+    that, for the dashboard and for Jarvis. Only the name changes, never the entity id"""
+    for e in registry():
+        for kind, default in (("klipper", "Klipper"), ("bambu", "Bambu")):
+            called = NAMES[kind]
+            original = e.get("original_name") or ""
+            if e["platform"] == "template" and original.startswith(default + " ") \
+                    and called.lower() not in (default.lower(), housefile.DEFAULTS["names"][kind].lower()):
+                want = called + original[len(default):]
+                if e.get("name") != want:
+                    update_entity(e["entity_id"], name=want)
     for e in registry():
         eid = e["entity_id"]
         if eid.startswith(("sensor.klipper_", "sensor.bambu_")) and any(k in eid for k in ("temperature", "_temp", "_power", "humidity")) \
@@ -779,6 +1028,27 @@ def step_printers():
     expose(["sensor.bambu_summary", "sensor.bambu_print_progress", "sensor.bambu_remaining_time", "sensor.bambu_end_time",
             "sensor.bambu_nozzle_temperature", "sensor.bambu_bed_temperature", "sensor.bambu_chamber_temperature",
             "light.bambu_chamber_light", "binary_sensor.bambu_hms_errors", "sensor.klipper_summary"])
+
+
+def step_car():
+    """Audi Connect names everything after the car's VIN; packages/car.yaml wants plain car_ names,
+    so they're renamed by what they are (the integration's unique ids end in _<platform>_<key>), and
+    the few Jarvis can use get shown to him"""
+    names = {"sensor_state_of_charge": "sensor.car_battery", "sensor_charging_state": "sensor.car_charging_state",
+             "sensor_charging_complete_time": "sensor.car_charging_done_at",
+             "sensor_remaining_charging_time": "sensor.car_charging_time_left", "sensor_range": "sensor.car_range",
+             "sensor_charging_power": "sensor.car_charging_power", "sensor_target_state_of_charge": "sensor.car_charge_target",
+             "binary_sensor_plug_state": "binary_sensor.car_plugged_in", "number_target_state_of_charge": "number.car_charge_target"}
+    done = []
+    for e in (x for x in registry() if x["platform"] == "audiconnect"):
+        key = next((k for k in names if (e.get("unique_id") or "").endswith("_" + k)), None)
+        if key:
+            rename(e["entity_id"], names[key])
+            done.append(names[key])
+    if done:
+        expose([n for n in done if n.split(".")[1] in ("car_battery", "car_charging_state", "car_charging_done_at",
+                                                       "car_range", "car_plugged_in")])
+        say(f"car: {len(done)} entities named")
 
 
 def step_backups():
@@ -809,9 +1079,10 @@ def step_presence():
         if r and "flow_id" in r:
             rest("POST", f"api/config/config_entries/flow/{r['flow_id']}",
                  {"zone": "zone.home", "tracked_entities": ["person.resident"], "ignored_zones": [], "tolerance": 50})
-            time.sleep(3)
+            sleep(3)
+    # the resident's own sensors, not the "nearest" pair Proximity makes as well
     for e in registry():
-        if e["platform"] == "proximity":
+        if e["platform"] == "proximity" and "_nearest_" not in e["entity_id"]:
             if e["entity_id"].endswith("_distance") and e["entity_id"].startswith("sensor.home_"):
                 rename(e["entity_id"], "sensor.home_resident_distance")
             elif e["entity_id"].endswith("_direction_of_travel"):
@@ -838,7 +1109,8 @@ def step_defaults():
     # and every run, the settings from house.toml (packages/house.yaml)
     for entity, value in (("input_text.home_wifi", H["resident"]["home_wifi"]), ("input_text.hub_address", H["hub"]["address"]),
                           ("input_text.news", H["news"]["on_arrival"]),
-                          ("input_text.interests", H["news"]["interests"]), ("input_text.headset", H.get("computer", {}).get("headset", ""))):
+                          ("input_text.interests", H["news"]["interests"]), ("input_text.headset", H["computer"]["headset"]),
+                          ("input_text.monitor", H["computer"]["monitor"])):
         if entity in have and have[entity]["state"] != value:
             rest("POST", "api/services/input_text/set_value", {"entity_id": entity, "value": value})
 
@@ -852,7 +1124,7 @@ def step_tv_names():
     if "remote.fire_tv_remote" in reg:
         update_entity("remote.fire_tv_remote", name="TV remote", hidden_by="user")
     if "media_player.tv" in reg:
-        update_entity("media_player.tv", name="TV", aliases=["television", "telly"],
+        update_entity("media_player.tv", name="TV", aliases=list(H["fire_tv"]["aliases"]),
                       area_id=areas().get(H["fire_tv"]["area"].lower()))
         expose(["media_player.tv"])
 
@@ -874,9 +1146,12 @@ def step_exposure():
             "button.computer_screen_off", "media_player.computer", "sensor.desk_power"]
            + [f"input_boolean.auto_{x}" for x in ("vacuum", "clock_modes", "welcome", "bedtime_nudge", "asleep", "briefing",
                                                    "security", "doorbell", "laundry", "printers", "desk", "journal")]
-           + [e for e in states() if e.startswith("sensor.oura_ring_") and any(
-               k in e for k in ("sleep_score", "total_sleep", "deep_sleep", "rem_sleep", "readiness", "average_sleep_hrv",
-                                "lowest_sleep_heart_rate", "steps", "activity_score", "bedtime_start", "bedtime_end"))])
+           # the ring's main readings, by name: the integration has a contribution, a percentage and a
+           # day-on-day change for most of them too, and those only make the prompt longer
+           + [f"sensor.oura_ring_{k}" for k in ("sleep_score", "total_sleep_duration", "deep_sleep_duration",
+                                                "rem_sleep_duration", "readiness_score", "average_sleep_hrv",
+                                                "lowest_sleep_heart_rate", "steps", "activity_score", "bedtime_start",
+                                                "bedtime_end")])
     # the control layer's insides and the plumbing: nothing Jarvis needs to read or press
     expose(["sensor.light_arbiter", "sensor.asleep_belief", "binary_sensor.asleep", "sensor.seen_up", "input_text.house_mode_by",
             "input_number.computer_volume_before", "script.wake_up_bedroom_full", "script.wake_up_computer_back",
@@ -889,15 +1164,23 @@ def step_exposure():
             "timer.arrival_window", "timer.arrival_door", "timer.arrival_greeting", "sensor.natural_house_mode",
             "script.morning_briefing_text", "script.morning_briefing", "script.morning_briefing_prepare", "script.tell_resident",
             "input_text.lights_look", "input_text.home_wifi", "input_text.hub_address", "input_text.news",
-            "input_text.interests", "input_text.headset",
+            "input_text.interests", "input_text.headset", "input_text.monitor",
             "button.computer_shut_down", "button.computer_restart", "sensor.hub_last_saw_someone", "sensor.last_sign_of_life",
             "script.wake_up", "script.wake_up_stop", "input_boolean.waking_up", "binary_sensor.phone_on_home_wifi"]
            + [e for e in states() if e.startswith(("sensor.phone_", "binary_sensor.phone_")) and "battery" not in e]
-           + [e for e in states() if e.startswith("input_datetime.wake_up_")], on=False)
+           + [e for e in states() if e.startswith("input_datetime.wake_up_")], on=False, keep=H["voice"]["expose"])
+    # and whatever the house has chosen to show him on top (voice.expose)
+    if H["voice"]["expose"]:
+        expose(list(H["voice"]["expose"]))
 
 
 def step_automations():
-    for f in sorted((ROOT / "ha" / "automations").glob("*.json")):
+    """Every automation in ha/automations/ and in the house's own, keyed by file name (the house's
+    wins a name both have)"""
+    files = {f.name: f for f in (ROOT / "ha" / "automations").glob("*.json")}
+    if housefile.outside():
+        files.update({f.name: f for f in (housefile.home() / "ha" / "automations").glob("*.json")})
+    for f in (files[k] for k in sorted(files)):
         body = json.loads(f.read_text(encoding="utf-8"))
         if rest("POST", f"api/config/automation/config/{f.stem}", body) is not None:
             say(f"automation {f.stem}")
@@ -916,8 +1199,14 @@ def step_dashboards():
     """The home dashboard is made from house.toml and what's in Home Assistant (tools/dashboard.py),
     then every dashboard in ha/dashboards/ is saved over whatever's there, so edits belong in the
     generator or the file"""
-    subprocess.run([sys.executable, str(HERE / "dashboard.py")], check=True)
-    for f in sorted((ROOT / "ha" / "dashboards").glob("*.json")):
+    out = housefile.build_dir() / "dashboards"
+    subprocess.run([sys.executable, str(HERE / "dashboard.py"), "--out", str(out)], check=True, stdout=subprocess.DEVNULL)
+    files = {f.name: f for f in (ROOT / "ha" / "dashboards").glob("*.json")}
+    files.update({f.name: f for f in out.glob("*.json")})
+    if housefile.outside():
+        # a dashboard of the house's own, or one in place of the made one
+        files.update({f.name: f for f in (housefile.home() / "ha" / "dashboards").glob("*.json")})
+    for f in (files[k] for k in sorted(files)):
         url = f.stem
         cfg = json.loads(f.read_text(encoding="utf-8"))
         if not any(d["url_path"] == url for d in ws({"type": "lovelace/dashboards/list"}) or []):
@@ -954,19 +1243,23 @@ STEPS = [("apps", step_apps), ("discovered", step_discovered), ("local_model", s
          ("system_monitor", step_system_monitor), ("tv", step_tv), ("speech", step_speech), ("rooms", step_rooms),
          ("labels", step_labels), ("renames", step_renames), ("lights", step_lights), ("config", step_config), ("journal_log", step_journal_log),
          ("cloud_agent", step_cloud_agent), ("writer", step_writer), ("pipelines", step_pipelines), ("vacuum", step_vacuum),
-         ("doorbell", step_doorbell), ("printers", step_printers), ("backups", step_backups),
+         ("doorbell", step_doorbell), ("printers", step_printers), ("car", step_car), ("backups", step_backups),
          ("presence", step_presence), ("defaults", step_defaults), ("tv_names", step_tv_names),
          ("exposure", step_exposure), ("automations", step_automations), ("calendar", step_calendar),
          ("dashboards", step_dashboards), ("fingerprint", step_fingerprint)]
 
 
 def main():
-    wanted = sys.argv[1:]
+    wanted = [a for a in sys.argv[1:] if a != "--plan"]
     unknown = [w for w in wanted if w not in dict(STEPS)]
     if unknown:
         sys.exit(f"no step called {', '.join(unknown)}. Steps: {', '.join(n for n, _ in STEPS)}")
+    if PLAN:
+        say(f"plan for {housefile.home()}: nothing below has happened")
     for name, fn in STEPS:
         if not wanted or name in wanted:
+            if PLAN:
+                say(f"{name}:")
             fn()
 
 

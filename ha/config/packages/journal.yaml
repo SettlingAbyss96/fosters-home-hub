@@ -84,6 +84,8 @@ script:
                           and is_state('input_boolean.guest_mode', 'off')
                           and is_state('input_boolean.jarvis_muted', 'off')
                           and not is_state('input_select.house_mode', 'Night')) }}
+      # no Hub address, no journal to ask (hub.address in house.toml)
+      - condition: "{{ states('input_text.hub_address') not in ['', 'unknown', 'unavailable'] }}"
       - action: rest_command.journal_ask
         continue_on_error: true
         response_variable: got
@@ -103,7 +105,7 @@ script:
                 target:
                   entity_id: assist_satellite.hub_500_voice_assist_satellite
                 data:
-                  message: "Nothing I'd ask about today. Say note, and whatever you'd like kept."
+                  message: "Nothing I'd ask about today«, sir». Say note, and whatever you'd like kept."
                   preannounce: false
           - stop: "Nothing to ask"
       - action: assist_satellite.announce
@@ -139,7 +141,7 @@ script:
             target:
               entity_id: assist_satellite.hub_500_voice_assist_satellite
             data:
-              message: "{{ ['Anything else?', 'Anything more?', 'Anything else worth keeping?'] | random }}"
+              message: "{{ ['Anything else«, sir»?', 'Anything more«, sir»?', 'Anything else worth keeping«, sir»?'] | random }}"
               preannounce: false
           - delay: 1
           - action: script.tv_duck
@@ -188,7 +190,7 @@ script:
                 target:
                   entity_id: assist_satellite.hub_500_voice_assist_satellite
                 data:
-                  message: "{{ ['Noted.', 'Written down.', 'In the journal.', 'Duly noted.'] | random }}"
+                  message: "{{ ['Noted«, sir».', 'Written down«, sir».', 'In the journal«, sir».', 'Duly noted«, sir».'] | random }}"
                   preannounce: false
           - conditions: "{{ skipped }}"
             sequence:
@@ -197,7 +199,7 @@ script:
                 target:
                   entity_id: assist_satellite.hub_500_voice_assist_satellite
                 data:
-                  message: "Of course."
+                  message: "Of course«, sir»."
                   preannounce: false
 
   journal_note:
@@ -256,7 +258,7 @@ intent_script:
         data:
           text: "{{ note }}"
     speech:
-      text: "{{ ['Noted.', 'Written down.', 'In the journal.'] | random }}"
+      text: "{{ ['Noted«, sir».', 'Written down«, sir».', 'In the journal«, sir».'] | random }}"
   JournalAskMe:
     description: "Ask about the day now."
     action:
@@ -269,7 +271,7 @@ intent_script:
             asked: true
             wait: 4
     speech:
-      text: "Of course."
+      text: "Of course«, sir»."
   JournalToday:
     description: "Reads back what's in the journal today."
     action:
@@ -280,13 +282,13 @@ intent_script:
           result:
             text: >-
               {% set c = (got if got is defined and got is mapping else {}).get('content') %}
-              {% if c is not mapping %}I can't reach the journal right now.
-              {% elif c.get('n', 0) == 0 %}Nothing in the journal today yet.
+              {% if c is not mapping %}I can't reach the journal right now«, sir».
+              {% elif c.get('n', 0) == 0 %}Nothing in the journal today yet«, sir».
               {% else %}{{ c.get('text') }}{% endif %}
       - stop: "Done"
         response_variable: result
     speech:
-      text: "{{ action_response.text if action_response is defined else 'Nothing in the journal today yet.' }}"
+      text: "{{ action_response.text if action_response is defined else 'Nothing in the journal today yet«, sir».' }}"
 
 automation:
   # Every new position the phone reports, to the journal on the Hub, with the area of interest
@@ -299,6 +301,8 @@ automation:
       - trigger: state
         entity_id: person.resident
     conditions:
+      # no Hub address, nowhere to send it: a house without one, or one whose deploy hasn't set it yet
+      - "{{ states('input_text.hub_address') not in ['', 'unknown', 'unavailable'] }}"
       # only real moves, not attribute noise
       - condition: template
         value_template: >-

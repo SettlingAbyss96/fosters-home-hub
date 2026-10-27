@@ -176,8 +176,8 @@ script:
                and states('sensor.robot_vacuum_battery') | float(0) >= 30
                and (last_clean is none or (now() - last_clean).total_seconds() > 20 * 3600) }}
           printing: >-
-            {% if states('sensor.klipper_current_print_state') in ['printing', 'paused'] %}The Klipper printer is still printing, {{ states('sensor.klipper_progress') | float(0) | round(0) | int }}%.{% endif %}
-            {% if states('sensor.bambu_print_status') in ['running', 'pause', 'prepare'] %}The Bambu is still printing, {{ states('sensor.bambu_print_progress') | int(0) }}%.{% endif %}
+            {% if states('sensor.klipper_current_print_state') in ['printing', 'paused'] %}The «klipper» is still printing, {{ states('sensor.klipper_progress') | float(0) | round(0) | int }}%.{% endif %}
+            {% if states('sensor.bambu_print_status') in ['running', 'pause', 'prepare'] %}The «bambu» is still printing, {{ states('sensor.bambu_print_progress') | int(0) }}%.{% endif %}
           # paused (packages/controls.yaml) counts as Never, and says so
           how: "{{ states('input_select.vacuum_when_leaving') if is_state('input_boolean.auto_vacuum', 'on') else 'Paused' }}"
           has_vacuum: "{{ states('vacuum.robot_vacuum') not in ['unknown', 'unavailable'] }}"
@@ -373,9 +373,9 @@ script:
           entity_id: assist_satellite.hub_500_voice_assist_satellite
         data:
           message: >-
-            {% if back %}Welcome back.
+            {% if back %}Welcome back«, sir».
             {% elif fresh %}{{ state_attr('sensor.welcome_home_words', 'text') }}
-            {% else %}Welcome home.{% endif %}
+            {% else %}Welcome home«, sir».{% endif %}
           preannounce: false
       # heard, so the digest retires everything in the kit and none of it comes up again (words
       # that went stale unheard leave theirs for next time)
@@ -451,11 +451,11 @@ script:
             {% set mode = states.input_select.house_mode %}
             {% set since = mode.last_changed if mode is not none and mode.state == 'Away' else now() - timedelta(hours=8) %}
             {% set x = states('sensor.bambu_print_status') %}
-            {% if x == 'running' %}{% set out.n = out.n + ['The Bambu is printing, ' ~ states('sensor.bambu_print_progress') ~ ' percent done.'] %}
-            {% elif x == 'finish' and states.sensor.bambu_print_status.last_changed > since %}{% set out.n = out.n + ['The Bambu finished its print.'] %}{% endif %}
+            {% if x == 'running' %}{% set out.n = out.n + ['The «bambu» is printing, ' ~ states('sensor.bambu_print_progress') ~ ' percent done.'] %}
+            {% elif x == 'finish' and states.sensor.bambu_print_status.last_changed > since %}{% set out.n = out.n + ['The «bambu» finished its print.'] %}{% endif %}
             {% set v = states('sensor.klipper_current_print_state') %}
-            {% if v == 'printing' %}{% set out.n = out.n + ['The Klipper printer is printing, ' ~ (states('sensor.klipper_progress') | float(0) | round(0) | int) ~ ' percent done.'] %}
-            {% elif v == 'complete' and states.sensor.klipper_current_print_state.last_changed > since %}{% set out.n = out.n + ['The Klipper printer finished its print.'] %}{% endif %}
+            {% if v == 'printing' %}{% set out.n = out.n + ['The «klipper» is printing, ' ~ (states('sensor.klipper_progress') | float(0) | round(0) | int) ~ ' percent done.'] %}
+            {% elif v == 'complete' and states.sensor.klipper_current_print_state.last_changed > since %}{% set out.n = out.n + ['The «klipper» finished its print.'] %}{% endif %}
             {% set w = states('input_datetime.washer_done_at') | as_datetime(none) %}
             {% if w is not none and as_local(w) > since %}{% set out.n = out.n + ['The washing finished at ' ~ as_local(w).strftime('%-I:%M') ~ '.'] %}{% endif %}
             {% set vac = states('sensor.robot_vacuum_last_clean_end') | as_datetime(none) %}
@@ -517,7 +517,7 @@ script:
                     You are Jarvis, the home's assistant, in the spirit of J.A.R.V.I.S. from Iron Man:
                     composed, precise, loyal, with a dry wit used sparingly. {{ who }} is about to walk in
                     the front door, at {{ now().strftime('%-I:%M %p on %A') }}. Write exactly what you'll
-                    say out loud as they come in, and nothing else, calling them {{ who }} if anything:
+                    say out loud as they come in, and nothing else, «calling them "sir"|calling them {{ who }} if anything»:
                     {{ 'two or three short spoken sentences, it is late' if late else kit.get('length') }}.
                     Talk about the material below, all of it, the way the brief says, and no other news.
                     Say it the way a person would out loud: no lists, links or headlines read out word

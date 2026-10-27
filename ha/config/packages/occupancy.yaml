@@ -79,7 +79,7 @@ template:
         state: >-
           {% from 'estimates.jinja' import occupancy_next %}
           {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
-                           'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+                           'laptop': 'typing at the «computer»', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
           {% set kind = 'inside' if trigger.id in labels else trigger.id %}
           {% set p = occupancy_next(kind, labels.get(trigger.id, '')) | from_json %}
           {% set door = states('binary_sensor.front_door') %}
@@ -89,22 +89,22 @@ template:
           phase: >-
             {% from 'estimates.jinja' import occupancy_next %}
             {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
-                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+                             'laptop': 'typing at the «computer»', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
             {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).phase }}
           door_closed_at: >-
             {% from 'estimates.jinja' import occupancy_next %}
             {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
-                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+                             'laptop': 'typing at the «computer»', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
             {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).door_closed_at }}
           last_inside: >-
             {% from 'estimates.jinja' import occupancy_next %}
             {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
-                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+                             'laptop': 'typing at the «computer»', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
             {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).last_inside }}
           why: >-
             {% from 'estimates.jinja' import occupancy_next %}
             {% set labels = {'hub': 'the Hub saw someone', 'light': 'a light switched at the wall', 'tv': 'the TV came on',
-                             'laptop': 'typing at the computer', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
+                             'laptop': 'typing at the «computer»', 'voice': 'someone talked to Jarvis', 'said': "I'm up", 'room_door': 'a door inside opened or closed'} %}
             {{ (occupancy_next('inside' if trigger.id in labels else trigger.id, labels.get(trigger.id, '')) | from_json).why }}
 
 automation:

@@ -381,7 +381,11 @@ script:
         {% for layer, v in (spec.layers | default({})).items() %}
           {% for e in label_entities('light_' ~ layer) | select('match', 'light\\.') | list %}
             {% if e not in picked.seen and (scope is none or area_id(e) in scope) %}
-              {% set picked.items = picked.items + [{'entity': e, 'v': v, 'layer': layer}] %}
+              {# an accent light that can't dim is a decoration at full brightness, so a look that
+                 wants its accents low (a film) leaves that one off rather than on #}
+              {% set dims = (state_attr(e, 'supported_color_modes') or []) | reject('eq', 'onoff') | list | count > 0 %}
+              {% set w = 0 if layer == 'accent' and v is number and not dims and v < param('accent_on_from') | int else v %}
+              {% set picked.items = picked.items + [{'entity': e, 'v': w, 'layer': layer}] %}
               {% set picked.seen = picked.seen + [e] %}
             {% endif %}
           {% endfor %}

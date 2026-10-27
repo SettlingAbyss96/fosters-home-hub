@@ -62,7 +62,7 @@ automation:
         continue_on_error: true
         data:
           title: "Laundry"
-          message: "The washing's done."
+          message: "The washing's done«, sir»."
 
   - id: washer_problem
     alias: "The washer has a problem"
@@ -88,7 +88,7 @@ automation:
         continue_on_error: true
         data:
           title: "Washer problem"
-          message: "The washer's stopped: {{ what }}."
+          message: "«Sir, »the washer's stopped: {{ what }}."
           urgent: true
 
   - id: washer_left_in
@@ -118,7 +118,7 @@ automation:
               continue_on_error: true
               data:
                 title: "Laundry"
-                message: "The washing's still in the machine."
+                message: "The washing's still in the machine«, sir»."
             - delay: "00:45:00"
             - condition: state
               entity_id: sensor.washer_current_status

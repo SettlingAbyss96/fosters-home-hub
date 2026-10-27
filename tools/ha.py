@@ -30,10 +30,12 @@ from pathlib import Path
 
 def _house_url():
     try:
-        import tomllib
-        with open(os.environ.get("HOUSE", Path(__file__).resolve().parent.parent / "house.toml"), "rb") as f:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import house
+        with open(house.path(), "rb") as f:
+            import tomllib
             return tomllib.load(f).get("home_assistant", {}).get("url")
-    except (OSError, ValueError, ImportError):
+    except (OSError, ValueError, ImportError, SystemExit):
         return None
 
 

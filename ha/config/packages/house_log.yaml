@@ -69,8 +69,8 @@ template:
               {% set rang = trigger.to_state.attributes.get('timestamp', 0) | float(0) %}
               {{ {'what': 'The doorbell rang', 'key': 'doorbell'} if (now().timestamp() - rang) | abs < 600 else {} }}
             {% elif t == 'door' %}{{ {'what': 'The front door opened', 'key': 'door'} if asleep else {} }}
-            {% elif t == 'bambu' %}{{ {'what': 'The Bambu finished its print' if trigger.to_state.state == 'finish' else "The Bambu's print stopped", 'key': 'bambu'} }}
-            {% elif t == 'klipper' %}{{ {'what': 'The Klipper printer finished its print' if trigger.to_state.state == 'complete' else "The Klipper printer's print stopped", 'key': 'klipper'} }}
+            {% elif t == 'bambu' %}{{ {'what': 'The «bambu» finished its print' if trigger.to_state.state == 'finish' else "The «bambu»'s print stopped", 'key': 'bambu'} }}
+            {% elif t == 'klipper' %}{{ {'what': 'The «klipper» finished its print' if trigger.to_state.state == 'complete' else "The «klipper»'s print stopped", 'key': 'klipper'} }}
             {% elif t == 'vacuum' %}{{ {'what': 'The vacuum cleaned', 'key': 'vacuum'} }}
             {% elif t == 'added' %}{{ {'what': trigger.event.data.what | string, 'key': trigger.event.data.key | default('added') | string}
                                       if trigger.event.data.what | default('') else {} }}

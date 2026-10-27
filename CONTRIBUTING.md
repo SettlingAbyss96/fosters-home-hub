@@ -5,7 +5,9 @@ Open an issue, or a pull request if you've got the fix.
 
 ## Keep your house out of it
 
-Before anything else: nothing from your own house goes in a pull request. Your `house.toml`,
+Before anything else: nothing from your own house goes in a pull request. Keep your house in a
+folder of its own ([docs/privacy.md](docs/privacy.md)), and `python tools/privacy_check.py --install`
+checks every commit and push for it. If it's still in the clone, your `house.toml`,
 `about.local.md` and `parakeet-words.local.txt` are ignored by git for that reason, and so is
 everything made from them. Run this before you push, and read your diff too:
 

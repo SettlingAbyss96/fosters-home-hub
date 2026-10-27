@@ -445,20 +445,20 @@ def test_habituation_wears_off_by_itself(tmp_path):
 
 def test_a_safety_recall_on_my_car_comes_first_and_once(tmp_path):
     cfg = config({"name": "Hackaday", "shelf": "wild", "kind": "feed", "url": "x"},
-                 {"name": "Recalls", "shelf": "wild", "kind": "recalls", "make": "audi", "model": "e-tron", "year": 2019,
-                  "who": "the 2019 e-tron", "fresh_days": 540})
+                 {"name": "Recalls", "shelf": "wild", "kind": "recalls", "make": "kia", "model": "niro", "year": 2020,
+                  "who": "the 2020 Niro", "fresh_days": 540})
     cfg["series"] = []
     db = d.connect(str(tmp_path / "digest.db"))
     d.ingest(db, cfg["sources"]["Hackaday"], [entry(f"{w} story") for w in ("lathe", "anvil", "kiln")], NOW)
-    found = [{"NHTSACampaignNumber": "25V900000", "ReportReceivedDate": "19/12/2025", "Component": "BACK OVER PREVENTION: CAMERA",
+    found = [{"NHTSACampaignNumber": "25V123000", "ReportReceivedDate": "19/12/2025", "Component": "BACK OVER PREVENTION: CAMERA",
               "Summary": "The rearview camera image may not display.", "Remedy": "Dealers will update the software."},
-             {"NHTSACampaignNumber": "19V434000", "ReportReceivedDate": "10/06/2019", "Component": "TRACTION BATTERY",
+             {"NHTSACampaignNumber": "20V456000", "ReportReceivedDate": "10/06/2019", "Component": "TRACTION BATTERY",
               "Summary": "Moisture can enter the battery."}]
     d.ingest(db, cfg["sources"]["Recalls"], [d.recall_entry(r) for r in found], NOW)
     kit = d.draw(db, cfg, late=True, now=NOW, rng=random.Random(1))
     assert kit["first"] == ["recall"], "ahead of everything, late or not"
-    assert "Recall 25V900000, back over prevention" in kit["brief"] and "update the software" in kit["brief"]
-    assert "19V434000" not in kit["brief"], "seven years old is history"
+    assert "Recall 25V123000, back over prevention" in kit["brief"] and "update the software" in kit["brief"]
+    assert "20V456000" not in kit["brief"], "seven years old is history"
     d.tell(db, cfg, kit["kit"], "x", now=NOW)
     assert "recall" not in d.draw(db, cfg, now=NOW + 3600, rng=random.Random(2))["first"]
 
@@ -467,14 +467,14 @@ def test_a_recall_on_a_daily_driver_takes_its_turn(tmp_path):
     # a car that's only how you get about: with lead = false its recall is a severe item on the cars
     # shelf, not the first thing said
     cfg = config({"name": "Hackaday", "shelf": "wild", "kind": "feed", "url": "x"},
-                 {"name": "Recalls", "shelf": "cars", "kind": "recalls", "make": "audi", "model": "e-tron", "year": 2019,
-                  "who": "the 2019 e-tron", "fresh_days": 540, "lead": False})
+                 {"name": "Recalls", "shelf": "cars", "kind": "recalls", "make": "kia", "model": "niro", "year": 2020,
+                  "who": "the 2020 Niro", "fresh_days": 540, "lead": False})
     cfg["series"] = []
     db = d.connect(str(tmp_path / "digest.db"))
     d.ingest(db, cfg["sources"]["Hackaday"], [entry(f"{w} story") for w in ("lathe", "anvil", "kiln")], NOW)
-    found = [{"NHTSACampaignNumber": "25V900000", "ReportReceivedDate": "19/12/2025", "Component": "BACK OVER PREVENTION: CAMERA",
+    found = [{"NHTSACampaignNumber": "25V123000", "ReportReceivedDate": "19/12/2025", "Component": "BACK OVER PREVENTION: CAMERA",
               "Summary": "The rearview camera image may not display.", "Remedy": "Dealers will update the software."},
-             {"NHTSACampaignNumber": "19V434000", "ReportReceivedDate": "10/06/2019", "Component": "TRACTION BATTERY",
+             {"NHTSACampaignNumber": "20V456000", "ReportReceivedDate": "10/06/2019", "Component": "TRACTION BATTERY",
               "Summary": "Moisture can enter the battery."}]
     d.ingest(db, cfg["sources"]["Recalls"], [d.recall_entry(r) for r in found], NOW)
     assert d.priorities(db, cfg, NOW, "Sam", False) == []

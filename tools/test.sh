@@ -11,6 +11,9 @@ cd "$(dirname "$0")/.."
 target=${HUB:-$(python tools/house.py get hub.ssh hub@ha-hub.local)}
 # a run orphaned by a dropped connection would otherwise still be going
 ssh "$target" 'pkill -f "[h]a-test/venv/bin/python (-m pytest|-c)" || true'
-tar -c ha/config tests tools/setup_ha.py tools/house.py hub/hub_digest.py hub/digest.example.toml hub/hub_journal.py hub/journal.example.toml | ssh "$target" 'rm -rf ~/ha-test/work && mkdir -p ~/ha-test/work && tar -x -C ~/ha-test/work'
+# the packages as tools/build.py makes them for a house with nothing filled in, which is the bench's
+python tools/build.py --bench --out .tmp-bench/ha/config >/dev/null
+tar -c tests tools/setup_ha.py tools/house.py tools/build.py hub/hub_digest.py hub/digest.example.toml hub/hub_journal.py hub/journal.example.toml \
+  -C .tmp-bench ha/config | ssh "$target" 'rm -rf ~/ha-test/work && mkdir -p ~/ha-test/work && tar -x -C ~/ha-test/work'
 args=$(printf '%q ' "$@")
 ssh "$target" "cd ~/ha-test/work/tests && nice -n 19 ~/ha-test/venv/bin/python -m pytest -q -p no:cacheprovider --timeout 180 -n ${TEST_WORKERS:-3} $args"

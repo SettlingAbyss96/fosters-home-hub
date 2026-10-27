@@ -31,6 +31,12 @@ input_text:
     name: "Headset on the computer"
     icon: mdi:headset
     max: 64
+  # part of the name of a monitor with speakers on the computer (packages/computer.yaml sends the
+  # alarm's voice there). Empty: wherever the computer's sound already goes
+  monitor:
+    name: "Monitor on the computer"
+    icon: mdi:monitor-speaker
+    max: 64
 
 template:
   # When Home Assistant last started. Every sensor looks freshly changed right after a restart, so
@@ -51,6 +57,8 @@ template:
       # minutes late: the Shortcuts in packages/inference.yaml and packages/presence.yaml are quicker
       - name: "Phone on the home Wi-Fi"
         unique_id: phone_on_home_wifi
+        # the name alone would make it binary_sensor.phone_on_the_home_wi_fi
+        default_entity_id: binary_sensor.phone_on_home_wifi
         icon: mdi:wifi-check
         state: >-
           {% set w = states('input_text.home_wifi') %}

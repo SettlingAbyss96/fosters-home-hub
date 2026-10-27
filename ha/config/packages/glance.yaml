@@ -104,29 +104,29 @@ template:
             {% set a = namespace(out=[]) %}
             {% set dock = states('sensor.robot_vacuum_dock_dock_error') %}
             {% if dock not in ['ok', 'none', 'unknown', 'unavailable'] %}
-              {% set a.out = a.out + ['Vacuum dock: ' ~ dock | replace('_', ' ')] %}{% endif %}
+              {% set a.out = a.out + ['«Vacuum» dock: ' ~ dock | replace('_', ' ')] %}{% endif %}
             {% set err = states('sensor.robot_vacuum_vacuum_error') %}
             {% if err not in ['none', 'unknown', 'unavailable'] %}
-              {% set a.out = a.out + ['Vacuum: ' ~ err | replace('_', ' ')] %}{% endif %}
+              {% set a.out = a.out + ['«Vacuum»: ' ~ err | replace('_', ' ')] %}{% endif %}
             {% for e, what in [('sensor.robot_vacuum_sensor_time_left', 'sensors to clean'),
                                 ('sensor.robot_vacuum_filter_time_left', 'filter due'),
                                 ('sensor.robot_vacuum_main_brush_time_left', 'main brush due'),
                                 ('sensor.robot_vacuum_side_brush_time_left', 'side brush due')] %}
               {% if states(e) | is_number and states(e) | float < 5 %}
-                {% set a.out = a.out + ['Vacuum ' ~ what] %}{% endif %}
+                {% set a.out = a.out + ['«Vacuum» ' ~ what] %}{% endif %}
             {% endfor %}
             {% if is_state('sensor.klipper_current_print_state', 'complete') %}
-              {% set a.out = a.out + ['Klipper print is done'] %}{% endif %}
+              {% set a.out = a.out + ["«Klipper»'s print is done"] %}{% endif %}
             {% if is_state('sensor.klipper_current_print_state', 'error') %}
-              {% set a.out = a.out + ['Klipper printer has an error'] %}{% endif %}
+              {% set a.out = a.out + ['«Klipper» has an error'] %}{% endif %}
             {% if is_state('sensor.bambu_print_status', 'finish') %}
-              {% set a.out = a.out + ['Bambu print is done'] %}{% endif %}
+              {% set a.out = a.out + ['«Bambu» print is done'] %}{% endif %}
             {% if is_state('sensor.bambu_print_status', 'failed') %}
-              {% set a.out = a.out + ['Bambu print failed'] %}{% endif %}
+              {% set a.out = a.out + ['«Bambu» print failed'] %}{% endif %}
             {% if states('sensor.bambu_ams_1_humidity') | float(0) >= 40 %}
-              {% set a.out = a.out + ['Bambu AMS is damp, ' ~ states('sensor.bambu_ams_1_humidity') ~ '%'] %}{% endif %}
+              {% set a.out = a.out + ['«Bambu» AMS is damp, ' ~ states('sensor.bambu_ams_1_humidity') ~ '%'] %}{% endif %}
             {% if is_state('binary_sensor.bambu_hms_errors', 'on') and state_attr('binary_sensor.bambu_hms_errors', '1-Error') %}
-              {% set a.out = a.out + ['Bambu: ' ~ state_attr('binary_sensor.bambu_hms_errors', '1-Error') | trim('.')] %}{% endif %}
+              {% set a.out = a.out + ['«Bambu»: ' ~ state_attr('binary_sensor.bambu_hms_errors', '1-Error') | trim('.')] %}{% endif %}
             {# offline: every light the house knows (the layers), and the modules' main entities if
                they're in Home Assistant at all. Missing is fine, unavailable isn't #}
             {% set watched = (label_entities('light_ambient') + label_entities('light_task') + label_entities('light_accent'))

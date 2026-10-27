@@ -38,7 +38,7 @@ These come with the Hub and Home Assistant itself, nothing to set up:
 |---|---|
 | `person.resident` | your person in Home Assistant, named in `resident.person`, renamed by the deploy |
 | `device_tracker.phone`, `sensor.phone_ssid`, `sensor.phone_battery_state`, `binary_sensor.phone_focus` | the companion app, with the phone called `Phone` in it |
-| `notify.mobile_app_phone` | the same name. It can't be renamed after the phone signs in, so name the phone first |
+| `notify.mobile_app_phone` | the same name. The app's own can't be renamed after the phone signs in, so name the phone first, or put the one it got in `devices.phone_notify` and the deploy adds this name on top |
 | `sensor.home_resident_distance`, `sensor.home_resident_direction_of_travel` | the Proximity integration, which the deploy adds |
 | `input_text.home_wifi` | `resident.home_wifi`, your network's name |
 | `sensor.phone_geocoded_location` | the companion app's geocoded location sensor, if you turn it on: its areas of interest name a market or a park for the journal ([journal.md](journal.md)) |
@@ -110,11 +110,17 @@ name is free, and it says what it did.
 
 Nothing errors because a part isn't there. Every template reads a missing entity as unknown and
 moves on, every action on an optional device checks the device exists first, and the dashboard
-only gets the pages your house has. The two things that do have to be right are the phone's name
-(`notify.mobile_app_phone` is how anything reaches you away from the Hub) and `person.resident`, and
-the deploy says so when either is missing.
+only gets the pages your house has. The two things that do have to be right are the phone's notify
+service (`notify.mobile_app_phone` is how anything reaches you away from the Hub) and
+`person.resident`, and the deploy says so when either is missing.
+
+What Jarvis calls things is yours too, without touching a package: `[names]` in `house.toml` is what
+he says for the printers, the vacuum and the computer, and listens for, `voice.address` is how he
+addresses you, and the deploy writes both into the packages ([`tools/build.py`](../tools/build.py)).
+A house that has always called its printer the Voron keeps hearing "the Voron's finished".
 
 Adding something this doesn't cover is the same as adding it to any Home Assistant: a package of
-your own in `ha/config/packages/` gets deployed with the rest. Pick names that won't collide with
+your own in `ha/config/packages/` in your house folder gets laid over this repo's and deployed with
+the rest. Pick names that won't collide with
 these, and if it switches lights, go through `script.light_set` so the arbiter knows about it.
 That one rule is most of what keeps the house from fighting itself.

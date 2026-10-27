@@ -93,8 +93,8 @@ automation:
         data:
           title: "Doorbell"
           message: >-
-            {% if who | count == 0 %}Someone's at the door.
-            {% else %}Looks like {{ who | join(' and ') }} at the door.{% endif %}
+            {% if who | count == 0 %}Someone's at the door«, sir».
+            {% else %}Looks like {{ who | join(' and ') }} at the door«, sir».{% endif %}
           urgent: true
           phone: true
           image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
@@ -223,7 +223,7 @@ automation:
         continue_on_error: true
         data:
           title: "At the door"
-          message: "Someone's been at the front door for a bit without ringing{{ who }}."
+          message: "Someone's been at the front door for a bit without ringing{{ who }}«, sir»."
           phone: true
           image: "/local/doorbell_last.jpg?v={{ now().timestamp() | int }}"
 

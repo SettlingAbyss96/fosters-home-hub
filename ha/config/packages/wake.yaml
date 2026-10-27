@@ -297,7 +297,7 @@ script:
             target:
               entity_id: assist_satellite.hub_500_voice_assist_satellite
             data:
-              message: "Good morning. It's {{ now().strftime('%-I:%M') }}."
+              message: "Good morning«, sir». It's {{ now().strftime('%-I:%M') }}."
               preannounce: true
           - action: script.turn_on
             continue_on_error: true
@@ -305,7 +305,7 @@ script:
               entity_id: script.computer_say
             data:
               variables:
-                message: "Good morning. It's {{ now().strftime('%-I:%M') }}."
+                message: "Good morning«, sir». It's {{ now().strftime('%-I:%M') }}."
                 volume: 0.6
         else:
           - stop: "Already up"
@@ -313,9 +313,9 @@ script:
       # 3. louder until someone's seen up
       - repeat:
           for_each:
-            - {say: "It's {time}. Time to get up.", phone: "time-sensitive", volume: 0.9}
-            - {say: "It's {time}. Up you get.", phone: "critical", volume: 1.0, phone_volume: 0.7}
-            - {say: "It's {time}. Please get up.", phone: "critical", volume: 1.0, phone_volume: 1.0}
+            - {say: "It's {time}«, sir». Time to get up.", phone: "time-sensitive", volume: 0.9}
+            - {say: "«Sir, »it's {time}. Up you get.", phone: "critical", volume: 1.0, phone_volume: 0.7}
+            - {say: "«Sir. »It's {time}. Please get up.", phone: "critical", volume: 1.0, phone_volume: 1.0}
           sequence:
             - wait_for_trigger:
                 - trigger: state
@@ -560,7 +560,7 @@ automation:
         target:
           entity_id: assist_satellite.hub_500_voice_assist_satellite
         data:
-          message: "Still with me? It's {{ now().strftime('%-I:%M') }}."
+          message: "Still with me«, sir»? It's {{ now().strftime('%-I:%M') }}."
           preannounce: true
       - action: notify.mobile_app_phone
         continue_on_error: true
@@ -696,7 +696,7 @@ automation:
         target:
           entity_id: assist_satellite.hub_500_voice_assist_satellite
         data:
-          message: "It's {{ now().strftime('%-I:%M') }}. Time to get up."
+          message: "«Sir, »it's {{ now().strftime('%-I:%M') }}. Time to get up."
           preannounce: true
         continue_on_error: true
       - action: script.turn_on
@@ -705,7 +705,7 @@ automation:
           entity_id: script.computer_say
         data:
           variables:
-            message: "It's {{ now().strftime('%-I:%M') }}. Time to get up."
+            message: "«Sir, »it's {{ now().strftime('%-I:%M') }}. Time to get up."
             volume: 1.0
       # and the real alarm from here, getting louder until you're up
       - action: script.turn_on
@@ -762,7 +762,7 @@ intent_script:
     action:
       - event: wake_up_confirmed
     speech:
-      text: "Good morning."
+      text: "Good morning«, sir»."
   SkipWakeUp:
     description: "No wake-up lights or alarm tomorrow morning."
     action:
@@ -770,4 +770,4 @@ intent_script:
         target:
           entity_id: input_boolean.skip_wake_up
     speech:
-      text: "I'll let you sleep tomorrow."
+      text: "I'll let you sleep tomorrow«, sir»."

@@ -47,9 +47,9 @@ automation:
       - action: script.tell_resident
         continue_on_error: true
         data:
-          title: "Bambu"
+          title: "«Bambu»"
           message: >-
-            {% set task = states('sensor.bambu_task_name') %}The Bambu has finished{{ ' ' ~ task if task not in ['unknown', 'unavailable', ''] else ' its print' }}.
+            {% set task = states('sensor.bambu_task_name') %}The «bambu» has finished{{ ' ' ~ task if task not in ['unknown', 'unavailable', ''] else ' its print' }}«, sir».
 
   - id: bambu_print_failed
     alias: "Bambu print failed"
@@ -66,9 +66,9 @@ automation:
       - action: script.tell_resident
         continue_on_error: true
         data:
-          title: "Bambu"
+          title: "«Bambu»"
           message: >-
-            The print on the Bambu has failed{{ ' at ' ~ states('sensor.bambu_print_progress') ~ ' percent' if states('sensor.bambu_print_progress') | int(0) > 0 }}.
+            «Sir, »the print on the «bambu» has failed{{ ' at ' ~ states('sensor.bambu_print_progress') ~ ' percent' if states('sensor.bambu_print_progress') | int(0) > 0 }}.
             {{ state_attr('binary_sensor.bambu_hms_errors', '1-Error') or '' }}
           urgent: true
 
@@ -87,8 +87,8 @@ automation:
       - action: script.tell_resident
         continue_on_error: true
         data:
-          title: "Bambu"
-          message: "The Bambu says: {{ trigger.to_state.attributes.get('1-Error') }}"
+          title: "«Bambu»"
+          message: "The «bambu» says: {{ trigger.to_state.attributes.get('1-Error') }}"
           urgent: "{{ trigger.to_state.attributes.get('1-Severity') in ['serious', 'fatal'] }}"
 
   - id: klipper_print_finished
@@ -106,9 +106,9 @@ automation:
       - action: script.tell_resident
         continue_on_error: true
         data:
-          title: "Printer"
+          title: "«Klipper»"
           message: >-
-            {% set file = states('sensor.klipper_filename') | replace('.gcode', '') | replace('_', ' ') %}The Klipper printer has finished{{ ' ' ~ file if file not in ['', 'unknown', 'unavailable'] else ' its print' }}.
+            {% set file = states('sensor.klipper_filename') | replace('.gcode', '') | replace('_', ' ') %}The «klipper» has finished{{ ' ' ~ file if file not in ['', 'unknown', 'unavailable'] else ' its print' }}«, sir».
 
   - id: klipper_print_failed
     alias: "Klipper print failed"
@@ -125,8 +125,8 @@ automation:
       - action: script.tell_resident
         continue_on_error: true
         data:
-          title: "Printer"
-          message: "The Klipper printer has stopped with an error. {{ states('sensor.klipper_printer_message') if states('sensor.klipper_printer_message') not in ['unknown', 'unavailable', ''] else '' }}"
+          title: "«Klipper»"
+          message: "«Sir, »the «klipper» has stopped with an error. {{ states('sensor.klipper_printer_message') if states('sensor.klipper_printer_message') not in ['unknown', 'unavailable', ''] else '' }}"
           urgent: true
 
 intent_script:
@@ -135,8 +135,8 @@ intent_script:
     speech:
       text: >-
         {% set s = states('sensor.bambu_summary') %}
-        {% if s == 'Offline' %}I can't reach the Bambu right now.
-        {% else %}The Bambu: {{ s | lower | replace(' h ', ' hours ') | replace(' min', ' minutes') }}.{% endif %}
+        {% if s == 'Offline' %}I can't reach the «bambu» right now.
+        {% else %}The «bambu»: {{ s | lower | replace(' h ', ' hours ') | replace(' min', ' minutes') }}.{% endif %}
   PrintersStatus:
     description: "What both 3D printers are doing."
     speech:
@@ -146,5 +146,5 @@ intent_script:
         {% set vpct = states('sensor.klipper_progress') | float(0) | round(0) | int %}
         {% set xs = states('sensor.bambu_summary') | lower | replace(' h ', ' hours ') | replace(' min', ' minutes') %}
         {% set vs = 'printing, ' ~ vpct ~ ' percent' if v == 'printing' else ('paused' if v == 'paused' else ('done' if v == 'complete' else ('stopped with an error' if v == 'error' else ('offline' if v in ['unknown', 'unavailable'] else 'idle')))) %}
-        {% if v != 'printing' and x != 'running' and v not in ['paused', 'error'] and x not in ['pause', 'failed'] %}Both printers are idle{{ ', the Bambu just finished' if x == 'finish' else '' }}{{ ', the Klipper printer just finished' if v == 'complete' else '' }}.
-        {% else %}The Klipper printer is {{ vs }}. The Bambu: {{ xs }}.{% endif %}
+        {% if v != 'printing' and x != 'running' and v not in ['paused', 'error'] and x not in ['pause', 'failed'] %}Both printers are idle{{ ', the «bambu» just finished' if x == 'finish' else '' }}{{ ', the «klipper» just finished' if v == 'complete' else '' }}.
+        {% else %}The «klipper» is {{ vs }}. The «bambu»: {{ xs }}.{% endif %}

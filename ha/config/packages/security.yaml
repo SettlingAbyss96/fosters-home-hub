@@ -76,7 +76,7 @@ automation:
       - variables:
           what: >-
             {{ {'switch': 'The ' ~ (state_attr(trigger.event.data.entity, 'friendly_name') or 'a light') | lower ~ ' was switched ' ~ trigger.event.data.state ~ ' at the wall' if trigger.id == 'switch' else '',
-                'laptop': 'Someone is using the computer',
+                'laptop': 'Someone is using the «computer»',
                 'tv': 'The TV came on',
                 'motion': 'The Hub keeps seeing movement'}[trigger.id] }}
       - if: "{{ states.camera.doorbell is not none }}"

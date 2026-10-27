@@ -43,7 +43,7 @@ intents:
     data:
       - sentences:
           - "lights out"
-          - "(turn|switch) off (all|every) [the] lights [in the (house|home|flat|apartment)]"
+          - "(turn|switch) off (all|every) [the] lights [in the (house|home|flat|apartment|loft)]"
   LeavingHome:
     data:
       - sentences:

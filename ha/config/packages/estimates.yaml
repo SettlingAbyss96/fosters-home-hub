@@ -50,7 +50,7 @@ template:
         device_class: timestamp
         state: "{{ now().isoformat() }}"
         attributes:
-          how: "{{ {'hub': 'the Hub saw someone', 'laptop': 'typing at the computer', 'said': 'said so', 'bedroom_door': 'out of the bedroom'}[trigger.id] }}"
+          how: "{{ {'hub': 'the Hub saw someone', 'laptop': 'typing at the «computer»', 'said': 'said so', 'bedroom_door': 'out of the bedroom'}[trigger.id] }}"
 
   - trigger:
       - trigger: time_pattern

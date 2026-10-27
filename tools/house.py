@@ -5,17 +5,39 @@ tools/setup_ha.py and tools/dashboard.py by importing it. Standard library only 
   house.py get KEY [DEFAULT]    one value, dotted (hub.ssh, voice.wake_word). Lists print one a line
   house.py check                 read it, say what's missing or odd, exit 1 on a real problem
   house.py lights                the final light entity ids, one a line
+  house.py use PATH              keep your house in its own folder (its own private repo, say)
+  house.py where                 the house folder in use
+  house.py file NAME             where one of your own files is (about, digest, journal...)
 
-house.toml lives next to this repo's README and never goes in git (house.example.toml is the one
-that does). HOUSE overrides the path, for the test bench and for running two houses from one clone.
+Your house is a folder: house.toml and the few other files that are yours (LOCAL below), laid out
+the way they'd sit in this repo, plus anything of your own under ha/config/ that tools/build.py
+lays over the packages. It can be this clone itself, with those files gitignored, which is the
+quick way to start. The safer way is a folder of its own outside the clone, so nothing of yours is
+ever inside it for a git add, a zip or a stray copy to pick up: `house.py use ../my-house`
+remembers it in this clone's .git/config, which is never part of a commit. HOUSE_DIR overrides
+that for one run, and HOUSE points at a single house.toml (the test bench uses that).
 """
 import os
 import pathlib
 import re
+import subprocess
 import sys
 import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+# The files that are yours besides house.toml, where they sit in the house folder (the same place
+# they'd sit in a clone). None of them is a secret, but every one of them is about you
+LOCAL = {
+    "about": "ha/context/about.local.md",           # what Jarvis knows about the household
+    "words": "hub/parakeet-words.local.txt",        # the names speech to text should lean towards
+    "digest": "hub/digest.toml",                    # what the welcome home reads (hub/digest.example.toml)
+    "journal": "hub/journal.toml",                  # what the journal asks about (hub/journal.example.toml)
+    "debloat": "tv/debloat.txt",                    # the TV's own debloat list (tv/debloat.example.txt)
+    "before": "tv/before.txt",                      # the TV as it was before the debloat
+    "private_words": "private-words.txt",           # extra things tools/privacy_check.py stops on
+    "config": "ha/config",                          # your own packages, laid over this repo's
+}
 LAYERS = ("ambient", "task", "accent")
 ROLES = ("sunrise", "bedside", "no_dim", "stand_in", "keep")
 
@@ -24,15 +46,18 @@ DEFAULTS = {
     "home_assistant": {"url": "http://homeassistant.local", "host": "homeassistant.local"},
     "resident": {"person": "", "face": "", "home_wifi": "", "home_radius_m": 0},
     "voice": {"wake_word": "hey_jarvis", "tts_voice": "bm_daniel", "tts_language": "en_GB",
-              "cloud_agent": "", "writer": "", "local_model": ""},
+              "cloud_agent": "", "writer": "", "local_model": "", "address": "", "expose": []},
     "news": {"on_arrival": "", "interests": ""},
     "calendar": {"work_ics": ""},
     "rooms": {"names": [], "aliases": {}},
     "devices": {k: "" for k in ("phone", "computer", "vacuum", "klipper", "bambu", "washer", "doorbell",
-                                "front_door", "bedroom_door", "bathroom_door", "desk_power")},
-    "fire_tv": {"address": "", "area": "", "apps": {}},
+                                "front_door", "bedroom_door", "bathroom_door", "desk_power", "phone_notify",
+                                "computer_notify")},
+    "names": {"klipper": "Klipper printer", "bambu": "Bambu", "vacuum": "vacuum", "computer": "computer", "said": {}},
+    "params": {},
+    "fire_tv": {"address": "", "area": "", "apps": {}, "aliases": ["television", "telly"], "name": "Fire TV"},
     "klipper": {"moonraker": ""},
-    "computer": {"headset": ""},
+    "computer": {"headset": "", "monitor": ""},
     "extras": {"install": ["mushroom"]},
 }
 
@@ -42,8 +67,40 @@ DEVICE_PREFIX = {"phone": "phone", "computer": "computer", "vacuum": "robot_vacu
                  "bedroom_door": "bedroom_door", "bathroom_door": "bathroom_door"}
 
 
+def home() -> pathlib.Path:
+    """The house folder: HOUSE_DIR, then the folder `house.py use` remembered, then this clone. A
+    remembered folder that's gone is an error rather than a quiet fall back to the clone, which
+    would deploy a house that isn't yours or none at all"""
+    if os.environ.get("HOUSE_DIR"):
+        return pathlib.Path(os.environ["HOUSE_DIR"]).resolve()
+    out = subprocess.run(["git", "-C", str(ROOT), "config", "--get", "hub.house"], capture_output=True, text=True)
+    if out.returncode == 0 and out.stdout.strip():
+        p = pathlib.Path(out.stdout.strip())
+        p = (p if p.is_absolute() else ROOT / p).resolve()
+        if not (p / "house.toml").is_file():
+            sys.exit(f"this clone's house is {p} (git config hub.house), and there's no house.toml there")
+        return p
+    return ROOT
+
+
+def outside() -> bool:
+    """Is the house in a folder of its own, rather than in this clone?"""
+    return home() != ROOT
+
+
 def path() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("HOUSE", ROOT / "house.toml"))
+    return pathlib.Path(os.environ["HOUSE"]) if os.environ.get("HOUSE") else home() / "house.toml"
+
+
+def file(name: str) -> pathlib.Path:
+    """One of your own files (LOCAL), whether or not it's there yet"""
+    return home() / LOCAL[name]
+
+
+def build_dir() -> pathlib.Path:
+    """Where tools/build.py puts what goes to Home Assistant. In the house folder, because it's
+    full of your house"""
+    return home() / ".build"
 
 
 def slug(text: str) -> str:
@@ -120,6 +177,19 @@ def problems(house: dict) -> tuple[list[str], list[str]]:
     for kind, entity in house["devices"].items():
         if entity and not re.fullmatch(r"[a-z_]+\.[a-z0-9_]+", entity):
             errors.append(f"devices.{kind} is {entity!r}, which isn't an entity id")
+    for key, start in (("phone_notify", "notify.mobile_app_"), ("computer_notify", "notify.")):
+        notify = house["devices"][key]
+        if notify and not notify.startswith(start):
+            errors.append(f"devices.{key} is {notify!r}: it's a notify service, {start}...")
+    for key, value in house["names"].items():
+        if key == "said":
+            for name, said in value.items():
+                if name not in house["names"] or not all(isinstance(s, str) and "|" not in s for s in said):
+                    errors.append(f"names.said.{name} should be a list of plain words for one of the names")
+        elif not isinstance(value, str) or not re.fullmatch(r"[\w .'+-]+", value):
+            errors.append(f"names.{key} is {value!r}: a plain name, letters and spaces")
+    if not re.fullmatch(r"[\w .'-]*", house["voice"]["address"]):
+        errors.append(f"voice.address is {house['voice']['address']!r}: a plain word or two, like sir")
     if house["calendar"]["work_ics"] and not house["calendar"]["work_ics"].startswith("https://"):
         warnings.append("calendar.work_ics doesn't start with https://")
     return errors, warnings
@@ -154,6 +224,18 @@ def main():
         print(f"{path().name} looks right")
     elif args[0] == "lights":
         print("\n".join(l["becomes"] for l in load()["light"]))
+    elif args[0] == "use" and len(args) == 2:
+        p = pathlib.Path(args[1]).resolve()
+        if not (p / "house.toml").is_file():
+            sys.exit(f"no house.toml in {p}: copy house.example.toml there first")
+        if p == ROOT or ROOT in p.parents:
+            sys.exit("the point of a house folder is that it's outside this clone")
+        subprocess.run(["git", "-C", str(ROOT), "config", "hub.house", str(p)], check=True)
+        print(f"this clone's house is {p} now (git config hub.house)")
+    elif args[0] == "where":
+        print(home().as_posix())
+    elif args[0] == "file" and len(args) == 2 and args[1] in LOCAL:
+        print(file(args[1]).as_posix())
     else:
         sys.exit(__doc__)
 

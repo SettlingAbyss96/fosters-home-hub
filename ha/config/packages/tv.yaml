@@ -39,7 +39,7 @@ intent_script:
       - stop: "Done"
         response_variable: result
     speech:
-      text: "{{ \"TV's on.\" if action_response is defined and action_response.done else \"The TV didn't come on.\" }}"
+      text: "{{ \"TV's on«, sir».\" if action_response is defined and action_response.done else \"The TV didn't come on«, sir».\" }}"
 
   # Off is ambient mode, like the remote's short press
   TvOff:
@@ -51,7 +51,7 @@ intent_script:
       - stop: "Done"
         response_variable: result
     speech:
-      text: "{{ 'Ambient mode.' if action_response is defined and action_response.done else \"The TV didn't go off.\" }}"
+      text: "{{ 'Ambient mode«, sir».' if action_response is defined and action_response.done else \"The TV didn't go off«, sir».\" }}"
 
   TvVolumeUp:
     description: "Turns the TV's volume up a step."
@@ -60,7 +60,7 @@ intent_script:
         continue_on_error: true
         data: {step: "up"}
     speech:
-      text: "Up a little."
+      text: "Up a little«, sir»."
 
   TvVolumeDown:
     description: "Turns the TV's volume down a step."
@@ -69,7 +69,7 @@ intent_script:
         continue_on_error: true
         data: {step: "down"}
     speech:
-      text: "Down a little."
+      text: "Down a little«, sir»."
 
   TvVolumeSet:
     description: "Sets the TV's volume (0 to 100) to the number in the sentence."
@@ -81,7 +81,7 @@ intent_script:
             data:
               level: "{{ tv_level | int }}"
     speech:
-      text: "{{ 'Volume ' ~ (tv_level | int) ~ '.' if tv_level is defined and tv_level not in [none, ''] else 'To what?' }}"
+      text: "{{ 'Volume ' ~ (tv_level | int) ~ '«, sir».' if tv_level is defined and tv_level not in [none, ''] else 'To what«, sir»?' }}"
 
   TvMute:
     description: "Mutes the TV."
@@ -90,7 +90,7 @@ intent_script:
         continue_on_error: true
         data: {mute: true}
     speech:
-      text: "Muted."
+      text: "Muted«, sir»."
 
   TvUnmute:
     description: "Unmutes the TV."
@@ -99,7 +99,7 @@ intent_script:
         continue_on_error: true
         data: {mute: false}
     speech:
-      text: "Sound back on."
+      text: "Sound back on«, sir»."
 
   # Play and pause are the remote's own keys, sent to whatever's in front
   TvPause:
@@ -110,7 +110,7 @@ intent_script:
         target:
           entity_id: media_player.tv
     speech:
-      text: "Paused."
+      text: "Paused«, sir»."
 
   TvResume:
     description: "Resumes whatever was paused on the TV."
@@ -120,7 +120,7 @@ intent_script:
         target:
           entity_id: media_player.tv
     speech:
-      text: "Playing."
+      text: "Playing«, sir»."
 
   TvFullOff:
     description: "Turns the TV all the way off. Only when asked for all the way, completely or fully off."
@@ -132,7 +132,7 @@ intent_script:
       - stop: "Done"
         response_variable: result
     speech:
-      text: "{{ \"TV's all the way off.\" if action_response is defined and action_response.done else \"The TV didn't go off.\" }}"
+      text: "{{ \"TV's all the way off«, sir».\" if action_response is defined and action_response.done else \"The TV didn't go off«, sir».\" }}"
 
   TvOpenApp:
     description: "Opens an app on the TV. The per-app TV scripts do the same without needing the app's name."
@@ -145,7 +145,7 @@ intent_script:
         response_variable: result
     speech:
       text: >-
-        {{ tv_app }} {{ 'is up.' if action_response is defined and action_response.opened else "didn't come up." }}
+        {{ tv_app }} {{ 'is up«, sir».' if action_response is defined and action_response.opened else "didn't come up«, sir»." }}
 
   TvAmbient:
     description: "Puts the TV in ambient mode, the slow-moving pictures."
@@ -157,7 +157,7 @@ intent_script:
       - stop: "Done"
         response_variable: result
     speech:
-      text: "{{ 'Ambient mode.' if action_response is defined and action_response.done else \"The TV didn't go into ambient mode.\" }}"
+      text: "{{ 'Ambient mode«, sir».' if action_response is defined and action_response.done else \"The TV didn't go into ambient mode«, sir».\" }}"
 
   TvStatus:
     description: "Says what's on the TV right now."
@@ -166,13 +166,13 @@ intent_script:
         {% set s = states('sensor.tv_status') %}
         {% set title = state_attr('sensor.tv_status', 'title') %}
         {% set artist = state_attr('sensor.tv_status', 'artist') %}
-        {% if s == 'Off' %}The TV is off.
-        {% elif s == 'Ambient mode' %}The TV is showing the ambient pictures.
-        {% elif s == 'Home screen' %}The TV is on the home screen.
-        {% elif s == 'Unreachable' %}The TV isn't answering. It's probably all the way off.
-        {% elif s in ['Unknown', 'unknown', 'unavailable'] %}No reading from the TV.
-        {% elif title %}{{ title }}{{ ' by ' ~ artist if artist else '' }}, {{ state_attr('sensor.tv_status', 'playback') }} on {{ state_attr('sensor.tv_status', 'app') }}.
-        {% else %}{{ s | replace(', ', ' is ') }} on the TV.{% endif %}
+        {% if s == 'Off' %}The TV is off«, sir».
+        {% elif s == 'Ambient mode' %}The TV is showing the ambient pictures«, sir».
+        {% elif s == 'Home screen' %}The TV is on the home screen«, sir».
+        {% elif s == 'Unreachable' %}The TV isn't answering«, sir». It's probably all the way off.
+        {% elif s in ['Unknown', 'unknown', 'unavailable'] %}No reading from the TV«, sir».
+        {% elif title %}{{ title }}{{ ' by ' ~ artist if artist else '' }}, {{ state_attr('sensor.tv_status', 'playback') }} on {{ state_attr('sensor.tv_status', 'app') }}«, sir».
+        {% else %}{{ s | replace(', ', ' is ') }} on the TV«, sir».{% endif %}
 
 script:
   # Power with a check: does it, then waits until the TV itself says it got there (Awake, Dreaming

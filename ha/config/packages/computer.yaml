@@ -98,6 +98,24 @@ script:
               entity_id: media_player.computer
             data:
               volume_level: "{{ volume | float(1) }}"
+      # A laptop on its own speakers with a monitor plugged in is better heard through the monitor's,
+      # which is what the HASS.Agent button "Sound to the monitor" does (pc/hass-agent). Only from
+      # the laptop's own speakers: a headset someone's wearing stays the headset
+      - variables:
+          monitor: "{{ states('input_text.monitor') if states('input_text.monitor') not in ['', 'unknown', 'unavailable'] else '' }}"
+          headset: "{{ states('input_text.headset') if states('input_text.headset') not in ['', 'unknown', 'unavailable'] else '' }}"
+          playing: "{{ states('sensor.computer_audio_default_device') }}"
+      - if: >-
+          {% set out = state_attr('sensor.computer_audio_output_devices', 'OutputDevices') %}
+          {% set out = out | join('|') if out is not string and out is iterable else (out or '') %}
+          {{ monitor and states.button.computer_sound_to_monitor is not none and monitor in out
+             and monitor not in playing and not (headset and headset in playing) }}
+        then:
+          - action: button.press
+            continue_on_error: true
+            target:
+              entity_id: button.computer_sound_to_monitor
+          - delay: "00:00:02"
       # the same voice as the Hub's, from Kokoro (Piper's if Kokoro isn't there)
       - action: tts.speak
         continue_on_error: true
@@ -125,7 +143,7 @@ intent_script:
       - action: script.computer_lock
         continue_on_error: true
     speech:
-      text: "{{ 'Locked.' if states('button.computer_lock') != 'unavailable' else 'The computer isn''t connected.' }}"
+      text: "{{ 'Locked«, sir».' if states('button.computer_lock') != 'unavailable' else 'The «computer» isn''t connected«, sir».' }}"
   LaptopSleep:
     description: "Put the computer to sleep."
     action:
@@ -134,7 +152,7 @@ intent_script:
           entity_id: button.computer_sleep
         continue_on_error: true
     speech:
-      text: "{{ 'Putting it to sleep.' if states('button.computer_sleep') != 'unavailable' else 'The computer isn''t connected.' }}"
+      text: "{{ 'Putting it to sleep«, sir».' if states('button.computer_sleep') != 'unavailable' else 'The «computer» isn''t connected«, sir».' }}"
   LaptopScreenOff:
     description: "Turn the computer's screen off."
     action:
@@ -143,7 +161,7 @@ intent_script:
           entity_id: button.computer_screen_off
         continue_on_error: true
     speech:
-      text: "Screen off."
+      text: "Screen off«, sir»."
 
 automation:
   - id: desk_left_on

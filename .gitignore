@@ -11,9 +11,13 @@ tv/debloat.txt
 tv/before.txt
 tv/keeper/build/
 
-# made from house.toml on every deploy (tools/setup_ha.py, tools/dashboard.py)
+# made from house.toml on every deploy (tools/build.py, tools/dashboard.py), into the house folder
+# when it's this clone. ha/config/house/ and the dashboard are where older versions put them
+.build/
 ha/config/house/
 ha/dashboards/home-hub.json
+# what the privacy check stops on, for a house kept in the clone rather than a folder of its own
+private-words.txt
 
 # secrets that live elsewhere anyway: the token is in ~/.config/ha-hub/token, the ESPHome secrets
 # on the Hub. These are here in case one gets copied in by mistake

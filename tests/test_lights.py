@@ -190,6 +190,19 @@ async def test_a_film_puts_the_lamps_and_the_ambient_lights_out(house_at):
     assert house.is_on("light.living_room_lamp") and house.is_on("light.living_room_ambient")
 
 
+async def test_a_film_keeps_the_accents_low_and_one_that_cant_dim_off(house_at):
+    # the printers' lights are the film's accents at 25%, and an on-off chamber light at "25%" is
+    # one at full, so that one stays off. Evening (70%) has both on
+    house = await house_at(f"{TUESDAY} 20:30", {"input_select.house_mode": "Evening"})
+    await house.run("lights_look", look="evening")
+    await house.advance(seconds=10)
+    assert house.is_on("light.klipper_case_light") and house.is_on("light.bambu_chamber_light")
+    await house.run("lights_look", look="movie")
+    await house.advance(seconds=10)
+    assert house.level("light.klipper_case_light") == 25
+    assert not house.is_on("light.bambu_chamber_light")
+
+
 def lamp_steps(house, since):
     """The floor lamp's brightness commands after the given index into light_calls, in percent"""
     return [round(kw["brightness"] / 2.55) for e, on, kw in house.light_calls[since:]

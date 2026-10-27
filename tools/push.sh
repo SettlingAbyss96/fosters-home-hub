@@ -12,7 +12,15 @@ wake=$(python tools/house.py get voice.wake_word hey_jarvis)
 voice=$(python tools/house.py get voice.tts_voice bm_daniel)
 case "$wake$voice" in *[!a-z0-9_]*) echo "voice.wake_word and voice.tts_voice are letters, digits and _ only"; exit 1 ;; esac
 
-tar -c host hub tools | ssh "$target" 'rm -rf ~/ha-hub && mkdir -p ~/ha-hub && tar -x -C ~/ha-hub'
+# your own files for the Hub's services go along in hub/ (tools/house.py), staged in the house folder
+# so they're never inside this clone
+stage="$(python tools/house.py where)/.build/push"
+rm -rf "$stage" && mkdir -p "$stage/hub"
+for name in digest journal words; do
+  f=$(python tools/house.py file $name)
+  [ -f "$f" ] && cp "$f" "$stage/hub/"
+done
+tar -c host hub tools -C "$stage" hub | ssh "$target" 'rm -rf ~/ha-hub && mkdir -p ~/ha-hub && tar -x -C ~/ha-hub'
 for s in "$@"; do
   echo "== $s"
   ssh "$target" "sudo env WAKE_MODEL=$wake KOKORO_VOICE=$voice bash ~/ha-hub/$s"

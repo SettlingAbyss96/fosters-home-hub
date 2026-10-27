@@ -213,7 +213,7 @@ script:
           notes: >-
             {{ ([day, ('Overnight: ' ~ overnight | trim) if overnight | trim else ''] | map('trim') | reject('eq', '') | join(' ')) }}
           result:
-            text: "{{ ('Good morning. ' ~ notes) | trim }}"
+            text: "{{ ('Good morning«, sir». ' ~ notes) | trim }}"
             notes: "{{ notes }}"
             day: "{{ day }}"
             overnight: "{{ overnight | trim }}"
@@ -315,7 +315,7 @@ script:
             {% set likes = likes if likes not in ['', 'unknown', 'unavailable'] else '' %}
             It's {{ now().strftime('%-I:%M %p on %A') }} and {{ name }} is getting up. Write exactly what you'll say
             out loud as the morning briefing: four or five short spoken sentences, about twenty seconds. Start with
-            "Good morning." Then the day ahead and anything that came through overnight, from the notes below, in a
+            "Good morning«, sir»." Then the day ahead and anything that came through overnight, from the notes below, in a
             sentence or two, calmly.
             {% if news %}Then look up {{ news }}{{ ', and if there is room one item from something else they are into (' ~ likes ~ ')' if likes else '' }},
             each in one sentence in your own words. It is {{ 'the weekend, so anything that only happens on weekdays means its last session' if now().weekday() >= 5 else 'a weekday' }}.{% endif %}
@@ -348,8 +348,9 @@ script:
                     You are Jarvis, the home's assistant, in the spirit of J.A.R.V.I.S. from Iron Man:
                     composed, precise, loyal, with a dry wit used sparingly. It's
                     {{ now().strftime('%-I:%M %p on %A') }} and {{ who }} is getting up. Write exactly
-                    what you'll say out loud as the morning briefing, and nothing else, calling them
-                    {{ who }} if anything. Start with "Good morning." Then three things, in the order the
+                    what you'll say out loud as the morning briefing, and nothing else,
+                    «calling them "sir"|calling them {{ who }} if anything». Start with "Good morning«, sir»."
+                    Then three things, in the order the
                     brief asks for: the day ahead from its notes (the weather, the calendar, and last
                     night's sleep if the notes have it, honestly, good or bad, with the comparison if the
                     notes give one and no advice) in a sentence or two; what came through overnight
@@ -569,4 +570,4 @@ intent_script:
       - stop: "Done"
         response_variable: result
     speech:
-      text: "{{ action_response.text if action_response is defined else 'Good morning.' }}"
+      text: "{{ action_response.text if action_response is defined else 'Good morning«, sir».' }}"

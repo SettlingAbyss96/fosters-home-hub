@@ -47,7 +47,7 @@ intents:
           - "(vacuum|robot|roborock) (go home|go back|back to [the] dock)"
           - "(stop|cancel) [the] (vacuum|robot|roborock) and send it home"
         slots:
-          name: "Robot vacuum"
+          name: "«Vacuum»"
   # Its own rounds, on and off (input_boolean.auto_vacuum, packages/controls.yaml). Docked until you
   # say otherwise: no vacuuming when you leave, and its app's schedule gets sent back
   VacuumPauseAuto:

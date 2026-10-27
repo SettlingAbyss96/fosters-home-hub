@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""The home dashboard, made from house.toml: ha/dashboards/home-hub.json, which tools/setup_ha.py
-then saves into Home Assistant. Made rather than written by hand, because the rooms and the lights
-in them are yours and the rest is the same in every house.
+"""The home dashboard, made from house.toml: home-hub.json in the house folder's .build/dashboards,
+which tools/setup_ha.py then saves into Home Assistant. Made rather than written by hand, because
+the rooms and the lights in them are yours and the rest is the same in every house.
 
-  python tools/dashboard.py        write ha/dashboards/home-hub.json
+  python tools/dashboard.py              write it
+  python tools/dashboard.py --out DIR    write it somewhere else
 
 The pages: Home (the mode buttons, the at-a-glance row, one section per room with its lights), and
 Routines and Hub always. TV, Printers and Appliances only when house.toml has one of those. The
 fixed parts are in ha/dashboards/parts/ and use the standard names (docs/devices.md); edit those,
-or this, never the generated file, which git ignores and the next deploy writes over. It's built
+or this, never the generated file, which the next deploy writes over. It's built
 for the Hub's screen at a scale of 1.5 (1280 x 720 CSS pixels, three columns with the sidebar
 hidden, host/40-kiosk.sh), and works on a phone too, a column at a time.
 """
@@ -167,9 +168,12 @@ def build(h):
 
 
 def main():
-    out = ROOT / "ha" / "dashboards" / "home-hub.json"
+    args = sys.argv[1:]
+    folder = pathlib.Path(args[args.index("--out") + 1]) if "--out" in args else housefile.build_dir() / "dashboards"
+    folder.mkdir(parents=True, exist_ok=True)
+    out = folder / "home-hub.json"
     out.write_text(json.dumps(build(housefile.load()), indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"wrote {out.relative_to(ROOT)}")
+    print(f"wrote {out}")
 
 
 if __name__ == "__main__":
