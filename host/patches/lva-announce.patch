@@ -1,6 +1,6 @@
 --- a/linux_voice_assistant/__main__.py
 +++ b/linux_voice_assistant/__main__.py
-@@ -910,7 +910,8 @@ def process_audio(state: ServerState, mic, block_size: int):
+@@ -910,8 +910,13 @@ def process_audio(state: ServerState, mic, block_size: int):
                              stopped = True
  
                      if stopped and (state.stop_word.id in state.active_wake_words) and not state.muted:
@@ -8,8 +8,13 @@
 +                        # fosters-home-hub patch: in the journal, since it cuts off whatever's playing
 +                        _LOGGER.info("Stop word heard, stopping what's playing")
                          state.satellite.stop()
++                    elif stopped and getattr(state.satellite, "_tts_playing", False) and not state.muted:
++                        # and the ones an announcement doesn't listen for, so it's on record what
++                        # would have cut it off
++                        _LOGGER.info("Stop word heard over an announcement, left alone")
                  except Exception:  # pylint: disable=broad-except
                      _LOGGER.exception("Unexpected error handling audio")
+     except Exception:  # pylint: disable=broad-except
 --- a/linux_voice_assistant/satellite.py
 +++ b/linux_voice_assistant/satellite.py
 @@ -85,6 +85,7 @@ _HAS_AUDIO_DATA2 = "data2" in {f.name for f in VoiceAssistantAudio.DESCRIPTOR.fi

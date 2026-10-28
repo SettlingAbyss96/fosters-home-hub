@@ -57,7 +57,8 @@ fi
 #                       scores it the same as a real "stop", so anyone talking near the Hub cut the
 #                       welcome home off after its first sentence. "Hey Jarvis" over an announcement
 #                       now ends it properly, where Home Assistant used to wait five minutes for it.
-#                       The stop word that does cut something off goes in the journal
+#                       Every stop word heard while something plays goes in the journal, the
+#                       ones an announcement lets go included
 as_user git -C "$dir" checkout -q -- linux_voice_assistant/satellite.py linux_voice_assistant/player/libmpv.py linux_voice_assistant/__main__.py
 as_user git -C "$dir" apply "$here/host/patches/lva-followup.patch"
 as_user git -C "$dir" apply "$here/host/patches/lva-player.patch"

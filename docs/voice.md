@@ -103,7 +103,9 @@ then reported the announcement finished, so the house counted it as heard.
 So announcements don't listen for it any more (`host/patches/lva-announce.patch`). Answers and a
 ringing timer still do, since I asked for those. "Hey Jarvis, stop" (or "be quiet") ends an
 announcement without a word, and the satellite tells Home Assistant it's over instead of leaving it
-waiting five minutes. A stop that does cut something off goes in the journal now.
+waiting five minutes. Every stop it hears while Jarvis is talking goes in the journal now, the
+ones an announcement lets go included, so the next few welcomes will show whether this really was
+what cut them off.
 
 ## Knowing when I've finished
 
