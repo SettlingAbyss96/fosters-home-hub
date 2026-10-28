@@ -2,7 +2,7 @@
 # like the Oura only syncs when its app wakes up, its newest heart rate usually hours old, so it
 # confirms a night afterwards and never during. What the house can see live is enough: late (past
 # tonight's planned bedtime, or after 11), you're home, lights or the TV still on, and the house's
-# asleep estimate (binary_sensor.asleep, packages/estimates.yaml) saying so for ten minutes, with
+# asleep estimate (binary_sensor.asleep, custom_components/house_control) saying so for ten minutes, with
 # nothing at all for twenty: no movement at the Hub, no light switched by hand, the computer
 # untouched, the phone not taken off the charger (sensor.last_sign_of_life, packages/wake.yaml). Its
 # lights go through the arbiter at the same priority as a hand at the switch, so a lamp switched on

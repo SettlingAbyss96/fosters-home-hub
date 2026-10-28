@@ -1,4 +1,4 @@
-"""The asleep filter (packages/estimates.yaml). The numbers are first guesses until the Oura nights
+"""The asleep filter (the control core, custom_components/house_control). The numbers are first guesses until the Oura nights
 tune them, so these check the shape of it: it takes a while, it has memory, it wakes up for a
 real sign of life and not for a phone finishing its charge."""
 

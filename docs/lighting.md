@@ -103,7 +103,8 @@ warm light at night is the body clock, not taste.
 ## The light curve
 
 The ambient layer's level and colour come from one function of the day,
-`light_curve()` in `custom_templates/lighting.jinja`, instead of a number per mode. Three inputs: how
+`light_curve()` in the control core (`custom_components/house_control/curve.py`, with
+`sensor.light_curve` to watch it), instead of a number per mode. Three inputs: how
 much daylight there is, how close bedtime is, and the time.
 
 Daylight first. Until there's a sensor on the window sill it's worked out from the sun's height
@@ -180,7 +181,9 @@ is the recorder writing down every change and the by-hand detector having to che
 ([control.md](control.md#what-counts-as-by-hand)). Adaptive Lighting landed close by, 90 seconds
 with 45-second fades. The catch is colour on some lamps: fading colour and brightness together
 hung a Govee floor lamp's firmware, so colour jumps to each step, and the step itself has to be under
-what's visible.
+what's visible. The same lamp turned out not to do a long fade at all, for a small step anyway:
+asked for two points more over 60 seconds it stays put, wobbling one step either side, and the next
+minute asks again.
 
 The one change that skips the blend is a lamp restarting. Some colour lamps restart now and then,
 often while their Matter connection is dropping, and come back at their own default colour with
@@ -288,8 +291,9 @@ shows up in it twice.
 - The path light from the bed to the bathroom (`esphome/path-light.yaml`)
 - Lamps on dimmers instead of plugs, so the wind-down can turn them down instead of leaving them on
   at whatever they are
-- A light sensor taped to a floor lamp for an evening, to see whether a 60-second Matter fade
-  really is smooth or a staircase it hides well
+- Blend steps sent straight there for a lamp that can't fade (two points at once is still well under
+  what anyone notices), and a light sensor taped to a floor lamp for an evening, to see what the
+  ones that can really do with a 60-second fade: a smooth ramp or a staircase they hide well
 - The same blending for Jarvis's quiet voice and the Hub's screen, and a ramp for a thermostat when
   there is one
 

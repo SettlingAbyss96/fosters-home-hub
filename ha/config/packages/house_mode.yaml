@@ -30,7 +30,7 @@ input_select:
 
 input_text:
   # who changed the mode last: me (the default: the dashboard, Jarvis), a routine, or the clock. A
-  # change by the clock leaves lights switched by hand alone (packages/arbiter.yaml), and the
+  # change by the clock leaves lights switched by hand alone (the arbiter, custom_components/house_control), and the
   # clock's Calm only dims what's on
   house_mode_by:
     name: "House mode changed by"

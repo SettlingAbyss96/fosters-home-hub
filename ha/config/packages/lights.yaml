@@ -23,8 +23,9 @@
 # dimming instead of switching.
 #
 # A layer's level is a percentage. 0 is off. Lights that can't dim go on for anything above 0.
-# curve is the light curve's level for now (custom_templates/lighting.jinja): how bright the ambient
-# layer should be given the daylight and tonight's bedtime. {level: 50, if_on: true} only touches a
+# curve is the light curve's level for now (custom_components/house_control/curve.py, and
+# sensor.light_curve to read): how bright the ambient layer should be given the daylight and
+# tonight's bedtime. {level: 50, if_on: true} only touches a
 # light that's already on. areas: [tv] limits a look to the TV's room; without it, a look covers
 # the whole house, and entities: overrides single lights, roles: lights by their job.
 #
@@ -53,15 +54,17 @@
 # Through the day the ambient layer follows the curve the same way: every minute, the ambient
 # lights that are on (and not held by hand) take a blend step toward where the curve is now.
 #
-# script.lights_look applies one. dry_run: true answers with the plan instead of doing it. Every
-# real apply except welcome (which goes on top of whatever's there) is written to
-# input_text.lights_look, so the dashboard can show which look is up.
+# The looks are below, under house_control:, and the control core (custom_components/house_control)
+# works out what each one means right now. script.lights_look applies one. dry_run: true answers
+# with the plan instead of doing it. Every real apply except welcome (which goes on top of
+# whatever's there) is written to input_text.lights_look, so the dashboard can show which look is
+# up.
 # House modes pick looks (packages/house_mode.yaml), and nothing else should switch lights for a
 # mode directly, so there's one place to change how a mode looks.
 #
 # Every light command goes through script.light_set, which is also where the arbiter's priorities
-# and holds are checked (packages/arbiter.yaml): a light switched by hand stays as you left it when
-# the clock changes the mode, and comes along when you ask for a mode yourself
+# and holds are checked (custom_components/house_control/arbiter.py): a light switched by hand stays
+# as you left it when the clock changes the mode, and comes along when you ask for a mode yourself
 input_number:
   # the curve's wind-down starts this long before the planned bedtime (sensor.bedtime_plan)
   wind_down_hours:
@@ -86,11 +89,83 @@ input_datetime:
     has_date: true
     has_time: true
 
+house_control:
+  looks:
+    # most lights on to get going, the sunrise light on but not glaring. Task lights only if
+    # they're on already: a kitchen ceiling at full is a lot first thing
+    morning:
+      transition: 5
+      kelvin: curve
+      layers: {ambient: curve, accent: 100}
+      roles: {sunrise: 60}
+    # home in the day: the lamps stay on, at a level and colour that follow the daylight (low in
+    # full sun, rising as it fades). Switching them off at 8 in the morning sounds tidy, and in
+    # practice they just get switched back on by hand within the hour. The sunrise light's done
+    # its job by then
+    day:
+      transition: 5
+      kelvin: curve
+      layers: {ambient: curve}
+      roles: {sunrise: 0}
+    evening:
+      transition: 3
+      kelvin: curve
+      layers: {ambient: curve, task: 50, accent: 70}
+      roles: {sunrise: 0}
+    # a film: the lamps off too, only the accent lights low
+    movie:
+      transition: 5
+      layers: {task: 0, ambient: 0, accent: 25}
+    # paused: enough to see by, in the TV's room only. Warm white, at the floor
+    intermission:
+      areas: [tv]
+      transition: 3
+      kelvin: 2700
+      layers: {ambient: 30}
+    # the hour before bed: the lamps on the curve like the rest of the day (by then they're in the
+    # wind-down, dim and warm), the overheads and accents lower. A fixed level at a fixed 9:30 PM
+    # would be a jump in both colour and brightness at a time that has nothing to do with when
+    # you're actually going to bed
+    calm:
+      transition: 3
+      kelvin: curve
+      layers: {ambient: curve, task: 20, accent: 50}
+      roles: {sunrise: 0}
+    night:
+      transition: 5
+      layers: {task: 0, ambient: 0, accent: 0}
+      # the bedside lamp stays on if it's on (reading in bed), but going to bed never turns it on
+      roles: {bedside: {level: 20, if_on: true}, sunrise: 0}
+      touches_kept: true
+    # coming home, through the door: the lamps on, on top of the mode's own look. Its colour is
+    # the mode's, which is the curve's in every mode but Bright: without one, a colour lamp comes
+    # back at whatever it had last, which on a workday is the morning's 4000 K, and walking in
+    # before Evening means a cold white lamp. Its brightness is the curve's too, so coming home
+    # late is a dim, warm room: eyes that have been in the dark don't want a bright one
+    welcome:
+      transition: 2
+      colour: mode
+      layers: {ambient: curve}
+    # you asking for everything: the one look that switches task lights on
+    bright:
+      transition: 2
+      kelvin: 4500
+      task_on: true
+      layers: {task: 100, ambient: 100, accent: 100}
+    away:
+      transition: 1
+      layers: {task: 0, ambient: 0, accent: 0}
+      touches_kept: true
+    "off":
+      transition: 2
+      layers: {task: 0, ambient: 0, accent: 0}
+      touches_kept: true
+
 script:
-  # One light. Every light command in the house comes through here, so it's also the gate: it asks
-  # the light arbiter (packages/arbiter.yaml) whether something stronger is holding the light,
-  # remembers what it asked for (so the light reporting back isn't mistaken for a hand at the wall),
-  # and can leave a hold of its own. priority: 1 alarm, 2 by hand, 3 routines, 4 the mode's look
+  # One light, through the arbiter's gate (custom_components/house_control): it says whether
+  # something stronger is holding the light, remembers what it asked for (so the light reporting
+  # back isn't mistaken for a hand at the wall), and can leave a hold of its own. priority: 1 alarm,
+  # 2 by hand, 3 routines, 4 the mode's look. Every light command in the house comes through here
   light_set:
     alias: "Set one light"
     icon: mdi:lightbulb-auto
@@ -108,125 +183,20 @@ script:
       source: {description: "Who's asking, for the record"}
       override: {description: "You asking for it: goes past holds from a hand at the switch and below"}
     sequence:
-      - variables:
-          pr: "{{ priority | default(4) | int(4) }}"
-          who: "{{ source | default('look') }}"
-          dims: >-
-            {% if dims is defined and dims not in [none, ''] %}{{ dims | bool }}
-            {% else %}{{ (state_attr(entity, 'supported_color_modes') or []) | reject('eq', 'onoff') | list | count > 0 }}{% endif %}
-          hs: "{{ hs if hs is defined else none }}"
-          kelvin: "{{ kelvin if kelvin is defined else none }}"
-          fade: "{{ fade | default(2) | float(2) }}"
-          verdict: >-
-            {% from 'control.jinja' import gate %}{{ gate(entity, priority | default(4), override | default(false)) }}
-      - if: "{{ verdict != 'go' }}"
-        then:
-          - stop: "Held"
-      # you asking for a mode ends a by-hand hold, so the next clock change can move the light again
-      - if: >-
-          {{ override | default(false) | bool
-             and ((state_attr('sensor.light_arbiter', 'holds') or {}).get(entity) or {}).get('source') == 'manual' }}
-        then:
-          - event: light_release
-            event_data:
-              entity: "{{ entity }}"
-      # what's being asked goes on record first, and the light only gets the command once the
-      # arbiter has it: the light answers in milliseconds, and an answer that arrives before the
-      # record looks exactly like a hand at the switch. This command's record, not just a recent
-      # one: the blend tick and a mode change can both reach a light in the same second, and the
-      # second command would go out on the first one's record. Two seconds at most, then on anyway
-      - variables:
-          asked_at: "{{ now().timestamp() }}"
-          start: "{{ ((state_attr(entity, 'brightness') | int(0)) / 2.55) | round(0) | int if is_state(entity, 'on') else 0 }}"
-      - event: light_commanded
-        event_data:
+      - action: house_control.light_set
+        data:
           entity: "{{ entity }}"
-          level: "{{ level | int(0) }}"
-          from: "{{ start }}"
-          fade: "{{ fade }}"
-          source: "{{ who }}"
-          priority: "{{ pr }}"
-      - wait_template: >-
-          {% set r = (state_attr('sensor.light_arbiter', 'commands') or {}).get(entity) or {} %}
-          {{ (r.get('at', 0) | float(0)) >= asked_at | float(0) - 1
-             and r.get('level') | int(-1) == level | int(0) and r.get('from') | int(-1) == start | int(0) }}
-        timeout: "00:00:02"
-      - choose:
-          - conditions: "{{ level | int == 0 }}"
-            sequence:
-              - action: light.turn_off
-                continue_on_error: true
-                target:
-                  entity_id: "{{ entity }}"
-                data:
-                  transition: "{{ fade }}"
-          # Colour and brightness go as two commands, the colour first and straight there, then the
-          # brightness with the fade. Both in one command with a fade sent a Govee floor lamp's
-          # firmware into a fade that never finished: its Level Control cluster sat at "53.8 s
-          # remaining" for hours, reporting its level one step either side of the target 1.4 times
-          # a second (202, 203, 202...). Split, or either one fading alone, it settles. The colour
-          # command carries the brightness it's already at: a colour on its own makes Home
-          # Assistant's Matter light send an On straight after it, and an On a few milliseconds
-          # after a colour change can reboot that same lamp
-          - conditions: "{{ dims and hs not in [none, '', 'None'] }}"
-            sequence:
-              - action: light.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: "{{ entity }}"
-                data:
-                  hs_color: "{{ hs }}"
-                  brightness: "{{ state_attr(entity, 'brightness') if is_state(entity, 'on') and state_attr(entity, 'brightness') else 3 }}"
-                  transition: 0
-              - action: light.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: "{{ entity }}"
-                data:
-                  brightness_pct: "{{ level }}"
-                  transition: "{{ fade }}"
-          # colour lamps often claim a range far wider than they really do (that Govee says 15 to
-          # 6535 K and goes to about 2200), and the floor keeps the light comparable
-          - conditions: "{{ dims and kelvin not in [none, '', 'None'] }}"
-            sequence:
-              - action: light.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: "{{ entity }}"
-                data:
-                  color_temp_kelvin: "{% from 'control.jinja' import param %}{{ [[kelvin | int, param('kelvin_floor') | int] | max, 6500] | min }}"
-                  brightness: "{{ state_attr(entity, 'brightness') if is_state(entity, 'on') and state_attr(entity, 'brightness') else 3 }}"
-                  transition: 0
-              - action: light.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: "{{ entity }}"
-                data:
-                  brightness_pct: "{{ level }}"
-                  transition: "{{ fade }}"
-          - conditions: "{{ dims }}"
-            sequence:
-              - action: light.turn_on
-                continue_on_error: true
-                target:
-                  entity_id: "{{ entity }}"
-                data:
-                  brightness_pct: "{{ level }}"
-                  transition: "{{ fade }}"
-        default:
-          - action: light.turn_on
-            continue_on_error: true
-            target:
-              entity_id: "{{ entity }}"
-      - if: "{{ hold is defined and hold | float(0) > 0 }}"
-        then:
-          - event: light_hold
-            event_data:
-              entity: "{{ entity }}"
-              priority: "{{ pr }}"
-              minutes: "{{ hold | float(0) }}"
-              source: "{{ who }}"
+          level: "{{ level | default(0) }}"
+          dims: "{{ dims | default(none) }}"
+          hs: "{{ hs | default(none) }}"
+          kelvin: "{{ kelvin | default(none) }}"
+          fade: "{{ fade | default(2) }}"
+          priority: "{{ priority | default(4) }}"
+          hold: "{{ hold | default(0) }}"
+          source: "{{ source | default('look') }}"
+          override: "{{ override | default(false) }}"
 
+  # A look, from house_control: above. dry_run: true answers with the plan instead of doing it
   lights_look:
     alias: "Apply a lighting look"
     icon: mdi:lightbulb-group
@@ -270,241 +240,18 @@ script:
         description: "One small step toward the look instead of all the way: the clock's changes, a minute at a time"
         selector:
           boolean:
-    variables:
-      no_dim: "{{ label_entities('light_no_dim') | select('match', 'light[.]') | list }}"
-      keep: "{{ label_entities('light_keep') | select('match', 'light[.]') | list }}"
-      stand_in: "{{ label_entities('light_stand_in') | select('match', 'light[.]') | list }}"
-      # a printer's light while it prints (packages/printers.yaml)
-      printing: "{{ state_attr('binary_sensor.printing', 'lights') or [] }}"
-      looks:
-        # most lights on to get going, the sunrise light on but not glaring. Task lights only if
-        # they're on already: a kitchen ceiling at full is a lot first thing
-        morning:
-          transition: 5
-          kelvin: curve
-          layers: {ambient: curve, accent: 100}
-          roles: {sunrise: 60}
-        # home in the day: the lamps stay on, at a level and colour that follow the daylight (low in
-        # full sun, rising as it fades). Switching them off at 8 in the morning sounds tidy, and in
-        # practice they just get switched back on by hand within the hour. The sunrise light's done
-        # its job by then
-        day:
-          transition: 5
-          kelvin: curve
-          layers: {ambient: curve}
-          roles: {sunrise: 0}
-        evening:
-          transition: 3
-          kelvin: curve
-          layers: {ambient: curve, task: 50, accent: 70}
-          roles: {sunrise: 0}
-        # a film: the lamps off too, only the accent lights low
-        movie:
-          transition: 5
-          layers: {task: 0, ambient: 0, accent: 25}
-        # paused: enough to see by, in the TV's room only. Warm white, at the floor
-        intermission:
-          areas: [tv]
-          transition: 3
-          kelvin: 2700
-          layers: {ambient: 30}
-        # the hour before bed: the lamps on the curve like the rest of the day (by then they're in the
-        # wind-down, dim and warm), the overheads and accents lower. A fixed level at a fixed 9:30 PM
-        # would be a jump in both colour and brightness at a time that has nothing to do with when
-        # you're actually going to bed
-        calm:
-          transition: 3
-          kelvin: curve
-          layers: {ambient: curve, task: 20, accent: 50}
-          roles: {sunrise: 0}
-        night:
-          transition: 5
-          layers: {task: 0, ambient: 0, accent: 0}
-          # the bedside lamp stays on if it's on (reading in bed), but going to bed never turns it on
-          roles: {bedside: {level: 20, if_on: true}, sunrise: 0}
-          touches_kept: true
-        # coming home, through the door: the lamps on, on top of the mode's own look. Its colour is
-        # the mode's, which is the curve's in every mode but Bright: without one, a colour lamp comes
-        # back at whatever it had last, which on a workday is the morning's 4000 K, and walking in
-        # before Evening means a cold white lamp. Its brightness is the curve's too, so coming home
-        # late is a dim, warm room: eyes that have been in the dark don't want a bright one
-        welcome:
-          transition: 2
-          colour: mode
-          layers: {ambient: curve}
-        # you asking for everything: the one look that switches task lights on
-        bright:
-          transition: 2
-          kelvin: 4500
-          task_on: true
-          layers: {task: 100, ambient: 100, accent: 100}
-        away:
-          transition: 1
-          layers: {task: 0, ambient: 0, accent: 0}
-          touches_kept: true
-        "off":
-          transition: 2
-          layers: {task: 0, ambient: 0, accent: 0}
-          touches_kept: true
-      spec: "{{ looks.get((look | default('')) | lower) }}"
-      curve: "{% from 'lighting.jinja' import light_curve %}{{ light_curve() | from_json }}"
-      # whose colour this look uses: its own, or for the welcome the mode look's (the last one applied)
-      borrows: "{{ spec is mapping and spec.get('colour') == 'mode' }}"
-      lend: "{{ (looks.get(states('input_text.lights_look')) or {}) if borrows else (spec or {}) }}"
-      kelvin: >-
-        {%- set k = lend.kelvin | default('curve' if borrows else none) -%}
-        {{ curve.kelvin if k == 'curve' else k }}
-      hs: "{{ lend.hs | default(none) }}"
-      blending: "{{ blend | default(false) | bool }}"
-      fade: >-
-        {% from 'control.jinja' import param %}{{ transition if transition is defined and transition not in [none, '']
-           else (param('blend_fade_seconds') | float if blending else (spec.transition | default(2) if spec else 2)) }}
-      plan: >-
-        {% if not spec %}{{ [] }}{% else %}
-        {% from 'control.jinja' import param %}
-        {% set raw_scope = spec.areas | default(none) %}
-        {% set tv_area = area_id('media_player.tv') %}
-        {% set scope = none if raw_scope is none else (raw_scope | map('replace', 'tv', tv_area or '') | reject('eq', '') | list) %}
-        {% set scope = none if scope is not none and scope | count == 0 else scope %}
-        {% set picked = namespace(items=[], seen=[]) %}
-        {% set singles = namespace(d=dict(spec.entities | default({}))) %}
-        {% for role, v in (spec.roles | default({})).items() %}
-          {% for e in label_entities('light_' ~ role) | select('match', 'light[.]') | list %}
-            {% set singles.d = dict(singles.d, **{e: v}) %}
-          {% endfor %}
-        {% endfor %}
-        {% for e, v in singles.d.items() %}
-          {% set layer = (['ambient', 'task', 'accent'] | select('in', labels(e) | map('replace', 'light_', '') | list) | list + [''])[0] %}
-          {% set picked.items = picked.items + [{'entity': e, 'v': v, 'layer': layer}] %}
-          {% set picked.seen = picked.seen + [e] %}
-        {% endfor %}
-        {% for layer, v in (spec.layers | default({})).items() %}
-          {% for e in label_entities('light_' ~ layer) | select('match', 'light\\.') | list %}
-            {% if e not in picked.seen and (scope is none or area_id(e) in scope) %}
-              {# an accent light that can't dim is a decoration at full brightness, so a look that
-                 wants its accents low (a film) leaves that one off rather than on #}
-              {% set dims = (state_attr(e, 'supported_color_modes') or []) | reject('eq', 'onoff') | list | count > 0 %}
-              {% set w = 0 if layer == 'accent' and v is number and not dims and v < param('accent_on_from') | int else v %}
-              {% set picked.items = picked.items + [{'entity': e, 'v': w, 'layer': layer}] %}
-              {% set picked.seen = picked.seen + [e] %}
-            {% endif %}
-          {% endfor %}
-        {% endfor %}
-        {# a stand-in takes its room's ambient level, scaled into its own band, when every ambient
-           light in the room is dead #}
-        {% set amb = (spec.layers | default({})).get('ambient') %}
-        {% if amb is not none %}
-          {% set amb = curve.level if amb == 'curve' else (amb.level if amb is mapping else amb) %}
-          {% set top = param('stand_in_band') | float %}
-          {% for e in stand_in if states(e) not in ['unavailable', 'unknown'] and (scope is none or area_id(e) in scope) and area_id(e) %}
-            {% set mates = label_entities('light_ambient') | select('match', 'light\\.') | select('in', area_entities(area_id(e))) | list %}
-            {% if mates | count > 0 and expand(mates) | map(attribute='state') | reject('in', ['unavailable', 'unknown']) | list | count == 0 %}
-              {% set lvl = ([top * (amb | float(0)) / 100, 1] | max) | round(0) | int if (amb | float(0)) > 0 else 0 %}
-              {% set picked.items = picked.items | rejectattr('entity', 'eq', e) | list + [{'entity': e, 'v': lvl, 'layer': 'ambient'}] %}
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-        {% set only_layers = layers if layers is defined and layers else ['ambient', 'task', 'accent', ''] %}
-        {% set out = namespace(items=[]) %}
-        {% for i in picked.items if states(i.entity) not in ['unavailable', 'unknown'] and i.layer in only_layers
-             and (i.entity not in keep or spec.touches_kept | default(false))
-             and not (i.entity in printing and ((i.v.level if i.v is mapping else i.v) | int(0)) == 0) %}
-          {% set raw = i.v.level if i.v is mapping else i.v %}
-          {% set level = (curve.level if raw == 'curve' else raw) | int(0) %}
-          {% set level = 100 if i.entity in no_dim and level > 0 else level %}
-          {# a task light only ever goes on because someone asked: a look can dim it or turn it off #}
-          {% set if_on = ((i.v.if_on | default(false)) if i.v is mapping else false)
-                         or (i.layer == 'task' and level > 0 and not (spec.task_on | default(false))) %}
-          {% if not ((if_on or (only_on | default(false) | bool)) and is_state(i.entity, 'off')) %}
-            {% set dims = (state_attr(i.entity, 'supported_color_modes') or []) | reject('eq', 'onoff') | list | count > 0 %}
-            {% set modes = state_attr(i.entity, 'supported_color_modes') or [] %}
-            {% set ct = 'color_temp' in modes %}
-            {% set colour = modes | select('in', ['hs', 'xy', 'rgb', 'rgbw', 'rgbww']) | list | count > 0 %}
-            {% set on = is_state(i.entity, 'on') %}
-            {% set k_want = kelvin | int if ct and kelvin not in [none, '', 'None'] and hs in [none, '', 'None'] else none %}
-            {# keeping lights where they are (the blend ticks): skip what's already there, a plug
-               that's on or a lamp within 30 K and 2% (blending: right on it, or the last step
-               could stop a couple of points short for good) #}
-            {% set now_level = ((state_attr(i.entity, 'brightness') | int(0)) / 2.55) | round(0) | int if on else 0 %}
-            {% set now_k = state_attr(i.entity, 'color_temp_kelvin') | int(0) if on and is_state_attr(i.entity, 'color_mode', 'color_temp') else 0 %}
-            {% set there = on and level > 0
-                           and (not dims or ((now_level - level) | abs <= (0 if blending else 2)
-                                and (k_want is none or (now_k - k_want) | abs <= 30))) %}
-            {% if not ((only_on | default(false) | bool) and there) %}
-              {# blending: one step from where the light is, at most 5% of it (2 points at least)
-                 and 3 mired of colour, and off once it's down to the last step #}
-              {% set step_level, step_k = level, k_want %}
-              {% if blending and dims and on and now_level > 0 and i.entity not in no_dim %}
-                {% set step = [now_level * param('blend_ratio') | float, param('blend_min_step') | float] | max %}
-                {% set step_level = [[level, now_level - step] | max, now_level + step] | min %}
-                {% set step_level = (step_level | round(0, 'ceil') if level > now_level else step_level | round(0, 'floor')) | int %}
-                {% set step_level = 0 if level == 0 and step_level <= param('blend_min_step') | int else step_level %}
-                {% if k_want is not none and now_k > 0 %}
-                  {% set m_now, m_want, dm = 1000000 / now_k, 1000000 / k_want, param('blend_mired_step') | float %}
-                  {% set step_k = (1000000 / ([[m_want, m_now - dm] | max, m_now + dm] | min)) | round(0) | int %}
-                {% endif %}
-              {% endif %}
-              {% set out.items = out.items + [{'entity': i.entity, 'level': step_level, 'kelvin': step_k, 'dims': dims, 'ct': ct, 'colour': colour}] %}
-            {% endif %}
-          {% endif %}
-        {% endfor %}
-        {{ out.items }}
-        {% endif %}
     sequence:
-      - if: "{{ not spec }}"
-        then:
-          - variables:
-              result: {"applied": 0, "why": "no such look"}
-          - stop: "No such look"
-            response_variable: result
-      - if: "{{ dry_run | default(false) | bool }}"
-        then:
-          - variables:
-              result:
-                look: "{{ look }}"
-                transition: "{{ fade }}"
-                plan: "{{ plan }}"
-                held: >-
-                  {% from 'control.jinja' import gate %}
-                  {% set ns = namespace(h={}) %}
-                  {% for i in plan %}{% set g = gate(i.entity, priority | default(4), override | default(false)) %}
-                    {% if g != 'go' %}{% set ns.h = dict(ns.h, **{i.entity: g}) %}{% endif %}{% endfor %}
-                  {{ ns.h }}
-          - stop: "Dry run"
-            response_variable: result
-      # every light gets its own call through script.light_set, all at once and not waited on, so
-      # one that doesn't answer (a plug whose Matter session dropped can take 39 seconds to give up)
-      # only holds up itself. One after another, the first dead one would stop the rest of the look,
-      # and every button pressed while it waited
-      - repeat:
-          for_each: "{{ plan }}"
-          sequence:
-            - action: script.turn_on
-              continue_on_error: true
-              target:
-                entity_id: script.light_set
-              data:
-                variables:
-                  entity: "{{ repeat.item.entity }}"
-                  level: "{{ repeat.item.level }}"
-                  dims: "{{ repeat.item.dims }}"
-                  hs: "{{ hs if repeat.item.colour else none }}"
-                  kelvin: "{{ repeat.item.kelvin if repeat.item.ct else none }}"
-                  fade: "{{ 0 if repeat.item.entity in no_dim else fade }}"
-                  priority: "{{ priority | default(4) }}"
-                  override: "{{ override | default(false) }}"
-                  source: "{{ 'look ' ~ (look | lower) }}"
-      - if: "{{ (look | lower) != 'welcome' }}"
-        then:
-          - action: input_text.set_value
-            target:
-              entity_id: input_text.lights_look
-            data:
-              value: "{{ look | lower }}"
-      - variables:
-          result:
-            look: "{{ look }}"
-            applied: "{{ plan | count }}"
+      - action: house_control.look
+        data:
+          look: "{{ look | default('') }}"
+          transition: "{{ transition | default(none) }}"
+          dry_run: "{{ dry_run | default(false) }}"
+          only_on: "{{ only_on | default(false) }}"
+          priority: "{{ priority | default(4) }}"
+          override: "{{ override | default(false) }}"
+          layers: "{{ layers | default(none) }}"
+          blend: "{{ blend | default(false) }}"
+        response_variable: result
       - stop: "Done"
         response_variable: result
 

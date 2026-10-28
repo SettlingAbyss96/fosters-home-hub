@@ -79,8 +79,8 @@ def render(text: str, h: dict | None) -> str:
 
 
 def lists(h: dict) -> dict[str, str]:
-    """ha/config/house/: the lists a state trigger needs spelled out (packages/arbiter.yaml and
-    packages/lights.yaml can't follow a label)"""
+    """ha/config/house/: the lists a state trigger needs spelled out (packages/lights.yaml's
+    triggers can't follow a label)"""
     lights = [l["becomes"] for l in h["light"]]
     no_dim = [l["becomes"] for l in h["light"] if "no_dim" in l["roles"]]
     # a state trigger needs at least one entity; one that never exists never fires
@@ -123,7 +123,7 @@ def build(out: pathlib.Path, h: dict | None) -> list[str]:
     if out.exists():
         shutil.rmtree(out)
     for p in sorted(SOURCE.rglob("*")):
-        if not p.is_file() or p.relative_to(SOURCE).parts[0] == "house":
+        if not p.is_file() or p.relative_to(SOURCE).parts[0] == "house" or "__pycache__" in p.parts:
             continue
         dest = out / p.relative_to(SOURCE)
         dest.parent.mkdir(parents=True, exist_ok=True)

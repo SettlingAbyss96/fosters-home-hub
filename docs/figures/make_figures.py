@@ -6,8 +6,10 @@ Standard library only, so anyone can rerun it:
 
 The measured ones read data.json (what the voice benches and the turn replays printed, the
 recordings themselves stay out of the repo). The rest are simulations that use the house's own
-numbers: the asleep filter and the PID block with the parameters in
-ha/config/custom_templates/control.jinja and estimates.jinja, the sunrise with the curve in wake.yaml.
+numbers: the asleep filter and the PID block with the settings in param() in
+ha/config/custom_templates/control.jinja, worked the way the control core in
+ha/config/custom_components/house_control does it (copied rather than imported, so this stays standard
+library only), the sunrise with the curve in wake.yaml.
 """
 
 import json
@@ -430,7 +432,7 @@ def bayes_step(b, stay, enter, ratio):
 
 
 def asleep_minute(prev, ctx):
-    """One minute of estimates.jinja's asleep_next, with the context handed in instead of read."""
+    """One minute of the control core's asleep_next (asleep.py), with the context handed in."""
     h = ctx["hour"]
     base = 0.008 if (h >= 23 or h < 4) else (0.003 if h >= 21 else (0.003 if h < 7 else 0.0003))
     q = ctx["quiet"]
@@ -647,7 +649,7 @@ def control_pid():
     p.axes([0, 5, 10, 15, 20, 25, 30, 35], [0, 20, 40, 50, 60, 80, 100])
     p.line([(t, min(s, 110)) for t, s in zip(tm, sps)], INK2, "setpoint (150 is out of reach)", dash="6 4", step=True)
     p.line(list(zip(tm, [y for y, _ in bad])), ORANGE, "integral grows while the output is pinned")
-    p.line(list(zip(tm, [y for y, _ in good])), BLUE, "conditional integration (control.jinja)")
+    p.line(list(zip(tm, [y for y, _ in good])), BLUE, "conditional integration (blocks.py)")
     p.legend("br")
     save("control-pid.svg", p.svg())
 
@@ -738,7 +740,7 @@ def sensing_latency():
 
 
 # ---------------------------------------------------------------------------------------------
-# Lighting (docs/lighting.md): the light curve over a day, with custom_templates/lighting.jinja's numbers
+# Lighting (docs/lighting.md): the light curve over a day, with the control core's numbers (curve.py)
 # ---------------------------------------------------------------------------------------------
 
 def sun_elevation(doy, hour, lat=45.0, lon=-15.0, utc_offset=0):
@@ -761,7 +763,7 @@ def smoothstep(x):
 
 
 def light_curve(hour, cloud, bed=21 + 40 / 60, wake=5 + 25 / 60, hrs=3.0, doy=288):
-    """lighting.jinja's light_curve(), for a clock hour in mid-October"""
+    """curve.py's light_curve(), for a clock hour in mid-October"""
     elev = sun_elevation(doy, hour)
     clear = max(0.0, min(1.0, math.sin(math.radians(elev)) / math.sin(math.radians(35))))
     d = clear * (1 - 0.75 * cloud ** 3.4)

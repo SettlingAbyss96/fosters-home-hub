@@ -1153,7 +1153,8 @@ def step_exposure():
                                                 "lowest_sleep_heart_rate", "steps", "activity_score", "bedtime_start",
                                                 "bedtime_end")])
     # the control layer's insides and the plumbing: nothing Jarvis needs to read or press
-    expose(["sensor.light_arbiter", "sensor.asleep_belief", "binary_sensor.asleep", "sensor.seen_up", "input_text.house_mode_by",
+    expose(["sensor.light_arbiter", "sensor.asleep_belief", "binary_sensor.asleep", "sensor.light_curve", "sensor.seen_up",
+            "input_text.house_mode_by",
             "input_number.computer_volume_before", "script.wake_up_bedroom_full", "script.wake_up_computer_back",
             "sensor.home_assistant_started", "input_datetime.doorbell_last_lingering", "input_datetime.house_error_at",
             "input_text.house_error_from", "input_datetime.vacuum_asked_at", "input_datetime.wake_up_backstop_at",

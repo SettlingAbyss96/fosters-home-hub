@@ -15,10 +15,10 @@
 # charger as a fact instead of the app's guess, and the car parking during the on-the-way-in window
 # starts the wait for the door like the Wi-Fi does (packages/presence.yaml).
 #
-# Asleep: the filter in packages/estimates.yaml. Here it's only logged: the first time each night it
+# Asleep: the filter in the control core (custom_components/house_control/asleep.py). Here it's only logged: the first time each night it
 # says asleep goes in input_datetime.probably_asleep_since, and with an Oura ring every morning its
 # night (bedtime_start, once it syncs) is compared with it, the gap kept in sensor.asleep_guess_error.
-# A few weeks of that tunes the filter's numbers (custom_templates/control.jinja). Without a ring
+# A few weeks of that tunes the filter's numbers (param() in custom_templates/control.jinja). Without a ring
 # the comparison just never fills in
 input_boolean:
   phone_on_charger:

@@ -144,7 +144,9 @@ hub/                code that runs on the Hub: the three services, the speech en
                     example questions (journal.example.toml)
 ha/
   config/             copied into /config: packages (one file per feature), custom sentences,
-                      custom_templates (control.jinja, estimates.jinja, lighting.jinja)
+                      custom_templates (control.jinja, estimates.jinja, lighting.jinja), and
+                      custom_components/house_control, the control core: the light arbiter, the
+                      looks, the light curve and the asleep filter
   context/            about.md, the agent's prompt, and an example for your about.local.md
   automations/        one JSON file each
   dashboards/parts/   the fixed parts of the dashboard tools/dashboard.py builds

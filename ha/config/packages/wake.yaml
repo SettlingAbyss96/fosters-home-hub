@@ -102,7 +102,7 @@ input_datetime:
 template:
   # The last sign you're awake and moving. Only real changes count (not the unavailable a restart
   # puts in between), so it survives restarts too. And only a person's: a light counts when the
-  # arbiter says a person changed it (light_manual, packages/arbiter.yaml), never because a look or
+  # arbiter says a person changed it (light_manual, custom_components/house_control), never because a look or
   # a fade moved it. The TV counts going on, not off, and the phone's battery going to full is the
   # charger finishing, not anyone (iPhones say Full, Android full)
   - trigger:
@@ -390,7 +390,7 @@ script:
                         - action: WAKE_UP_CONFIRMED
                           title: "I'm up"
 
-  # the sunrise lights full and the bedside lamp on, as the alarm (priority 1, packages/arbiter.yaml):
+  # the sunrise lights full and the bedside lamp on, as the alarm (priority 1, custom_components/house_control):
   # nothing else, a look or a light switched by hand earlier, can take them back down for the morning
   wake_up_bedroom_full:
     alias: "Bedroom full, for the alarm"

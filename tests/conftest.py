@@ -1,9 +1,23 @@
 """Scenario tests for the house's logic, on the real Home Assistant (see house.py)."""
 
+import sys
+import types
+
 import pytest
 from homeassistant.helpers import template as ha_template
 
-from house import House
+from house import CONFIG, House
+
+# The house's own integration (ha/config/custom_components/house_control) on the bench: Home
+# Assistant looks for custom integrations in the custom_components package, so that package is
+# made here with ours on its path (nothing gets copied into the test harness's own folder)
+try:
+    import custom_components
+except ImportError:
+    custom_components = types.ModuleType("custom_components")
+    custom_components.__path__ = []
+    sys.modules["custom_components"] = custom_components
+custom_components.__path__.append(str(CONFIG / "custom_components"))
 
 # Every test builds a new Home Assistant, and every new one compiled the same 632 templates from
 # scratch, about a second of each test's two. The compiled code doesn't belong to any one Home
@@ -23,6 +37,12 @@ def _compile_once(self, source, name=None, filename=None, raw=False, defer_init=
 
 
 ha_template.TemplateEnvironment.compile = _compile_once
+
+
+@pytest.fixture(autouse=True)
+def custom_integrations(enable_custom_integrations):
+    """Custom integrations load (the harness keeps them off by default)"""
+    yield
 
 
 @pytest.fixture
@@ -60,7 +80,8 @@ def no_silent_errors(caplog, request):
         if any(b in msg for b in BENCH_ONLY) or any(a in msg for a in allowed):
             continue
         ours = name.startswith(("homeassistant.components.automation", "homeassistant.components.script",
-                                "homeassistant.components.template", "homeassistant.helpers.template"))
+                                "homeassistant.components.template", "homeassistant.helpers.template",
+                                "custom_components.house_control"))
         if ours and (r.levelno >= 40 or "Error evaluating condition" in msg or "Template variable" in msg):
             bad.append(f"{name}: {msg[:300]}")
     assert not bad, "the house's logic logged errors:\n" + "\n".join(bad)

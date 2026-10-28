@@ -19,7 +19,7 @@ phone, the wake-up wakes one person, the asleep filter models one sleeper, and t
 for whoever `person.resident` is. Guest mode covers having people over. Two people with two phones
 is the first thing that would need real changes (presence by "anyone home", and a wake-up per
 person), and I haven't built it because I haven't needed it. I'd start in `presence.yaml` and
-`estimates.jinja` if I did.
+the asleep filter in `custom_components/house_control` if I did.
 
 ## Always there
 

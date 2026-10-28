@@ -44,7 +44,7 @@ TZ = "America/New_York"
 
 # what gets set up for real. Everything else the packages call is recorded
 DOMAINS = ["input_boolean", "input_datetime", "input_number", "input_select", "input_text", "timer",
-           "template", "script", "automation", "intent_script"]
+           "template", "house_control", "script", "automation", "intent_script"]
 
 # The bench's made-up home: a colour floor lamp and a strip in the living room, a kitchen ceiling
 # whose bulbs can't dim, a bathroom light on the fan's switch, a bedroom with a dimmable overhead (the

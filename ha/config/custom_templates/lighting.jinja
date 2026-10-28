@@ -1,79 +1,15 @@
 {#-
-  The light curve: how bright and how warm the ambient layer should be right now. One function of
-  the day instead of a number per mode, so the light moves with the daylight and with my bedtime
-  rather than in steps when the mode changes. docs/lighting.md has where each part comes from.
-
-    daylight D, 0 to 1: the sun's height, counted as full from 35 degrees up, times Kasten and
-      Czeplak's cloud factor 1 - 0.75 c^3.4 (c the cloud cover, 0 to 1). With decent windows,
-      daylight is most of the light by day, so the lamps can sit lower
-    wind-down w, 0 to 1: nothing until an hour before (bedtime - H), all of it from there until the
-      planned wake time, a smoothstep in between. H is input_number.wind_down_hours, 3 to start: the
-      2022 consensus (Brown et al.) puts evening light at its lowest from three hours before bed
-    level  = dark - (dark - daylight) * D, then toward the wind-down level by w
-    kelvin = 4000 K in the morning, easing to 2700 K between 1 and 3 PM (and by w, if the wind-down
-      starts earlier), never below the floor: under 2700 K a lot of colour lamps get much dimmer
-      (probably mixing the warmth from their red LEDs), so a warmer white is a much dimmer lamp
-
-  Returns JSON: level (percent), kelvin, daylight and wind_down (0 to 1, for the record)
-
-  bed_and_wake(): tonight's planned bedtime and wake time (sensor.bedtime_plan), or the
-  bedtime_without_plan and wake_without_plan settings (10:30 PM and 7 AM) without a plan. Before
-  noon the plan is still last night's, so "bed" is in the past and "wake" is this morning
-  calm_from(): when Calm starts, the hour before that bedtime
+  When Calm starts, for the templates that need it (sensor.natural_house_mode and the clock's move to
+  Calm, packages/house_mode.yaml): the hour before tonight's planned bedtime. The light curve works
+  it out with the bedtime it uses (custom_components/house_control/curve.py) and keeps it on
+  sensor.light_curve. Until that's up after a restart, it's the hour before the bedtime the house
+  goes by without a plan (bedtime_without_plan in control.jinja)
 -#}
-{%- macro smoothstep(x) -%}
-{%- set x = [[x | float, 0] | max, 1] | min -%}
-{{- x * x * (3 - 2 * x) -}}
-{%- endmacro -%}
-
-{%- macro bed_and_wake() -%}
-{%- from 'control.jinja' import param -%}
-{%- set t = now() -%}
-{%- set bed = states('sensor.bedtime_plan') | as_datetime(none) -%}
-{%- set wake = state_attr('sensor.bedtime_plan', 'wake') | as_datetime(none) -%}
-{%- if bed is none or wake is none -%}
-  {%- set bed = today_at(param('bedtime_without_plan')) - timedelta(days=0 if t.hour >= 12 else 1) -%}
-  {%- set wake = today_at(param('wake_without_plan')) + timedelta(days=1 if t.hour >= 12 else 0) -%}
-{%- endif -%}
-{{- {'bed': as_local(bed).isoformat(), 'wake': as_local(wake).isoformat()} | to_json -}}
-{%- endmacro -%}
-
 {%- macro calm_from() -%}
 {%- from 'control.jinja' import param -%}
-{%- set p = bed_and_wake() | from_json -%}
-{{- ((p.bed | as_datetime) - timedelta(minutes=param('calm_before_bed_minutes') | int)).isoformat() -}}
-{%- endmacro -%}
-
-{%- macro light_curve() -%}
-{%- from 'control.jinja' import param -%}
-{%- set t = now() -%}
-{#- daylight -#}
-{%- set elev = state_attr('sun.sun', 'elevation') | float(0) -%}
-{%- set full = (param('daylight_full_elevation') | float) * pi / 180 -%}
-{%- set clear = [[((elev * pi / 180) | sin) / (full | sin), 0] | max, 1] | min -%}
-{%- set c = (state_attr('weather.forecast_home', 'cloud_coverage') | float(50)) / 100 -%}
-{%- set d = clear * (1 - 0.75 * c ** 3.4) -%}
-{#- wind-down: from tonight's plan, or a 10:30 PM bedtime without one -#}
-{%- set hrs = states('input_number.wind_down_hours') | float(3) -%}
-{%- set ramp = (param('wind_down_ramp_minutes') | float) / 60 -%}
-{%- set p = bed_and_wake() | from_json -%}
-{%- set bed = p.bed | as_datetime -%}
-{%- set wake = p.wake | as_datetime -%}
-{%- if t >= wake -%}
-  {%- set w = 0 -%}
-{%- else -%}
-  {%- set to_bed = (bed - t).total_seconds() / 3600 -%}
-  {%- set w = smoothstep((hrs + ramp - to_bed) / ramp) | float -%}
+{%- set c = state_attr('sensor.light_curve', 'calm_from') -%}
+{%- if c -%}{{- c -}}
+{%- else -%}{{- (today_at(param('bedtime_without_plan')) - timedelta(days=0 if now().hour >= 12 else 1)
+                 - timedelta(minutes=param('calm_before_bed_minutes') | int)).isoformat() -}}
 {%- endif -%}
-{#- the two outputs -#}
-{%- set dark = param('ambient_level_dark') | float -%}
-{%- set level = dark - (dark - param('ambient_level_daylight') | float) * d -%}
-{%- set level = level + (param('ambient_level_wind_down') | float - level) * w -%}
-{%- set h = t.hour + t.minute / 60 -%}
-{%- set k_day = param('kelvin_morning') | float -%}
-{%- set k_eve = param('kelvin_evening') | float -%}
-{%- set k = k_day - (k_day - k_eve) * (smoothstep((h - 13) / 2) | float) -%}
-{%- set k = k + (k_eve - k) * w -%}
-{%- set k = [k, param('kelvin_floor') | float] | max -%}
-{{- {'level': level | round(0) | int, 'kelvin': k | round(0) | int, 'daylight': d | round(2), 'wind_down': w | round(2)} | to_json -}}
 {%- endmacro -%}

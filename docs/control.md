@@ -39,11 +39,11 @@ flowchart BT
 
 | Layer | What | Where |
 |---|---|---|
-| Blocks | the math: settings, Bayes step, hysteresis, low-pass, rate, PID, the gate | `custom_templates/control.jinja` |
-| Estimates | what's true about me and the house | `custom_templates/estimates.jinja`, `packages/estimates.yaml`, `packages/occupancy.yaml` |
+| Blocks | the math: Bayes step, hysteresis, low-pass, rate, PID, and the settings | `custom_components/house_control/blocks.py`, `param()` in `custom_templates/control.jinja` |
+| Estimates | what's true about me and the house | the control core (asleep), `custom_templates/estimates.jinja`, `packages/estimates.yaml`, `packages/occupancy.yaml` |
 | Supervisor | the house mode, and who changed it | `packages/house_mode.yaml` |
 | Behaviours | looks, routines, the wake-up, the off switches | `lights.yaml`, `routines.yaml`, `presence.yaml`, `wake.yaml`, `controls.yaml` |
-| Arbiter | every light command through one gate, with priorities and holds | `packages/arbiter.yaml`, `script.light_set` |
+| Arbiter | every light command through one gate, with priorities and holds | the control core (`custom_components/house_control`), `script.light_set` |
 | Tests | the whole stack against situations, with a frozen clock | `tests/`, see [testing.md](testing.md) |
 
 The idea behind the split is the separation principle from control theory: build the best estimate
@@ -105,8 +105,8 @@ b_t = \min\!\left(\frac{\lambda_t\, \bar b_t}{\lambda_t\, \bar b_t + (1 - \bar b
 
 $`b_t`$ is the belief I'm asleep, $`h_e`$ the chance of falling asleep this minute and $`h_w`$ of
 waking (hazards, in survival-analysis terms), and $`\lambda_t`$ the likelihood ratio of whatever
-was observed this minute. It's `bayes_step` in `control.jinja` and `asleep_next` in
-`estimates.jinja`, about thirty lines of Jinja.
+was observed this minute. It's `bayes_step` and `asleep_next` in the control core
+(`custom_components/house_control`), about thirty lines of Python.
 
 The design decision that matters is what counts as evidence. The phone on the charger, the house in
 Night, the lights off: those are true for hours at a stretch, and fed in as evidence every minute
@@ -246,9 +246,9 @@ stairs on the way out, would have kept the house "in" with nobody there. Now onl
 
 ## The blocks
 
-`control.jinja` holds the math, as Jinja macros any template can import. They take their state in
-and hand it back out, so one macro serves any number of loops, and each is tested on its own in
-`tests/test_blocks.py` before anything depends on it.
+The math is the control core's `blocks.py`, plain Python with nothing about the house in it. Each
+block takes its state in and hands it back out, so one function serves any number of loops, and
+each is tested on its own in `tests/test_blocks.py` before anything depends on it.
 
 ### Low-pass
 
@@ -312,7 +312,8 @@ open-loop version of it today, working the daylight out from the sun and the clo
 ### The settings
 
 Every threshold and hold time is a named entry in `param()`, so changing one is one line and the
-reason lives here instead of in a number typed into some automation:
+reason lives here instead of in a number typed into some automation. The control core reads the
+same table:
 
 | Setting | Value | Why |
 |---|---|---|
@@ -413,8 +414,9 @@ $`p_h`$ may change $`e`$ before time $`t_h`$. The gate for a request of priority
 
 Equal priority goes (the newest wins, so the alarm's next sunrise step passes its own hold), and
 $`o`$ is override, set when I pick a mode myself: it passes my own holds and anything below, never
-the alarm's. The holds live in `sensor.light_arbiter`, a template sensor that folds each
-`light_hold`, `light_release` and `light_commanded` event into its own attributes.
+the alarm's. The arbiter is the control core's `arbiter.py`, `sensor.light_arbiter` shows what it's
+holding, and it still takes `light_hold`, `light_release` and `light_commanded` events from
+anything that sends one.
 
 ![A lamp through one evening: Evening picked at 17:02 and it goes, switched off by hand at 18:45, which holds it for three hours, a clock look at priority 4 held, then coming home at 20:18 with override, which goes and releases the hold](figures/control-arbiter.svg)
 
@@ -473,6 +475,24 @@ gets stuck mid-fade when one command changes the colour and the brightness toget
 transition. So the gate sends them as two commands, colour first and straight there, then the
 brightness with the fade, and the lamp has been quiet since. Fixed where the data comes from, not
 filtered after it.
+
+## Out of the templates
+
+For its first few weeks all of this was Jinja. The arbiter kept its memory as JSON in a template
+sensor's attributes, the looks were one long template, and the asleep filter was a macro. It worked.
+Templates just break in ways that have nothing to do with control (elsewhere in the house a variable
+called `max` turned out to be Jinja's own), and a template sensor that runs on events is really a
+task, busy now and then when the next event arrives. That's why every light command used to fire an
+event and then wait up to two seconds for the arbiter to write it down. Skip the wait and the
+light's answer could beat the record there, and look exactly like a hand at the switch.
+
+So the core is Python now, a small integration kept in the repo (`custom_components/house_control`)
+and loaded like any other, no HACS. The arbiter writes a command down and sends it in the same step,
+so there's nothing to wait for. `script.light_set` and `script.lights_look` kept their names and
+fields, the entities kept their ids and their history (they move over from the template integration
+the first time it starts), and the settings stayed in `param()`, so the rest of the house never
+noticed. Neither did the scenario tests, which is the whole point of having them. Only the blocks'
+own tests changed, and they run as plain Python now.
 
 ## When a part is missing
 

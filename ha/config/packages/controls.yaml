@@ -219,8 +219,9 @@ automation:
         event_data:
           level: ERROR
     conditions:
-      # (never about itself, or one failure in here would keep setting it off)
-      - "{{ trigger.event.data.name is search('^homeassistant[.]components[.](automation|script|template|intent_script)')
+      # the house's own logic, the control core included (a light that doesn't answer is only a
+      # warning there), and never about itself, or one failure in here would keep setting it off
+      - "{{ trigger.event.data.name is search('^(homeassistant[.]components[.](automation|script|template|intent_script)|custom_components[.]house_control)')
            and not trigger.event.data.name.endswith('house_error_alert') }}"
       # a light that didn't answer a command isn't the house breaking: the house carries on past it,
       # tries again (lights.yaml), and one that stays gone is in the attention line as offline

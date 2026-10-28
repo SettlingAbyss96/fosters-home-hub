@@ -1,0 +1,97 @@
+light_set:
+  name: Set one light
+  description: One light through the arbiter's gate, at a priority, maybe leaving a hold (script.light_set calls this).
+  fields:
+    entity:
+      name: Light
+      required: true
+      selector:
+        entity:
+          domain: light
+    level:
+      name: Level
+      description: 0 to 100, 0 is off
+      selector:
+        number: {min: 0, max: 100}
+    dims:
+      name: Dims
+      description: Whether it dims (worked out from the light if left out)
+      selector:
+        boolean:
+    hs:
+      name: Colour
+      description: "[hue, saturation]"
+      selector:
+        object:
+    kelvin:
+      name: Colour temperature
+      selector:
+        number: {min: 2000, max: 6500}
+    fade:
+      name: Fade
+      description: Seconds
+      selector:
+        number: {min: 0, max: 300}
+    priority:
+      name: Priority
+      description: 1 alarm, 2 by hand, 3 routine, 4 look (the default), 5 background
+      selector:
+        number: {min: 1, max: 5}
+    hold:
+      name: Hold
+      description: Minutes nothing weaker may change it afterwards
+      selector:
+        number: {min: 0, max: 1440}
+    source:
+      name: Source
+      description: Who's asking, for the record
+      selector:
+        text:
+    override:
+      name: Override
+      description: You asking for it, past holds from a hand at the switch and below
+      selector:
+        boolean:
+
+look:
+  name: Apply a lighting look
+  description: A look from packages/lights.yaml, or with dry_run the plan for it (script.lights_look calls this).
+  fields:
+    look:
+      name: Look
+      required: true
+      selector:
+        text:
+    transition:
+      name: Transition
+      description: Seconds to fade over (each look has its own default)
+      selector:
+        number: {min: 0, max: 300}
+    dry_run:
+      name: Dry run
+      description: Say what would change without changing it
+      selector:
+        boolean:
+    only_on:
+      name: Only lights that are on
+      selector:
+        boolean:
+    priority:
+      name: Priority
+      selector:
+        number: {min: 1, max: 5}
+    override:
+      name: Override
+      selector:
+        boolean:
+    layers:
+      name: Layers
+      selector:
+        select:
+          multiple: true
+          options: [ambient, task, accent]
+    blend:
+      name: Blend
+      description: One small step toward the look instead of all the way
+      selector:
+        boolean:

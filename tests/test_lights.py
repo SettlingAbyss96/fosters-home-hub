@@ -1,4 +1,4 @@
-"""Who gets the light (packages/arbiter.yaml): by hand beats the clock, asking beats by hand, the
+"""Who gets the light (the arbiter in custom_components/house_control): by hand beats the clock, asking beats by hand, the
 alarm beats everything, and a light reporting back isn't a hand at the switch."""
 
 import pytest

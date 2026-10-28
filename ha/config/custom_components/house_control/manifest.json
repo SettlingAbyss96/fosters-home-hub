@@ -1,0 +1,10 @@
+{
+  "domain": "house_control",
+  "name": "House control",
+  "after_dependencies": ["template", "input_text"],
+  "codeowners": [],
+  "documentation": "https://github.com/SettlingAbyss96/fosters-home-hub/blob/main/docs/control.md",
+  "iot_class": "calculated",
+  "requirements": [],
+  "version": "1.0.0"
+}

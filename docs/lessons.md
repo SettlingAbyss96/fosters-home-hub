@@ -229,7 +229,7 @@ something else first.
 ## Moving a house onto it
 
 My own house ran on its own copy of all this until October 2026, with its own entity names, and
-moving it onto the standard ones taught three things worth knowing before you try it with yours.
+moving it onto the standard ones taught four things worth knowing before you try it with yours.
 
 - Renaming an entity in the registry takes its history and its long-term statistics along, because
   the recorder follows the rename. A person doesn't: it keeps its trackers as a list of entity ids
@@ -242,6 +242,12 @@ moving it onto the standard ones taught three things worth knowing before you tr
   old one stopped. It only works if nothing's used that id before, which the recorder checks
 - A template entity's id comes from its name, so a name that doesn't spell the id the packages use
   puts it somewhere nothing reads ([testing.md](testing.md) has the one that did)
+- An entity can move from one integration to another and keep its id, its history and its settings,
+  as long as its registry entry moves before the new integration adds it. That's how the control
+  core took over the arbiter and the asleep filter from the templates. Home Assistant won't take a
+  "new" unique id that's the same as the old one, though: it sees the id as taken (by the entry
+  itself) and the new integration comes up with `_2` entities beside the old ones. `test_core.py`
+  caught that one before it reached a house
 
 ## Choices that look like bugs
 

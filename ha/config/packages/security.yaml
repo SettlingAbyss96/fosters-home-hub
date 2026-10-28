@@ -2,7 +2,7 @@
 # Wi-Fi), there are no guests, and something happens that takes a person:
 #   - a light switched at the wall: the arbiter's light_manual event with by "wall" (no automation
 #     did it, it isn't the light reporting back a command, and it's not the dashboard or the app,
-#     packages/arbiter.yaml)
+#     custom_components/house_control)
 #   - the computer unlocked and used
 #   - the TV coming on
 #   - the Hub seeing movement twice, at least a minute apart. Once can be a robot vacuum rolling
