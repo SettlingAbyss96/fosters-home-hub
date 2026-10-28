@@ -463,7 +463,15 @@ script:
             {% set ring = states('input_datetime.doorbell_last_ring') | as_datetime(none) %}
             {% if ring is not none and as_local(ring) > since %}{% set out.n = out.n + ['The doorbell rang at ' ~ as_local(ring).strftime('%-I:%M') ~ '.'] %}{% endif %}
             {% set evs = (cal['calendar.work'].events if cal is defined and cal and 'calendar.work' in cal else []) | list %}
-            {% if evs %}{% set first = as_local(as_datetime(evs[0].start)) %}{% set out.n = out.n + [('Next meeting today at ' if first.date() == now().date() else 'First meeting tomorrow at ') ~ first.strftime('%-I:%M %p') ~ '.'] %}{% endif %}
+            {# one that's already started is on now, not next ("your two-thirty meeting has already
+               started" at ten to three). All-day ones aren't meetings #}
+            {% set m = namespace(on=none, next=none) %}
+            {% for e in evs if 'T' in (e.start | string) %}
+              {% set s = as_local(as_datetime(e.start)) %}
+              {% if s <= now() and m.on is none %}{% set m.on = e %}{% elif s > now() and m.next is none %}{% set m.next = s %}{% endif %}
+            {% endfor %}
+            {% if m.on is not none %}{% set out.n = out.n + ['A meeting on now, until ' ~ as_local(as_datetime(m.on.end)).strftime('%-I:%M %p') ~ '.'] %}{% endif %}
+            {% if m.next is not none %}{% set out.n = out.n + [('Next meeting today at ' if m.next.date() == now().date() else 'First meeting tomorrow at ') ~ m.next.strftime('%-I:%M %p') ~ '.'] %}{% endif %}
             {% set fc = (forecast['weather.forecast_home'].forecast if forecast is defined and forecast is mapping and 'weather.forecast_home' in forecast else []) | list %}
             {% set tmr = namespace(f=none) %}
             {% for f in fc if tmr.f is none and as_local(as_datetime(f.datetime)).date() == (now() + timedelta(days=1)).date() %}{% set tmr.f = f %}{% endfor %}

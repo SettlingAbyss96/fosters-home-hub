@@ -87,6 +87,24 @@ back once there were guests talking in the room, because openWakeWord at 0.30 fi
 no "Jarvis" in it, so it's at its default 0.5 now, which costs 3 of the calibration wakes. Recall against false wakes is
 the usual trade, and a false wake in a room with a guest costs more than a repeat.
 
+### The stop word
+
+While Jarvis talks, the satellite also listens for "stop", with microWakeWord's stock stop model.
+Nice idea, blunt model. I ran it over 232 saved requests and it fired in 14, on "Spotify", "Help",
+"Where am I?" and a plain "So", with no "stop" in any of them. And its averaged score tops out at
+0.81, which is also exactly what a clean "stop" gets, so no cutoff keeps the real one and drops the
+rest.
+
+I'm fairly sure that's what kept cutting the welcome home off after its first sentence. Replayed
+with the speaker at zero it played to the end every time, even with Kokoro frozen halfway, and the
+stop word was the one thing that could end it without leaving a line in the log. The satellite
+then reported the announcement finished, so the house counted it as heard.
+
+So announcements don't listen for it any more (`host/patches/lva-announce.patch`). Answers and a
+ringing timer still do, since I asked for those. "Hey Jarvis, stop" (or "be quiet") ends an
+announcement without a word, and the satellite tells Home Assistant it's over instead of leaving it
+waiting five minutes. A stop that does cut something off goes in the journal now.
+
 ## Knowing when I've finished
 
 ### The fixed timer

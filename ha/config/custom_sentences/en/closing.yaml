@@ -11,6 +11,16 @@ intents:
           - "[no] (nothing|nothing else|i'm good|i'm all set|all good|we're good|we're done) [thanks|thank you] [jarvis|sir]"
           - "(perfect|great|awesome|cheers|got it|sounds good) [thanks|thank you] [jarvis|sir]"
           - "no thanks [jarvis|sir]"
+  # "Hey Jarvis, stop" over something Jarvis is saying: the wake word cuts it off, and this ends it
+  # without a word, like Home Assistant's own "never mind". On its own "stop" went to the media
+  # player or the cloud agent. An announcement doesn't listen for the bare stop word any more
+  # (host/patches/lva-announce.patch), so this is how one gets stopped
+  HassNevermind:
+    data:
+      - sentences:
+          - "stop [talking|it|that] [jarvis|sir|please]"
+          - "[be] quiet [jarvis|sir|please]"
+          - "(shush|hush|enough|that's enough|that is enough) [jarvis|sir]"
   JarvisGoodnight:
     data:
       - sentences:

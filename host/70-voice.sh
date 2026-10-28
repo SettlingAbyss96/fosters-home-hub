@@ -52,12 +52,19 @@ fi
 #   lva-preroll.patch   "Hey Jarvis, who am I" in one breath lost its start: the satellite now
 #                       sends a quarter second from before the wake word, and holds the audio
 #                       until Home Assistant is listening, which used to throw the first bit away
+#   lva-announce.patch  an announcement doesn't listen for the stop word. The stop model fires on
+#                       everyday speech ("Spotify", "Help", about one request in seventeen) and
+#                       scores it the same as a real "stop", so anyone talking near the Hub cut the
+#                       welcome home off after its first sentence. "Hey Jarvis" over an announcement
+#                       now ends it properly, where Home Assistant used to wait five minutes for it.
+#                       The stop word that does cut something off goes in the journal
 as_user git -C "$dir" checkout -q -- linux_voice_assistant/satellite.py linux_voice_assistant/player/libmpv.py linux_voice_assistant/__main__.py
 as_user git -C "$dir" apply "$here/host/patches/lva-followup.patch"
 as_user git -C "$dir" apply "$here/host/patches/lva-player.patch"
 as_user git -C "$dir" apply "$here/host/patches/lva-wakelog.patch"
 as_user git -C "$dir" apply "$here/host/patches/lva-endofturn.patch"
 as_user git -C "$dir" apply "$here/host/patches/lva-preroll.patch"
+as_user git -C "$dir" apply "$here/host/patches/lva-announce.patch"
 as_user install -m 644 "$here/hub/lva_end_of_turn.py" "$dir/linux_voice_assistant/end_of_turn.py"
 as_user "$dir/.venv/bin/pip" install -q --disable-pip-version-check onnxruntime==1.31.0
 

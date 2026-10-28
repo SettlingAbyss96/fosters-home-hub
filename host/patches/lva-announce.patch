@@ -1,0 +1,52 @@
+--- a/linux_voice_assistant/__main__.py
++++ b/linux_voice_assistant/__main__.py
+@@ -910,7 +910,8 @@ def process_audio(state: ServerState, mic, block_size: int):
+                             stopped = True
+ 
+                     if stopped and (state.stop_word.id in state.active_wake_words) and not state.muted:
+-                        _LOGGER.debug("Stop word detected")
++                        # fosters-home-hub patch: in the journal, since it cuts off whatever's playing
++                        _LOGGER.info("Stop word heard, stopping what's playing")
+                         state.satellite.stop()
+                 except Exception:  # pylint: disable=broad-except
+                     _LOGGER.exception("Unexpected error handling audio")
+--- a/linux_voice_assistant/satellite.py
++++ b/linux_voice_assistant/satellite.py
+@@ -85,6 +85,7 @@ _HAS_AUDIO_DATA2 = "data2" in {f.name for f in VoiceAssistantAudio.DESCRIPTOR.fi
+ _CLOSING = re.compile(
+     r"^(no,? )?(thanks|thank you|that'?s (all|it|everything)|that('ll| will) be (all|it)|nothing( else)?|"
+     r"i'?m good|i'?m all set|all good|we'?re (good|done)|never ?mind|perfect|great|awesome|cheers|got it|"
++    r"stop( talking| it| that)?|(be )?quiet|shush|hush|(that'?s )?enough|"
+     r"sounds good|good ?night|night|no|"
+     # and what Whisper (or a YouTube video on the TV) produces out of noise
+     r"thanks for watching|thank you for watching|please subscribe|subscribe|bye( bye)?|you)"
+@@ -795,7 +796,14 @@ class VoiceSatelliteProtocol(APIServer):
+                 urls.append(msg.preannounce_media_id)
+             urls.append(msg.media_id)
+ 
+-            self.state.active_wake_words.add(self.state.stop_word.id)
++            # fosters-home-hub patch: no stop word while an announcement plays. The stop model
++            # fires on everyday speech ("Spotify", "Help", "Where am I?", in about one request in
++            # seventeen) and scores those the same as a real "stop", so anyone talking near the Hub
++            # cut the welcome home off after its first sentence, and the house counted it as heard.
++            # "Hey Jarvis" still interrupts an announcement. Spoken answers and a ringing timer
++            # keep the stop word
++            if not self._timer_finished:
++                self.state.active_wake_words.discard(self.state.stop_word.id)
+             self._continue_conversation = msg.start_conversation
+ 
+             self.duck()
+@@ -1031,6 +1039,13 @@ class VoiceSatelliteProtocol(APIServer):
+             _LOGGER.debug("Ignoring wake word - pipeline already active")
+             return
+ 
++        # fosters-home-hub patch: "Hey Jarvis" over an announcement ends it properly. The wake sound
++        # used to swap it out without a word to Home Assistant, which then sat waiting five minutes
++        # for it to finish, and so did whatever was meant to come after it
++        if self._tts_playing:
++            self._continue_conversation = False
++            self.state.tts_player.stop()
++
+         wake_word_phrase = wake_word.wake_word  # type: ignore[union-attr]
+         _LOGGER.debug("Detected wake word: %s", wake_word_phrase)
+ 

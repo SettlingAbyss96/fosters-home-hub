@@ -260,6 +260,21 @@ async def test_the_welcome_is_written_on_the_way_and_is_only_good_news(house_at)
     assert not house.said("lubrication") and not house.said("Paused")
 
 
+async def test_a_meeting_thats_already_started_is_on_now_not_next(house_at):
+    house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
+                                                "binary_sensor.front_door": "off", "calendar.work": "off", **OUT})
+    house.replies["calendar.get_events"] = {"calendar.work": {"events": [
+        {"start": f"{TUESDAY}T19:00:00-04:00", "end": f"{TUESDAY}T20:00:00-04:00", "summary": "Busy"},
+        {"start": f"{TUESDAY}T21:00:00-04:00", "end": f"{TUESDAY}T21:30:00-04:00", "summary": "Busy"},
+        {"start": "2026-10-14", "end": "2026-10-15", "summary": "Busy"}]}}
+    house.replies["conversation.process"] = WORDS
+    await arrive(house)
+    ask = house.called("conversation.process", agent_id="conversation.jarvis_cloud")[0].data["text"]
+    assert "A meeting on now, until 8:00 PM." in ask
+    assert "Next meeting today at 9:00 PM." in ask, "the next one is the one that hasn't started"
+    assert "7:00 PM" not in ask
+
+
 async def test_back_again_the_same_evening_is_just_welcome_back(house_at):
     house = await house_at(f"{TUESDAY} 19:30", {"input_select.house_mode": "Away", "sun.sun": DUSK,
                                                 "binary_sensor.front_door": "off", **OUT})
