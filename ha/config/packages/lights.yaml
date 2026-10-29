@@ -13,6 +13,9 @@
 #     (reading in bed), but going to bed never turns it on
 #   - light_no_dim: a dimmer switch driving bulbs that can't dim. It switches instantly and only ever
 #     goes to 100%; an automation puts it back to 100% if something else dims it
+#   - light_no_fade: a lamp whose firmware can't fade. Every command to it goes with no transition,
+#     and the blend still steps it a minute at a time, since 5% at once is well under what anyone
+#     notices. A Govee floor lamp asked for a few points over a minute doesn't move at all
 #   - light_stand_in: a task light that takes over its room's ambient level, scaled into its bottom
 #     15%, when every ambient light in the room is dead (a plug that dropped leaves a glow, not a
 #     dark room). A layer is what a light is doing, not what it is, and a dimmed overhead is ambient

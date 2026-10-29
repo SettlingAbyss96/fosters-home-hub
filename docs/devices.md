@@ -63,6 +63,7 @@ step anywhere ([lighting.md](lighting.md) has why it's done by layer).
 | `light_sunrise` | the light the wake-up fades up. One or more, usually the bedroom overhead |
 | `light_bedside` | the bedside lamp: on with the alarm, left on at Night if it's on (reading in bed) |
 | `light_no_dim` | a dimmer switch on bulbs that can't dim: only ever full or off |
+| `light_no_fade` | a lamp whose firmware can't fade: everything goes straight there, the blend's steps included |
 | `light_stand_in` | takes over its room's ambient light, low, when every lamp in the room is dead |
 | `light_keep` | left alone by every look but Night, Away and lights out (a bathroom light on the fan's switch) |
 

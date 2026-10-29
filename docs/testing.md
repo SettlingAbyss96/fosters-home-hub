@@ -40,7 +40,10 @@ job. The
 lights are fakes that answer like Matter ones: a command changes the state inside the same tick and
 carries the command's context, a person changing one carries none, and a colour light keeps its last
 colour when it's only given a brightness, the way real colour lamps do. That difference is what the
-by-hand detector keys on, so the fakes have to get it right. Everything else (notifications,
+by-hand detector keys on, so the fakes have to get it right. A fake that dims also says it can fade,
+because Home Assistant drops the transition for a light that doesn't, and for a while that meant the
+tests checking a fade only ever saw 0. `house.cant_fade` makes one ignore a fade the way the Govee
+floor lamp does. Everything else (notifications,
 announcements, the vacuum, the TV) is recorded instead of called, so a test can ask "did it send
 that to the phone?" or "did it say good morning?". And time only moves when a test says so, in 30-second ticks,
 each one firing Home Assistant's time listeners the way a minute on the wall would.
@@ -97,7 +100,7 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 | File | Tests | What it pins down |
 |---|---|---|
 | `test_wake.py` | 19 | the wake-up from its real trigger, the backstop, a dead light, a broken plan, every way of saying you're up, the morning briefing written ahead and with no chores in it, the night in it (the doorbell, a reminder three times as one line), stale words written again, asking again getting the whole briefing, asking before the Hub sees you, a reminder already dealt with left out, a bad night said plainly against the month, an ordinary night just its numbers, a restart only when something didn't come back from it, the backup only when it failed, a few minutes up at 4 AM not being the morning |
-| `test_lights.py` | 24 | the gate, holds, by hand against by the house (a hand on a dimmer mid-fade too), the colour and brightness split, a no-dim kitchen left alone, a look never switching a task light on, the light curve through a day, nothing below 2700 K, Calm the hour before bed, blend steps too small to see, a lamp that restarted going straight back, a few more tries at a light that stayed on while you're out, an overhead standing in for a dead lamp, dark for a film, a lamp that restarts in the middle of a fade going back too, a colour never going without its brightness |
+| `test_lights.py` | 26 | the gate, holds, by hand against by the house (a hand on a dimmer mid-fade too), the colour and brightness split, a no-dim kitchen left alone, a look never switching a task light on, the light curve through a day, nothing below 2700 K, Calm the hour before bed, blend steps too small to see, a lamp that can't fade getting its steps straight there and never a fade, a lamp that restarted going straight back, a few more tries at a light that stayed on while you're out, an overhead standing in for a dead lamp, dark for a film, a lamp that restarts in the middle of a fade going back too, a colour never going without its brightness |
 | `test_asleep.py` | 10 | the filter: it takes a while, has memory, wakes for a real sign of life, not for a phone finishing its charge or a computer charging on the desk, and the bedroom radar over the desk plug |
 | `test_blocks.py` | 10 | the control core's pieces alone, as plain Python: the Bayes step, hysteresis, the low-pass step response, PID with and without windup, the gate, a light reporting back against a hand, the light curve through a day and without a plan, one step of the asleep filter |
 | `test_core.py` | 1 | a house on the old templates moving over to the control core: the same entity ids and history, no `_2` copies, the holds it had, and the old by-hand automation gone |
@@ -110,7 +113,7 @@ light, says so with `@pytest.mark.expect_errors(...)`.
 | `test_tv.py` | 3 | a TV dozing after its own sleep timer reading as off, "off" when it already is being done, and a TV asleep only asked if it's awake, keeping its volume and mute |
 | `test_smoke.py` | 1 | everything loads |
 
-184 in all, under three minutes on the Hub. It runs three at a time (`TEST_WORKERS`) at the lowest
+186 in all, under three minutes on the Hub. It runs three at a time (`TEST_WORKERS`) at the lowest
 priority, which leaves the house on the same box first in line, and a template compiled for one test
 is kept for the next: every test builds a new Home Assistant, and every one of them used to compile
 the same few hundred templates again, about a second of each test's two. The PID test is the closest thing here to hardware in the

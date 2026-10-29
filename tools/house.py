@@ -39,7 +39,7 @@ LOCAL = {
     "config": "ha/config",                          # your own packages, laid over this repo's
 }
 LAYERS = ("ambient", "task", "accent")
-ROLES = ("sunrise", "bedside", "no_dim", "stand_in", "keep")
+ROLES = ("sunrise", "bedside", "no_dim", "no_fade", "stand_in", "keep")
 
 DEFAULTS = {
     "hub": {"ssh": "hub@ha-hub.local", "address": "", "area": ""},

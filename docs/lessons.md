@@ -161,6 +161,11 @@ something else first.
 - A lamp wobbled 202, 203, 202, 203. Not rounding: a Govee floor lamp's firmware gets stuck mid-fade
   when one command changes colour and brightness together with a transition. The gate sends them as
   two commands ([control.md](control.md))
+- Then it wobbled with nothing but a brightness. Asked for 60% to 63% over a minute, the same lamp
+  stayed at 60 and was wobbling 153, 154 within eight seconds, so the next blend tick sent the same
+  step again, every minute for as long as the curve wanted it higher. The same step sent straight
+  there landed inside a second and held still. A lamp like that gets the `no_fade` job now, and
+  everything to it goes with no fade ([lighting.md](lighting.md#blending-not-switching))
 - A firmware update can lock a side door. A Tapo update shut out Home Assistant's no-login TP-Link
   connection overnight (a 403), while Matter carried on with on, off and dimming, and the same update
   put power and energy on the plug's Matter side, which is better anyway (instant, no polling). Matter
@@ -225,6 +230,11 @@ something else first.
 - Home Assistant couldn't log in to an older Kasa plug, whatever login it got. Its firmware had moved
   to KLAP v2, which python-kasa handles from 0.11.0.1 while Home Assistant was still on 0.10.2. Next time
   an old TP-Link plug won't log in, I'm checking that before the password
+- The bench couldn't see a fade. Home Assistant drops a light's `transition` before the light hears
+  it unless the light says it can fade, and the bench lights never said so, which means the two tests
+  that checked fades only ever saw 0 and couldn't fail. The bench lights that dim say so now, the way
+  a Matter light does, and one can be told to ignore a fade like the Govee floor lamp
+  ([testing.md](testing.md#the-bench))
 
 ## Moving a house onto it
 

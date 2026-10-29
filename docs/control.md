@@ -327,7 +327,7 @@ same table:
 | Full daylight from | 35 degrees of sun | a first guess until the window sensor measures it |
 | Wind-down ramp | 60 min | the curve's way into the wind-down |
 | Blend step, each minute | 5% of the level (2 points at least), 3 mired | under what anyone notices: a quick 20% drop usually goes unseen, and about 5 mired is the smallest colour difference side by side ([lighting.md](lighting.md#blending-not-switching)) |
-| Blend fade, blend window | 60 s, 45 min | each step fades over the minute it has, and every layer keeps blending for 45 minutes after the clock changed the look |
+| Blend fade, blend window | 60 s, 45 min | each step fades over the minute it has (or lands at once on a lamp with the `no_fade` job), and every layer keeps blending for 45 minutes after the clock changed the look |
 | Calm | the hour before the planned bedtime | it was 9:30 PM, whatever the bedtime |
 | Empty after the door, arrival after the door | 5 min, 10 min | the wasp in a box (10 of 11 closes with someone in showed a sign within 74 s), and how long a door opening counts as "just came in" |
 
@@ -473,8 +473,10 @@ rounding between Matter's 1 to 254 and Home Assistant's 0 to 255. It wasn't: the
 Control cluster said "53.8 seconds of fade remaining" and never got any closer. The Govee firmware
 gets stuck mid-fade when one command changes the colour and the brightness together with a
 transition. So the gate sends them as two commands, colour first and straight there, then the
-brightness with the fade, and the lamp has been quiet since. Fixed where the data comes from, not
-filtered after it.
+brightness with the fade. That quietened it until the blending started sending it a small step over
+a minute, and the wobble came back, because it turns out the lamp can't do a slow fade of any kind.
+Now it has the `no_fade` job and everything to it goes straight there, which it does inside a second
+and then sits still. Fixed where the data comes from both times, not filtered after it.
 
 ## Out of the templates
 

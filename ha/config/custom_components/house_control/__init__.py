@@ -339,6 +339,12 @@ class Core:
         hs = None if nothing(data.get("hs")) else data["hs"]
         kelvin = None if nothing(data.get("kelvin")) else data["kelvin"]
         fade = 2.0 if nothing(data.get("fade")) else fraction(data["fade"])
+        # a lamp whose firmware can't fade (light_no_fade) gets everything straight there. A Govee
+        # floor lamp asked for 57% to 60% over a minute stays at 57 and wobbles a step either side,
+        # so the next blend tick asks again, for as long as the curve wants it higher. Straight
+        # there it lands inside a second and sits still, and a blend step is small enough to jump
+        if "light_no_fade" in view.labels(entity):
+            fade = 0.0
         now = self.now()
 
         held = self.arbiter.holding(entity, pr, override, now)

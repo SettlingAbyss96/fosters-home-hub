@@ -8,7 +8,8 @@ every other service recorded instead of called, and a clock that only moves when
 
 Lights are fakes that behave like the real ones: a command changes the state with the command's
 context (like a Matter light answering inside a second), a person changing one doesn't carry any
-(house.by_hand), and house.dead marks a light that errors on every command.
+(house.by_hand), house.dead marks a light that errors on every command, and house.cant_fade one
+whose firmware ignores a fade (a faded brightness leaves it where it was, like the Govee floor lamp).
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ import re
 from datetime import datetime, timedelta
 
 from homeassistant import config as conf_util
-from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_COLOR_TEMP_KELVIN, ATTR_HS_COLOR, ColorMode, LightEntity
+from homeassistant.components.light import (ATTR_BRIGHTNESS, ATTR_COLOR_TEMP_KELVIN, ATTR_HS_COLOR, ATTR_TRANSITION, ColorMode, LightEntity,
+                                            LightEntityFeature)
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import Context, HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -63,7 +65,7 @@ LIGHTS = [
 AREAS = ["Living Room", "Kitchen", "Bathroom", "Bedroom", "Hall"]
 DOORS = {"binary_sensor.bedroom_door": "bedroom", "binary_sensor.bathroom_door": "bathroom"}
 LABELS = ["light_ambient", "light_task", "light_accent", "light_sunrise", "light_bedside", "light_no_dim",
-          "light_stand_in", "light_keep", "room_door", "vacuum_room"]
+          "light_no_fade", "light_stand_in", "light_keep", "room_door", "vacuum_room"]
 HOME_WIFI = "HomeNet"
 
 # The bench household's own routine, set after the deploy's neutral starting values: an early
@@ -121,6 +123,10 @@ class BenchLight(LightEntity):
             self._attr_supported_color_modes = {ColorMode.ONOFF}
             self._attr_color_mode = ColorMode.ONOFF
         self._dims = dims or colour
+        # a Matter light that dims says it can fade too. Without it Home Assistant drops the
+        # transition before the light hears it, and every fade the tests checked was a 0
+        if self._dims:
+            self._attr_supported_features = LightEntityFeature.TRANSITION
         self._attr_is_on = False
         self._attr_brightness = None
 
@@ -129,7 +135,9 @@ class BenchLight(LightEntity):
         if self.entity_id in self._house.dead:
             raise HomeAssistantError(f"{self.entity_id} didn't answer")
         self._attr_is_on = True
-        if self._dims:
+        # a lamp that can't fade, asked for a brightness over a few seconds or a minute, stays put
+        stuck = self.entity_id in self._house.cant_fade and kwargs.get(ATTR_TRANSITION, 0) > 0
+        if self._dims and not stuck:
             self._attr_brightness = kwargs.get(ATTR_BRIGHTNESS, self._attr_brightness or 255)
         # a colour light keeps the last colour it was given, like the Govee: on with only a
         # brightness comes back at whatever it had
@@ -176,6 +184,7 @@ class House:
         self.lights: dict[str, BenchLight] = {}
         self.events: list = []
         self.dead: set[str] = set()
+        self.cant_fade: set[str] = set()
         # what a faked service answers, by "domain.service": the cloud agent's words, say. A list is
         # one answer per call, a function works the answer out (or takes its time), an exception
         # is raised
@@ -322,6 +331,11 @@ class House:
         old = self.hass.states.get(entity)
         merged = {**(dict(old.attributes) if old else {}), **attrs}
         self.hass.states.async_set(entity, value, merged)
+
+    def job(self, entity: str, job: str) -> None:
+        """Give a light one more job, the way a role in its [[light]] table does"""
+        ents = er.async_get(self.hass)
+        ents.async_update_entity(entity, labels=set(ents.async_get(entity).labels) | {f"light_{job}"})
 
     def by_hand(self, entity: str, state: str, brightness_pct: int | None = None, app: bool = False) -> None:
         """A person at the wall (or the dashboard, with app=True): no automation behind it"""

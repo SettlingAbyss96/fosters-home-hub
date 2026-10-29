@@ -262,6 +262,71 @@ async def test_blending_steps_are_too_small_to_see(house_at):
     assert house.level("light.living_room_lamp") >= 76, "the curve at 2 degrees of sun says 78"
 
 
+LAMP = "light.living_room_lamp"
+
+
+def brightness_commands(house, since):
+    """The floor lamp's brightness commands after the given index into light_calls, as (percent,
+    fade). The colour command before each one carries the level the lamp's already at, so it's left out"""
+    return [(round(kw["brightness"] / 2.55), kw.get("transition", 0)) for e, on, kw in house.light_calls[since:]
+            if e == LAMP and on == "on" and "brightness" in kw and "color_temp_kelvin" not in kw and "hs_color" not in kw]
+
+
+async def test_a_lamp_that_cant_fade_gets_its_steps_straight_there(house_at):
+    # a Govee floor lamp asked for a few points more over a minute doesn't move, so the next minute
+    # the same step goes out again, and again. With the no_fade job each step goes straight there,
+    # still no bigger than 5%, and once it's on the curve nothing more goes out
+    sunny = {"input_select.house_mode": "Day", "sensor.bedtime_plan": PLAN,
+             "sun.sun": ("above_horizon", {"elevation": 50}), "weather.forecast_home": ("sunny", {"cloud_coverage": 0})}
+    house = await house_at(f"{TUESDAY} 15:30", sunny)     # 2700 K since 3, so only the level moves
+    await house.run("lights_look", look="day")
+    await house.advance(seconds=10)
+    assert house.level(LAMP) == 50
+    house.cant_fade.add(LAMP)
+    since = len(house.light_calls)
+    house.set("sun.sun", "above_horizon", elevation=2)      # the curve now says 78
+    await house.settle()
+    await house.advance(minutes=3)
+    assert house.level(LAMP) == 50, "faded, the bench lamp stays put like the real one"
+    stuck = [lvl for lvl, _ in brightness_commands(house, since)]
+    assert len(stuck) >= 3 and set(stuck) == {53}, f"the same step every minute: {stuck}"
+
+    house.job(LAMP, "no_fade")
+    since = len(house.light_calls)
+    await house.advance(minutes=12)
+    sent = brightness_commands(house, since)
+    assert sent and all(fade == 0 for _, fade in sent), sent
+    steps = [50] + [lvl for lvl, _ in sent]
+    for a, b in zip(steps, steps[1:]):
+        assert 0 < b - a <= max(2, a * 0.05) + 1, steps   # + 1 for rounding
+    assert house.level(LAMP) == 78
+    since = len(house.light_calls)
+    await house.advance(minutes=5)
+    assert not [c for c in house.light_calls[since:] if c[0] == LAMP], "on the curve, so nothing more goes out"
+
+
+async def test_a_lamp_that_cant_fade_never_gets_a_fade(house_at):
+    # a look you asked for, a routine's own 5-second fade and a film turning it off all go straight
+    # there, and the record says so, so the lamp answering isn't taken for a hand at the switch
+    house = await house_at(f"{TUESDAY} 19:00", {"input_select.house_mode": "Evening", "sensor.bedtime_plan": PLAN})
+    house.cant_fade.add(LAMP)
+    house.job(LAMP, "no_fade")
+    since = len(house.light_calls)
+    await house.run("lights_look", look="evening")
+    await house.advance(seconds=10)
+    asked = (house.attr("sensor.light_arbiter", "commands") or {})[LAMP]
+    assert asked["fade"] == 0 and house.level(LAMP) == asked["level"] > 0, asked
+    await house.run("light_set", entity=LAMP, level=40, fade=5, priority=3, source="routine")
+    await house.advance(seconds=10)
+    assert house.level(LAMP) == 40
+    await house.run("lights_look", look="movie")
+    await house.advance(seconds=10)
+    assert not house.is_on(LAMP)
+    fades = [kw.get("transition", 0) for e, _on, kw in house.light_calls[since:] if e == LAMP]
+    assert fades and all(f == 0 for f in fades), fades
+    assert not manual(house, LAMP)
+
+
 async def test_a_hand_on_a_dimmer_mid_fade_is_still_a_hand(house_at):
     # with a minute-long fade nearly every minute, "anything goes during a fade" would have hidden
     # every hand on a dimmer. On the way from where it was to where it's going is the house

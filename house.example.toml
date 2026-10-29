@@ -98,9 +98,11 @@ names = ["Living Room", "Kitchen", "Bedroom", "Bathroom"]
 # so "turn off the lights" and the looks treat the lamp like a lamp.
 #   layer   ambient (lamps), task (overheads) or accent (decoration), docs/lighting.md
 #   roles   any of: sunrise (the wake-up fades it up), bedside (on with the alarm, left on at Night
-#           if it's on), no_dim (a dimmer switch on bulbs that can't dim), stand_in (a task light
-#           that takes over the room's ambient level when every lamp in the room is dead), keep (the
-#           looks leave it alone, like a bathroom light on the fan's switch)
+#           if it's on), no_dim (a dimmer switch on bulbs that can't dim), no_fade (a lamp whose
+#           firmware can't fade: every command goes straight there, and the blend's steps are small
+#           enough that nobody sees one land), stand_in (a task light that takes over the room's
+#           ambient level when every lamp in the room is dead), keep (the looks leave it alone, like
+#           a bathroom light on the fan's switch)
 #   becomes the entity id you'd like it to have (optional)
 [[light]]
 entity = "light.floor_lamp"

@@ -181,9 +181,14 @@ is the recorder writing down every change and the by-hand detector having to che
 ([control.md](control.md#what-counts-as-by-hand)). Adaptive Lighting landed close by, 90 seconds
 with 45-second fades. The catch is colour on some lamps: fading colour and brightness together
 hung a Govee floor lamp's firmware, so colour jumps to each step, and the step itself has to be under
-what's visible. The same lamp turned out not to do a long fade at all, for a small step anyway:
-asked for two points more over 60 seconds it stays put, wobbling one step either side, and the next
-minute asks again.
+what's visible. The same lamp turned out not to do a slow fade at all. Asked for 60% to 63% over a
+minute it stays at 60, wobbling a step either side, and the next minute the same step goes out
+again. Sent straight there, it lands inside a second and sits still. So a lamp like that gets the
+`no_fade` job and everything to it goes with no fade, blend steps included, which is fine because 5%
+at once is a quarter of the quick 20% drop the NRC found goes unnoticed. Home Assistant's Matter
+integration already drops the fade for two other Govee lights, so I doubt this one's alone. A house
+that worked it out by itself would only find out a minute after each step, every step, so I'd
+rather say it once in `house.toml`.
 
 The one change that skips the blend is a lamp restarting. Some colour lamps restart now and then,
 often while their Matter connection is dropping, and come back at their own default colour with
@@ -274,9 +279,9 @@ flowchart TD
 
 The spec check is short on purpose. Dimming to about 1% because the wind-down and the path light
 live at the bottom of the range, where cheap drivers cut out or flicker. Fading by itself, a Matter
-transition it actually honours, because that's how the house blends without a command every second
-(Home Assistant keeps a list of lights that ignore it). A CRI of 90 or more because low-CRI white
-makes skin and wood look grey. 2700 K from real warm-white LEDs, not faked with red ones, because
+transition it actually honours, because that's how the house blends smoothly without a command every
+second (Home Assistant keeps a list of lights that ignore it, and one that can't gets `no_fade`). A
+CRI of 90 or more because low-CRI white makes skin and wood look grey. 2700 K from real warm-white LEDs, not faked with red ones, because
 that's where the evening sits and a colour lamp that fakes it loses half its light down there. And
 the window question because at night a big window is a mirror, and every bright source in the room
 shows up in it twice.
@@ -291,9 +296,8 @@ shows up in it twice.
 - The path light from the bed to the bathroom (`esphome/path-light.yaml`)
 - Lamps on dimmers instead of plugs, so the wind-down can turn them down instead of leaving them on
   at whatever they are
-- Blend steps sent straight there for a lamp that can't fade (two points at once is still well under
-  what anyone notices), and a light sensor taped to a floor lamp for an evening, to see what the
-  ones that can really do with a 60-second fade: a smooth ramp or a staircase they hide well
+- A light sensor taped to a floor lamp for an evening, to see what the ones that can fade really do
+  with a 60-second one, a smooth ramp or a staircase they hide well
 - The same blending for Jarvis's quiet voice and the Hub's screen, and a ramp for a thermostat when
   there is one
 

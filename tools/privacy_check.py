@@ -40,7 +40,7 @@ import house as housefile  # noqa: E402
 ROOT = HERE.parent
 SKIP_SUFFIX = (".png", ".jpg", ".jpeg", ".gif", ".ico", ".bin", ".onnx", ".zip", ".gz", ".apk", ".jks")
 # short or generic values in a house.toml would match all over the repo
-COMMON = {"ambient", "task", "accent", "sunrise", "bedside", "no_dim", "stand_in", "keep", "mushroom", "hey_jarvis",
+COMMON = {*housefile.LAYERS, *housefile.ROLES, "mushroom", "hey_jarvis",
           "bm_daniel", "en_GB", "Living Room", "Kitchen", "Bedroom", "Bathroom"}
 
 TOKEN = re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}"                          # a JWT, like a Home Assistant token
