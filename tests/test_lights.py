@@ -305,6 +305,29 @@ async def test_a_lamp_that_cant_fade_gets_its_steps_straight_there(house_at):
     assert not [c for c in house.light_calls[since:] if c[0] == LAMP], "on the curve, so nothing more goes out"
 
 
+async def test_a_step_a_lamp_didnt_take_isnt_sent_again(house_at):
+    # the same Govee lands a point under most levels it's asked for, so the last step up, from 77 to
+    # 78, never lands. It goes out once, and after that the lamp sits a point under the curve with
+    # nothing more going out, instead of the same step every minute
+    sunny = {"input_select.house_mode": "Day", "sensor.bedtime_plan": PLAN,
+             "sun.sun": ("above_horizon", {"elevation": 50}), "weather.forecast_home": ("sunny", {"cloud_coverage": 0})}
+    house = await house_at(f"{TUESDAY} 15:30", sunny)
+    await house.run("lights_look", look="day")
+    await house.advance(seconds=10)
+    house.lands_short.add(LAMP)
+    house.job(LAMP, "no_fade")
+    since = len(house.light_calls)
+    house.set("sun.sun", "above_horizon", elevation=2)      # the curve now says 78
+    await house.settle()
+    await house.advance(minutes=16)
+    assert house.level(LAMP) == 77, "a point under, like the real one"
+    sent = [lvl for lvl, _ in brightness_commands(house, since)]
+    assert sent.count(78) == 2, f"from 74, which got it to 77, and once from 77, which didn't take: {sent}"
+    since = len(house.light_calls)
+    await house.advance(minutes=5)
+    assert not [c for c in house.light_calls[since:] if c[0] == LAMP], "the step it didn't take isn't sent again"
+
+
 async def test_a_lamp_that_cant_fade_never_gets_a_fade(house_at):
     # a look you asked for, a routine's own 5-second fade and a film turning it off all go straight
     # there, and the record says so, so the lamp answering isn't taken for a hand at the switch

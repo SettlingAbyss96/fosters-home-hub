@@ -39,7 +39,9 @@
 # moves each light that's on one step toward the look, a minute's worth, and the one-minute tick
 # below keeps stepping for the next 45 minutes. A step is at most 5% of where the light is (2 points
 # at least) and 3 mired of colour, sent with a 60-second fade, so the lamp never jumps and the change
-# is too slow to see (docs/lighting.md, "Blending, not switching").
+# is too slow to see (docs/lighting.md, "Blending, not switching"). A step a light already got, from
+# the level it's still at, isn't sent again, since some lamps land a point short and would get the
+# same step every minute.
 #
 # kelvin is the colour temperature a look asks for, for the lights that can do it: curve is the light
 # curve's (4000 K in the morning, 2700 K from mid-afternoon), and Bright asks for 4500 K outright.

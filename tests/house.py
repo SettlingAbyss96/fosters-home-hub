@@ -8,8 +8,9 @@ every other service recorded instead of called, and a clock that only moves when
 
 Lights are fakes that behave like the real ones: a command changes the state with the command's
 context (like a Matter light answering inside a second), a person changing one doesn't carry any
-(house.by_hand), house.dead marks a light that errors on every command, and house.cant_fade one
-whose firmware ignores a fade (a faded brightness leaves it where it was, like the Govee floor lamp).
+(house.by_hand), house.dead marks a light that errors on every command, house.cant_fade one whose
+firmware ignores a fade (a faded brightness leaves it where it was, like the Govee floor lamp), and
+house.lands_short one that lands a point under each new level it's asked for (the same lamp again).
 """
 
 from __future__ import annotations
@@ -138,7 +139,10 @@ class BenchLight(LightEntity):
         # a lamp that can't fade, asked for a brightness over a few seconds or a minute, stays put
         stuck = self.entity_id in self._house.cant_fade and kwargs.get(ATTR_TRANSITION, 0) > 0
         if self._dims and not stuck:
-            self._attr_brightness = kwargs.get(ATTR_BRIGHTNESS, self._attr_brightness or 255)
+            b = kwargs.get(ATTR_BRIGHTNESS, self._attr_brightness or 255)
+            if self.entity_id in self._house.lands_short and b != self._attr_brightness:
+                b = round((round(b / 2.55) - 1) * 2.55)
+            self._attr_brightness = b
         # a colour light keeps the last colour it was given, like the Govee: on with only a
         # brightness comes back at whatever it had
         if ATTR_COLOR_TEMP_KELVIN in kwargs and self._attr_supported_color_modes and ColorMode.COLOR_TEMP in self._attr_supported_color_modes:
@@ -185,6 +189,7 @@ class House:
         self.events: list = []
         self.dead: set[str] = set()
         self.cant_fade: set[str] = set()
+        self.lands_short: set[str] = set()
         # what a faked service answers, by "domain.service": the cloud agent's words, say. A list is
         # one answer per call, a function works the answer out (or takes its time), an exception
         # is raised

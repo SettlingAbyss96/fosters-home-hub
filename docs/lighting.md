@@ -190,6 +190,13 @@ integration already drops the fade for two other Govee lights, so I doubt this o
 that worked it out by itself would only find out a minute after each step, every step, so I'd
 rather say it once in `house.toml`.
 
+Straight there, the same lamp lands a point under most levels it's asked for, 66 giving 65 and 57
+giving 56, and my guess is its own 1 to 100 scale rounding down. So a one-point step up never
+lands, and with the curve holding still the house would ask again every minute. A blend step the
+light already got, from the level it's still at, with its fade and 10 seconds gone by, doesn't go
+out again, and the lamp sits a point under the curve until the curve moves on. A point is 1.5% at
+65, so I'm not losing sleep over it.
+
 The one change that skips the blend is a lamp restarting. Some colour lamps restart now and then,
 often while their Matter connection is dropping, and come back at their own default colour with
 nothing in the house having asked (the Govee comes back at 4000 K). Blending from there means 40

@@ -69,8 +69,10 @@ def scope_of(spec: Mapping, view: View) -> set[str] | None:
 
 
 def plan(spec: Mapping, view: View, curve: Mapping, p: Mapping, *, kelvin: Any, hs: Any, blending: bool,
-         only_on: bool, layers: Iterable[str] | None, printing: Iterable[str]) -> list[dict]:
-    """[{entity, level, kelvin, dims, ct, colour}], one per light the look changes"""
+         only_on: bool, layers: Iterable[str] | None, printing: Iterable[str], sent: Mapping | None = None) -> list[dict]:
+    """[{entity, level, kelvin, dims, ct, colour}], one per light the look changes. sent is what the
+    arbiter last asked of each light, {level, from, ...}, for the commands that have had their fade
+    and a few seconds since"""
     scope = scope_of(spec, view)
     no_dim = set(view.labelled("light_no_dim"))
     keep = set(view.labelled("light_keep"))
@@ -160,5 +162,13 @@ def plan(spec: Mapping, view: View, curve: Mapping, p: Mapping, *, kelvin: Any, 
             if k_want is not None and now_k > 0:
                 m_now, m_want, dm = 1e6 / now_k, 1e6 / k_want, p["blend_mired_step"]
                 step_k = int(round(1e6 / min(max(m_want, m_now - dm), m_now + dm)))
+            # the same step from the same level, already sent and not taken, doesn't go out again.
+            # A Govee floor lamp lands a point under most levels it's asked for, so a step of one
+            # point up never lands, and the next minute would ask again for as long as the curve
+            # holds still. The curve moving on makes a new step
+            last = (sent or {}).get(e)
+            colour_there = step_k is None or (now_k > 0 and abs(now_k - step_k) <= 30)
+            if last and number(last.get("level")) == step_level and number(last.get("from")) == now_level and colour_there:
+                continue
         out.append({"entity": e, "level": step_level, "kelvin": step_k, "dims": can_dim, "ct": ct, "colour": colour})
     return out

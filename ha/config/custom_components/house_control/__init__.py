@@ -426,11 +426,13 @@ class Core:
         layers = data.get("layers") or None
         if isinstance(layers, str):
             layers = [layers]
+        now = self.now()
+        sent = {e: c for e, c in self.arbiter.commands.items()
+                if now - float(c.get("at", 0)) >= float(c.get("fade", 0)) + p["command_settle_seconds"]}
         lights = plan(spec, view, curve, p, kelvin=kelvin, hs=hs, blending=blending, only_on=truthy(data.get("only_on")),
-                      layers=layers, printing=view.attr("binary_sensor.printing", "lights") or [])
+                      layers=layers, printing=view.attr("binary_sensor.printing", "lights") or [], sent=sent)
 
         if truthy(data.get("dry_run")):
-            now = self.now()
             held = {}
             for i in lights:
                 if (h := self.arbiter.holding(i["entity"], pr, override, now)) is not None:

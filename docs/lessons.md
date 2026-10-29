@@ -165,7 +165,8 @@ something else first.
   stayed at 60 and was wobbling 153, 154 within eight seconds, so the next blend tick sent the same
   step again, every minute for as long as the curve wanted it higher. The same step sent straight
   there landed inside a second and held still. A lamp like that gets the `no_fade` job now, and
-  everything to it goes with no fade ([lighting.md](lighting.md#blending-not-switching))
+  everything to it goes with no fade. Straight there it lands a point under most levels, so a blend
+  step a light didn't take isn't sent again either ([lighting.md](lighting.md#blending-not-switching))
 - A firmware update can lock a side door. A Tapo update shut out Home Assistant's no-login TP-Link
   connection overnight (a 403), while Matter carried on with on, off and dimming, and the same update
   put power and energy on the plug's Matter side, which is better anyway (instant, no polling). Matter
